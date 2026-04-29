@@ -1,0 +1,91 @@
+/* ===== TOKENS — fuckfishing-next ===== */
+
+:root {
+  /* Фоны */
+  --bg: #F2F2F7;
+  --bg2: #FFFFFF;
+  --bg3: #F2F2F7;
+  --bg4: #E5E5EA;
+
+  /* Текст */
+  --label: #1C1C1E;
+  --label2: #3A3A3C;
+  --label3: #636366;
+  --label4: #AEAEB2;
+
+  /* Разделители */
+  --sep: #C6C6C8;
+  --sep2: #E5E5EA;
+
+  /* Акцент */
+  --accent: #007AFF;
+  --accent-bg: rgba(0, 122, 255, 0.1);
+  --accent-dark: #0062CC;
+
+  /* Статусы */
+  --green: #34C759;
+  --red: #FF3B30;
+  --orange: #FF9500;
+  --yellow: #FFCC00;
+
+  /* Тени */
+  --card-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04);
+  --card-shadow-pressed: 0 0 0 rgba(0,0,0,0);
+
+  /* Топбар */
+  --topbar-bg: #1A4C7A;
+  --topbar-blur: blur(20px);
+
+  /* Модалка */
+  --modal-bg: #FFFFFF;
+  --overlay-bg: rgba(0, 0, 0, 0.45);
+
+  /* Навигация */
+  --nav-bg: rgba(249, 249, 249, 0.92);
+  --nav-border: rgba(0, 0, 0, 0.08);
+
+  /* Радиусы */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-xl: 22px;
+
+  /* Анимации */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration: 0.28s;
+}
+
+/* ===== ТЁМНАЯ ТЕМА ===== */
+[data-theme="dark"] {
+  --bg: #1C1C1E;
+  --bg2: #2C2C2E;
+  --bg3: #3A3A3C;
+  --bg4: #48484A;
+
+  --label: #FFFFFF;
+  --label2: #EBEBF5;
+  --label3: rgba(235, 235, 245, 0.6);
+  --label4: #636366;
+
+  --sep: #38383A;
+  --sep2: #3A3A3C;
+
+  --accent: #0A84FF;
+  --accent-bg: rgba(10, 132, 255, 0.18);
+
+  --green: #30D158;
+  --red: #FF453A;
+  --orange: #FF9F0A;
+  --yellow: #FFD60A;
+
+  --card-shadow: 0 1px 4px rgba(0,0,0,0.3), 0 4px 20px rgba(0,0,0,0.2);
+
+  --topbar-bg: #0A2540;
+
+  --modal-bg: #2C2C2E;
+  --overlay-bg: rgba(0, 0, 0, 0.65);
+
+  --nav-bg: rgba(28, 28, 30, 0.92);
+  --nav-border: rgba(255, 255, 255, 0.08);
+}

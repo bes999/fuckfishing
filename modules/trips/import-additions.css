@@ -1,0 +1,121 @@
+/* ═══════════════════════════════════════════════
+   ДОБАВИТЬ В КОНЕЦ modules/trips/styles.css
+   Стили для импорта JSON экспедиции
+═══════════════════════════════════════════════ */
+
+/* Секция импорта */
+.import-section {
+  margin-bottom: 16px;
+}
+
+.field-hint-inline {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--label4);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* Dropzone */
+.import-dropzone {
+  border: 1.5px dashed var(--sep);
+  border-radius: 14px;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  background: var(--bg3);
+  transition: border-color 0.18s, background 0.18s;
+  cursor: default;
+}
+.import-dropzone.dz-drag {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.import-dz-icon {
+  font-size: 32px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.import-dz-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--label);
+}
+.import-dz-sub {
+  font-size: 12px;
+  color: var(--label3);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.import-dz-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: opacity 0.15s;
+}
+.import-dz-btn:active { opacity: 0.8; }
+.import-dz-hint {
+  font-size: 11px;
+  color: var(--label4);
+  margin-top: 4px;
+}
+
+/* Preview после загрузки */
+.import-preview {
+  background: rgba(52, 199, 89, 0.1);
+  border: 1.5px solid var(--green);
+  border-radius: 14px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.import-preview-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green);
+}
+.import-preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.import-chip {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 12px;
+  background: var(--bg2);
+  border: 1px solid var(--sep2);
+  border-radius: 20px;
+  color: var(--label2);
+}
+.import-reset-btn {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--label3);
+  font-size: 12px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  text-decoration: underline;
+}
+.import-reset-btn:active { color: var(--red); }
+
+/* Кнопка "Пропустить" */
+#createSkip {
+  margin-top: 8px;
+}

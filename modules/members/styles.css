@@ -1,0 +1,254 @@
+/* ═══════════════════════════════════════════════
+   MEMBERS — Участники поездки и профили
+═══════════════════════════════════════════════ */
+
+/* ── Список участников ───────────────────────── */
+.members-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.m-card {
+  background: var(--bg2);
+  border-radius: var(--radius-lg);
+  padding: 14px 8px;
+  text-align: center;
+  box-shadow: var(--card-shadow);
+  position: relative;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .15s var(--spring), box-shadow .15s;
+}
+.m-card:active { transform: scale(.96); box-shadow: var(--card-shadow-pressed); }
+
+.m-ava  { font-size: 30px; margin-bottom: 6px; line-height: 1; }
+.m-name { font-size: 13px; font-weight: 600; color: var(--label); margin-bottom: 3px;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.m-role { font-size: 10px; color: var(--label3); }
+.m-role.org { color: var(--accent); font-weight: 600; }
+
+.m-me-badge {
+  position: absolute; top: 6px; right: 6px;
+  font-size: 9px; font-weight: 700;
+  background: var(--accent); color: #fff;
+  padding: 2px 5px; border-radius: 6px;
+}
+
+.m-add-card {
+  background: var(--bg2);
+  border-radius: var(--radius-lg);
+  padding: 14px 8px;
+  text-align: center;
+  border: 1.5px dashed var(--sep);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .15s;
+}
+.m-add-card:active { border-color: var(--accent); }
+.m-add-icon  { font-size: 20px; color: var(--label4); margin-bottom: 4px; }
+.m-add-label { font-size: 10px; color: var(--label4); font-weight: 600; }
+
+/* ── Профиль (bottom sheet) ──────────────────── */
+.profile-overlay {
+  position: fixed; inset: 0;
+  background: var(--overlay-bg);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 300;
+  display: flex; align-items: flex-end;
+}
+
+.profile-sheet {
+  width: 100%;
+  background: var(--modal-bg);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -8px 40px rgba(0,0,0,.18);
+  max-height: 94vh;
+  display: flex; flex-direction: column;
+  padding: 8px 0 0;
+}
+
+.profile-grab {
+  width: 36px; height: 4px; border-radius: 2px;
+  background: var(--sep); margin: 0 auto 0;
+  flex-shrink: 0; pointer-events: none;
+}
+
+.profile-scroll {
+  overflow-y: auto; flex: 1;
+  padding: 0 16px calc(env(safe-area-inset-bottom, 0px) + 24px);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Header */
+.p-header {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 0 12px;
+  border-bottom: 0.5px solid var(--sep2);
+}
+
+.p-ava-circle {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: var(--topbar-bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; flex-shrink: 0;
+}
+
+.p-name  { font-size: 18px; font-weight: 700; color: var(--label); margin-bottom: 2px; }
+.p-meta  { font-size: 12px; color: var(--label3); margin-bottom: 1px; }
+.p-badge {
+  display: inline-block; margin-top: 4px;
+  font-size: 11px; font-weight: 700;
+  padding: 3px 8px; border-radius: 8px;
+}
+.p-badge.org { background: var(--orange); color: #fff; }
+.p-badge.mem { background: var(--bg3); color: var(--label3); }
+
+/* Подвкладки — переиспользуем .stab из проекта */
+.p-subtabs {
+  display: flex; gap: 5px;
+  margin: 12px 0 10px; flex-wrap: nowrap;
+}
+.p-stab {
+  flex: 1; padding: 5px 8px; font-size: 12px; font-weight: 600;
+  border-radius: 20px; background: var(--bg3); color: var(--label3);
+  box-shadow: var(--card-shadow); text-align: center; cursor: pointer;
+  white-space: nowrap; font-family: inherit; border: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .18s, color .18s;
+}
+.p-stab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(0,122,255,.3); }
+
+/* Строки данных — row из проекта */
+.p-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 0; border-bottom: 0.5px solid var(--sep2); font-size: 14px;
+}
+.p-row:last-child { border-bottom: none; }
+.p-row-lbl { color: var(--label); }
+.p-row-val { font-weight: 600; color: var(--label); }
+.p-row-val.green { color: var(--green); }
+.p-row-val.red   { color: var(--red); }
+.p-row-val.muted { color: var(--label3); font-weight: 400; font-size: 13px; }
+
+/* Кружок группы крови */
+.blood-circle {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: rgba(255,59,48,.12); color: var(--red);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 800;
+}
+
+/* Аптечка-кнопка */
+.p-medkit-btn {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--accent-bg);
+  border: 1.5px solid rgba(0,122,255,.2);
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  margin: 12px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.p-medkit-btn-title { font-size: 14px; font-weight: 600; color: var(--accent); }
+.p-medkit-btn-sub   { font-size: 12px; color: var(--label3); margin-top: 2px; }
+.p-medkit-chevron   { font-size: 18px; color: var(--accent); opacity: .6; }
+
+/* Экстренные контакты */
+.p-emerg-title {
+  font-size: 11px; font-weight: 700; color: var(--label4);
+  text-transform: uppercase; letter-spacing: .5px; margin: 12px 0 7px;
+}
+.p-emerg-card {
+  background: rgba(255,59,48,.06);
+  border: 1px solid rgba(255,59,48,.15);
+  border-radius: var(--radius-md);
+  padding: 10px 12px; margin-bottom: 8px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.p-emerg-info {}
+.p-emerg-name  { font-size: 13px; font-weight: 700; color: var(--label); }
+.p-emerg-phone { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 2px; }
+.p-emerg-del   { font-size: 20px; color: var(--red); opacity: .7; cursor: pointer; padding: 0 4px; }
+.p-emerg-add {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0; color: var(--accent);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+}
+
+/* Поездки */
+.p-trip-card {
+  background: var(--bg3); border-radius: var(--radius-md);
+  padding: 12px 14px; margin-bottom: 8px;
+}
+.p-trip-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
+.p-trip-name  { font-size: 14px; font-weight: 700; color: var(--label); }
+.p-trip-dates { font-size: 11px; color: var(--label3); margin-top: 2px; }
+.p-trip-badge {
+  font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 8px;
+  background: var(--accent-bg); color: var(--accent);
+}
+.p-trip-badge.past { background: var(--bg4); color: var(--label4); }
+.p-trip-stats { display: flex; gap: 12px; }
+.p-trip-stat  { font-size: 12px; color: var(--label3); }
+.p-trip-stat span { font-weight: 700; color: var(--label2); }
+.p-trip-add {
+  text-align: center; padding: 10px 0 4px;
+  font-size: 13px; color: var(--accent); font-weight: 600; cursor: pointer;
+}
+
+/* Снаряга */
+.p-gear-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 0; border-bottom: 0.5px solid var(--sep2); font-size: 14px; color: var(--label);
+}
+.p-gear-item:last-child { border-bottom: none; }
+.p-gear-add {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 0; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer;
+}
+
+/* Кнопки действий */
+.p-actions { display: flex; gap: 8px; margin-top: 16px; }
+.p-btn-edit {
+  flex: 1; padding: 10px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--sep2);
+  background: transparent; color: var(--accent);
+  font-size: 13px; font-weight: 600; text-align: center;
+  cursor: pointer; font-family: inherit;
+  transition: background .15s;
+}
+.p-btn-edit:active { background: var(--bg3); }
+.p-btn-out {
+  padding: 10px 16px;
+  border-radius: var(--radius-md);
+  border: none; background: var(--bg3); color: var(--label3);
+  font-size: 13px; font-weight: 600; text-align: center;
+  cursor: pointer; font-family: inherit;
+  box-shadow: var(--card-shadow);
+}
+.p-btn-del {
+  flex: 1; padding: 10px;
+  border-radius: var(--radius-md);
+  background: rgba(255,59,48,.08);
+  border: 1.5px solid rgba(255,59,48,.2);
+  color: var(--red); font-size: 13px; font-weight: 600;
+  text-align: center; cursor: pointer; font-family: inherit;
+}
+
+/* Invite sheet */
+.invite-url {
+  background: var(--bg3); border-radius: var(--radius-md);
+  padding: 12px 14px; margin-bottom: 14px;
+  font-size: 13px; color: var(--label); word-break: break-all;
+}
+.profile-sheet {
+  padding-bottom: calc(83px + env(safe-area-inset-bottom));
+}
+
+.members-grid {
+  padding-bottom: calc(83px + env(safe-area-inset-bottom));
+}

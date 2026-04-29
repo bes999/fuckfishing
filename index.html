@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>FuckFishing</title>
+
+  <!-- Shared styles -->
+  <link rel="stylesheet" href="shared/tokens.css">
+  <link rel="stylesheet" href="shared/base.css">
+  <link rel="stylesheet" href="shared/components.css">
+  <link rel="stylesheet" href="shared/app.css">
+  <link rel="stylesheet" href="shared/nav.css">
+
+  <!-- Module styles -->
+  <link rel="stylesheet" href="modules/auth/styles.css">
+  <link rel="stylesheet" href="modules/members/styles.css">
+  <link rel="stylesheet" href="modules/medkit/styles.css">
+  <link rel="stylesheet" href="modules/gear/styles.css">
+  <link rel="stylesheet" href="modules/home/styles.css">
+  <link rel="stylesheet" href="modules/trips/styles.css">
+  <link rel="stylesheet" href="modules/tripcover/styles.css">
+  <link rel="stylesheet" href="modules/rivers/styles.css">
+
+  <!-- Firebase -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="shared/config.js"></script>
+
+  <script>
+    // Тема — применяем ДО рендера чтобы не мигало
+    (function() {
+      var t = localStorage.getItem('theme_ff') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+
+  <div id="app">
+    <!-- Main pages -->
+    <div id="p-home"    class="page"></div>
+    <div id="p-trips"   class="page"></div>
+    <div id="p-profile" class="page"></div>
+
+    <!-- Trip pages (inside trip) -->
+    <div id="p-guide"   class="page"></div>
+    <div id="p-rivers"  class="page"></div>
+    <div id="p-menu"    class="page"></div>
+    <div id="p-more"    class="page"></div>
+
+    <!-- Legacy pages -->
+    <div id="p-members" class="page"></div>
+    <div id="p-medkit"  class="page"></div>
+  </div>
+
+  <!-- Navigation (рендерится сюда) -->
+  <div id="bottom-nav"></div>
+
+  <!-- ── Auth module ── -->
+  <script src="modules/auth/render.js"></script>
+  <script src="modules/auth/index.js"></script>
+
+  <!-- ── Gear module ── -->
+  <script src="modules/gear/data.js"></script>
+  <script src="modules/gear/render.js"></script>
+  <script src="modules/gear/index.js"></script>
+
+  <!-- ── Members module ── -->
+  <script src="modules/members/firebase.js"></script>
+  <script src="modules/members/render.js"></script>
+  <script src="modules/members/index.js"></script>
+
+  <!-- ── Medkit module ── -->
+  <script src="modules/medkit/data.js"></script>
+  <script src="modules/medkit/slots.js"></script>
+  <script src="modules/medkit/info.js"></script>
+  <script src="modules/medkit/emergency.js"></script>
+  <script src="modules/medkit/state.js"></script>
+  <script src="modules/medkit/status.js"></script>
+  <script src="modules/medkit/actions.js"></script>
+  <script src="modules/medkit/import.js"></script>
+  <script src="modules/medkit/firebase.js"></script>
+  <script src="modules/medkit/render.js"></script>
+  <script src="modules/medkit/index.js"></script>
+
+  <!-- ── Trips data (shared between home & trips pages) ── -->
+  <script src="modules/trips/data.js"></script>
+
+  <!-- ── Navigation ── -->
+  <script src="shared/nav.js"></script>
+
+  <!-- ── Home module ── -->
+  <script src="modules/home/render.js"></script>
+  <script src="modules/home/index.js"></script>
+
+  <!-- ── Trips module ── -->
+  <script src="modules/trips/render.js"></script>
+  <script src="modules/trips/index.js"></script>
+
+  <!-- ── Trip cover ── -->
+  <script src="modules/tripcover/index.js"></script>
+
+  <!-- ── Rivers module ── -->
+  <script src="modules/rivers/render.js"></script>
+  <script src="modules/rivers/index.js"></script>
+
+  <!-- ── App init ── -->
+  <script>
+    'use strict';
+
+    // Роутер страниц
+    const AppRouter = {
+      _current: null,
+
+      show(pageId) {
+        if (this._current) {
+          document.getElementById('p-' + this._current)?.classList.remove('active');
+        }
+        const el = document.getElementById('p-' + pageId);
+        if (el) el.classList.add('active');
+        this._current = pageId;
+      }
+    };
+
+    // Навигация — обработчик переключения
+    function onNavigate(pageId) {
+      // Закрываем любые открытые оверлеи при навигации
+      document.getElementById('create-overlay')?.remove();
+      document.getElementById('trip-cover')?.remove();
+
+      if (pageId === 'home') {
+        AppNav.setMode('main', 'home');
+        AppRouter.show('home');
+        HomeIndex.refresh();
+      } else if (pageId === 'trips') {
+        AppRouter.show('trips');
+        TripsIndex.render();
+      } else if (pageId === 'profile') {
+        AppRouter.show('members');
+        const uid = window.APP?.profile?.uid;
+        if (uid && typeof MembersRender !== 'undefined') {
+          MembersRender.showProfile(uid, uid);
+        }
+      } else if (pageId === 'guide') {
+        AppRouter.show('guide');
+      } else if (pageId === 'rivers') {
+        AppRouter.show('rivers');
+        const tripId   = window.APP?.currentTripId   || null;
+        const tripData = window.APP?.currentTripData  || null;
+        RiversIndex.init(
+          document.getElementById('p-rivers'),
+          tripData,
+          tripId
+        );
+      } else if (pageId === 'menu') {
+        AppRouter.show('menu');
+        document.getElementById('p-menu').innerHTML = `
+          <div style="padding:52px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">Меню</div>
+          <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">🚧 В разработке</div>`;
+      } else if (pageId === 'more') {
+        AppRouter.show('more');
+        document.getElementById('p-more').innerHTML = `
+          <div style="padding:52px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">Ещё</div>
+          <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">🚧 В разработке</div>`;
+      }
+      AppNav.setActive(pageId);
+    }
+
+    // Запуск после авторизации
+    function startApp(user) {
+      // Загружаем данные
+      TripsData.load();
+
+      // Инициализируем навбар
+      AppNav.init(onNavigate);
+
+      // Показываем главную
+      AppRouter.show('home');
+      HomeIndex.init(document.getElementById('p-home'), user);
+
+      // Инициализируем страницу поездок (лениво)
+      TripsIndex.init(document.getElementById('p-trips'));
+    }
+
+    // Запуск auth (startApp будет вызван из _boot() в auth/index.js)
+    AuthActions.init();
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,168 @@
+/* ===== TRIP COVER ===== */
+
+.cover-page {
+  position: fixed; inset: 0; z-index: 1100;
+  background: var(--bg);
+  display: flex; flex-direction: column;
+  transform: translateX(100%);
+  transition: transform .35s var(--ease);
+}
+.cover-page.visible { transform: translateX(0); }
+
+.cover-topbar {
+  background: var(--topbar-bg); color: #fff;
+  padding: 52px 16px 13px;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 0.5px 0 rgba(255,255,255,0.12);
+  flex-shrink: 0;
+}
+.cover-back {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,0.15); border: none; cursor: pointer; color: #fff;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cover-back svg { width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round; }
+.cover-top-info { flex: 1; }
+.cover-top-title { font-size: 18px; font-weight: 700; }
+.cover-top-sub   { font-size: 12px; opacity: .65; margin-top: 1px; }
+
+.cover-scroll {
+  flex: 1; overflow-y: auto; scrollbar-width: none;
+  padding-bottom: 90px;
+}
+.cover-scroll::-webkit-scrollbar { display: none; }
+
+/* Hero */
+.cover-hero {
+  margin: 16px 16px 0;
+  background: linear-gradient(135deg, rgba(10,132,255,.12), rgba(48,209,88,.06));
+  border: 0.5px solid rgba(10,132,255,.18);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  box-shadow: var(--card-shadow);
+}
+.cover-emoji { font-size: 48px; display: block; margin-bottom: 10px; }
+.cover-name  { font-size: 26px; font-weight: 800; letter-spacing: -.5px; line-height: 1.1; margin-bottom: 8px; }
+.cover-meta  { display: flex; flex-direction: column; gap: 5px; }
+.cover-meta-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--label3); }
+.cover-parts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.cover-part-chip {
+  background: rgba(255,255,255,.07); border-radius: 20px;
+  padding: 4px 11px; font-size: 12px; font-weight: 500;
+  border: .5px solid var(--sep);
+}
+
+/* Countdown */
+.cover-countdown {
+  margin: 12px 16px 0;
+  background: rgba(255,159,10,.08); border: .5px solid rgba(255,159,10,.25);
+  border-radius: var(--radius-md); padding: 12px 14px;
+  display: flex; align-items: center; gap: 12px;
+}
+.cover-cd-num {
+  font-size: 38px; font-weight: 800;
+  color: var(--orange); letter-spacing: -1.5px; line-height: 1;
+  min-width: 46px; text-align: center;
+}
+.cover-cd-days { font-size: 11px; color: var(--label3); text-align: center; margin-top: 1px; }
+.cover-cd-info { flex: 1; }
+.cover-cd-name { font-size: 14px; font-weight: 700; }
+.cover-cd-sub  { font-size: 12px; color: var(--label3); margin-top: 2px; }
+
+/* Rating */
+.cover-section {
+  margin: 12px 16px 0;
+  background: var(--bg2); border-radius: var(--radius-lg);
+  overflow: hidden; box-shadow: var(--card-shadow);
+}
+.cover-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px 12px; border-bottom: .5px solid var(--sep2);
+}
+.cover-section-title { font-size: 14px; font-weight: 700; }
+.cover-edit-btn { font-size: 13px; color: var(--accent); cursor: pointer; font-weight: 500; border: none; background: none; font-family: inherit; }
+
+.cover-rating-row { display: flex; align-items: center; padding: 4px 16px 14px; gap: 10px; }
+.cover-score-big { font-size: 42px; font-weight: 800; color: var(--green); letter-spacing: -2px; line-height: 1; }
+.cover-score-den { font-size: 16px; color: var(--label3); }
+.cover-score-track { flex: 1; height: 6px; background: var(--sep2); border-radius: 3px; overflow: hidden; }
+.cover-score-fill  { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--green)); }
+
+/* Stats grid */
+.cover-stats-grid { display: flex; }
+.cover-stat { flex: 1; text-align: center; padding: 14px 8px; border-right: .5px solid var(--sep2); }
+.cover-stat:last-child { border-right: none; }
+.cover-stat-num   { font-size: 24px; font-weight: 800; letter-spacing: -.5px; }
+.cover-stat-label { font-size: 11px; color: var(--label3); margin-top: 2px; }
+
+/* Fish list */
+.cover-fish-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: .5px solid var(--sep2);
+}
+.cover-fish-row:last-child { border-bottom: none; }
+.cover-fish-name  { font-size: 14px; font-weight: 500; }
+.cover-fish-bar-wrap { width: 80px; height: 4px; background: var(--sep2); border-radius: 2px; overflow: hidden; }
+.cover-fish-bar  { height: 100%; border-radius: 2px; background: var(--accent); }
+.cover-fish-count { font-size: 14px; font-weight: 700; color: var(--accent); }
+
+/* Conditions */
+.cover-conds { display: flex; gap: 8px; padding: 12px 16px 14px; }
+.cover-cond  { flex: 1; text-align: center; }
+.cover-cond-icon  { font-size: 20px; margin-bottom: 4px; }
+.cover-cond-val   { font-size: 13px; font-weight: 600; }
+.cover-cond-label { font-size: 11px; color: var(--label3); }
+
+/* Comment */
+.cover-comment { padding: 12px 16px 14px; font-size: 14px; color: var(--label2); line-height: 1.5; }
+
+/* Target fish */
+.cover-target-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; border-bottom: .5px solid var(--sep2);
+}
+.cover-target-row:last-child { border-bottom: none; }
+
+/* Readiness in cover */
+.cover-readiness { padding: 12px 16px 14px; }
+.cover-progress-track { height: 5px; background: var(--sep2); border-radius: 3px; margin-bottom: 12px; overflow: hidden; }
+.cover-progress-fill  { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--green)); }
+.cover-read-list { display: flex; flex-direction: column; gap: 7px; }
+.cover-read-row  { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.cover-read-check {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2px solid var(--sep); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+}
+.cover-read-check.done { background: var(--green); border-color: var(--green); color: #fff; }
+
+/* CTA footer */
+.cover-footer {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--bg); border-top: .5px solid var(--sep2);
+}
+.cover-btn-enter {
+  width: 100%; background: var(--accent); color: #fff;
+  border: none; border-radius: var(--radius-md); padding: 15px;
+  font-size: 16px; font-weight: 700; font-family: inherit; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.cover-btn-enter:active { opacity: .85; }
+/* Добавить в modules/tripcover/styles.css */
+.cover-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  border: none;
+  cursor: pointer;
+  color: rgba(255,255,255,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.cover-icon-btn:active { background: rgba(255,255,255,0.22); }

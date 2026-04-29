@@ -1,0 +1,59 @@
+/* ===== BOTTOM NAV ===== */
+
+.bottomnav {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--nav-bg);
+  border-top: 0.5px solid var(--nav-border);
+  display: flex;
+  padding-bottom: env(safe-area-inset-bottom);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  z-index: 1000;
+  transition: background var(--duration) var(--ease);
+}
+
+.bnav {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px 4px;
+  font-size: 10px;
+  color: var(--label4);
+  font-weight: 500;
+  gap: 2px;
+  cursor: pointer;
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color var(--duration) var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.bnav.active { color: var(--accent); }
+
+.bnav svg {
+  width: 24px; height: 24px;
+  stroke: currentColor; fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform var(--spring) 0.22s;
+}
+.bnav.active svg { transform: scale(1.12); }
+
+.bnav-dot {
+  position: absolute;
+  top: 3px; left: 50%;
+  transform: translateX(-50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease);
+}
+.bnav.active .bnav-dot { opacity: 1; }
+
+/* Icon-only tab (home in trip mode) */
+.bnav.icon-only { flex: 0 0 52px; }

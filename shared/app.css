@@ -1,0 +1,40 @@
+/* ===== APP SHELL ===== */
+
+#app {
+  min-height: 100vh;
+}
+
+/* Страница */
+.page {
+  display: none;
+  flex-direction: column;
+  min-height: 100vh;
+}
+.page.active { display: flex; }
+
+/* Скролл внутри страницы */
+.page-scroll {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(83px + env(safe-area-inset-bottom));
+}
+.page-scroll::-webkit-scrollbar { display: none; }
+
+/* Универсальный отступ снизу для скролл-контейнеров */
+.cover-scroll,
+.ob-scroll,
+.profile-edit-sheet,
+.profile-sheet-body,
+.mem-sheet-body {
+  padding-bottom: calc(90px + env(safe-area-inset-bottom));
+}
+
+/* Страницы участников и аптечки (рендерятся в #p-members / #p-medkit) */
+#p-members,
+#p-medkit {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: calc(83px + env(safe-area-inset-bottom));
+}
