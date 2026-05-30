@@ -230,7 +230,6 @@
   transition: transform var(--ease) .22s;
 }
 .year-hd.open .year-chevron { transform: rotate(180deg); }
-.year-body     { display: flex; flex-direction: column; gap: 10px; }
 .year-body { display: flex; flex-direction: column; gap: 10px; padding-bottom: 10px; }
 .year-body.hidden { display: none; }
 .year-month-sep {
