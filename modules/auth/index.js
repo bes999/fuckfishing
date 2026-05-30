@@ -116,7 +116,7 @@ const AuthActions = (() => {
     // Fallback: старое поведение (показываем участников)
     document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
     const pg = document.getElementById('p-members');
-    if (pg) pg.style.display = 'block';
+    if (pg) pg.style.display = 'flex';
     setTimeout(() => {
       if (typeof MembersModule !== 'undefined') MembersModule.init();
     }, 50);
