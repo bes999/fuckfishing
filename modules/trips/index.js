@@ -409,9 +409,11 @@ const TripsIndex = (() => {
     });
 
     // Сохранить
-    document.getElementById('createSave')?.addEventListener('click', () => {
-      _saveCurrentFields();
-      _save();
+    document.getElementById('createSave')?.addEventListener('click', e => {
+      UIUtils.withBusyButton(e.currentTarget, () => {
+        _saveCurrentFields();
+        _save();
+      });
     });
 
     // Назад со сводки

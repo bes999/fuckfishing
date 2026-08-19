@@ -1,0 +1,67 @@
+/* ===== SHARED COMPONENTS (UIUtils, shared/ui-utils.js) ===== */
+
+/* Кнопка во время async-операции (см. UIUtils.withBusyButton) —
+   даёт понять, что тап уже принят, и блокирует повторный. */
+.is-busy {
+  opacity: 0.6;
+  cursor: default;
+  pointer-events: none;
+  position: relative;
+}
+.is-busy::after {
+  content: '';
+  position: absolute;
+  top: 50%; right: 10px;
+  width: 14px; height: 14px;
+  margin-top: -7px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  animation: ui-spin 0.6s linear infinite;
+}
+/* Тёмные/светлые кнопки без белого текста — спиннер тоже акцентным цветом */
+.is-busy.cs-btn-cancel::after,
+.is-busy[style*="background:transparent"]::after,
+.is-busy[style*="background: transparent"]::after {
+  border-color: var(--sep);
+  border-top-color: var(--accent);
+}
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+
+/* ===== CONFIRM SHEET (замена нативному confirm()) ===== */
+.cs-overlay {
+  position: fixed; inset: 0; z-index: 1300;
+  background: var(--overlay-bg);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  opacity: 0;
+  transition: opacity var(--duration) var(--ease);
+}
+.cs-overlay.open { opacity: 1; }
+
+.cs-card {
+  width: 100%; max-width: 340px;
+  background: var(--modal-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  padding: 22px 20px 16px;
+  transform: scale(0.94);
+  transition: transform var(--duration) var(--spring);
+}
+.cs-overlay.open .cs-card { transform: scale(1); }
+
+.cs-title { font-size: 16px; font-weight: 700; color: var(--label); margin-bottom: 6px; text-align: center; }
+.cs-msg   { font-size: 14px; color: var(--label3); text-align: center; line-height: 1.4; margin-bottom: 18px; }
+
+.cs-actions { display: flex; gap: 8px; }
+.cs-btn {
+  flex: 1; border: none; border-radius: var(--radius-md);
+  padding: 12px 8px; font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+}
+.cs-btn-cancel { background: var(--bg3); color: var(--label); }
+.cs-btn-cancel:active { background: var(--bg4); }
+.cs-btn-danger { background: var(--red); color: #fff; }
+.cs-btn-danger:active { opacity: 0.85; }
+.cs-btn-primary { background: var(--accent); color: #fff; }
+.cs-btn-primary:active { opacity: 0.85; }

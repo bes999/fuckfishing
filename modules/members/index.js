@@ -273,9 +273,12 @@ var MembersModule = (() => {
         if (!uid) return;
         const profile = await MembersFirebase.getProfile(uid);
         const name = profile?.displayName || 'участника';
-        if (!confirm(`Удалить ${name} из списка участников?`)) return;
-        await MembersFirebase.deleteProfile(uid);
-        document.getElementById('profile-overlay')?.remove();
+        const ok = await UIUtils.confirmSheet(`Удалить ${name} из списка участников?`, { okLabel: 'Удалить' });
+        if (!ok) return;
+        await UIUtils.withBusyButton(t, async () => {
+          await MembersFirebase.deleteProfile(uid);
+          document.getElementById('profile-overlay')?.remove();
+        });
       }
 
       if (action === 'profile-medkit') {
@@ -298,7 +301,7 @@ var MembersModule = (() => {
       }
 
       if (action === 'edit-save') {
-        await _saveEdit(t.dataset.uid || _editUid);
+        await UIUtils.withBusyButton(t, () => _saveEdit(t.dataset.uid || _editUid));
       }
 
       if (action === 'edit-cancel') {

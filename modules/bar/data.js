@@ -380,7 +380,7 @@ const BarData = (() => {
     {
       id: 'spritz',
       label: 'Шприцы',
-      icon: 'ti-bubble',
+      icon: 'ti-glass-champagne',
       cocktails: [
         {
           id: 'hugo',

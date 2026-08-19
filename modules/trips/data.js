@@ -129,9 +129,29 @@ const TripsData = (() => {
     } catch(e) {}
   }
 
+  // Статус — идёт ли поездка прямо сейчас (между startDate и endDate).
+  // Пересчитывается при каждом чтении списка, а не только при сохранении
+  // поездки — иначе поездка "upcoming" остаётся такой в интерфейсе и
+  // после того, как она уже фактически началась, до первого редактирования.
+  function _liveStatus(trip) {
+    if (!trip.startDate) return trip.status;
+    const now = new Date();
+    const start = new Date(trip.startDate);
+    const end = new Date(trip.endDate || trip.startDate);
+    end.setHours(23, 59, 59, 999);
+    if (end < now) return 'done';
+    if (start <= now) return 'active';
+    return 'upcoming';
+  }
+
   // --- Get all ---
   function getAll() {
     if (!_state) load();
+    _state.trips.forEach(t => {
+      // "done" поездки не трогаем — рейтинг/улов проставляются вручную
+      // после возвращения, дата тут не должна ничего перезаписывать.
+      if (t.status !== 'done') t.status = _liveStatus(t);
+    });
     return _state.trips;
   }
 

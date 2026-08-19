@@ -39,34 +39,25 @@ var RiversIndex = (function () {
   function _saveNotes(obj)  { _lsSet(_lsKey('notes'),  obj); }
   function _savePoints(obj) { _lsSet(_lsKey('points'), obj); }
 
-  /* Уловы — localStorage под ключом ff_catches (shared with «Ещё → Улов») */
+  /* Уловы — источник истины CatchesFirebase/CatchesState (Firestore).
+     localStorage тут — только запасной путь на случай, если сама
+     Firestore-интеграция не подключилась (например скрипт не успел
+     загрузиться в плохой сети) — не выдумывать данные заново, а хотя
+     бы не терять то, что человек внёс. */
   var _LS_CATCHES = 'ff_catches';
 
   function _getCatches() {
-    // Сначала пробуем общий ST (старый монолит)
-    if (window.ST && Array.isArray(window.ST.catches)) return window.ST.catches;
-    // Иначе localStorage
     try { return JSON.parse(localStorage.getItem(_LS_CATCHES)) || []; } catch(e) { return []; }
   }
 
   function _saveCatches(arr) {
     try { localStorage.setItem(_LS_CATCHES, JSON.stringify(arr)); } catch(e) {}
-    // Синхронизируем с ST если есть
-    if (window.ST) {
-      window.ST.catches = arr;
-      if (typeof save === 'function') save();
-    }
-    // Firebase если подключён
-    // addCatchToFirebase вызывается отдельно при добавлении
   }
 
   function _addCatch(entry) {
     var all = _getCatches();
     all.push(entry);
     _saveCatches(all);
-    if (typeof addCatchToFirebase === 'function') {
-      addCatchToFirebase(entry);
-    }
   }
 
   function _delCatch(idx) {
@@ -180,7 +171,7 @@ var RiversIndex = (function () {
 
     /* сохранить улов */
     var saveBtn = document.getElementById('rv-catch-save-btn');
-    if (saveBtn) saveBtn.addEventListener('click', function () { _saveCatch(r); });
+    if (saveBtn) saveBtn.addEventListener('click', function () { UIUtils.withBusyButton(saveBtn, function () { return _saveCatch(r); }); });
 
     /* удалить запись улова */
     if (_catchDelHandler) _el.removeEventListener('click', _catchDelHandler);
