@@ -248,17 +248,20 @@ body.addEventListener('click', _bodyHandler, true);
     overlay.querySelector('#sh-add-close')?.addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 
-    overlay.querySelector('#sh-add-save')?.addEventListener('click', () => {
-      const name = overlay.querySelector('#sh-new-name')?.value.trim();
-      if (!name) return;
-      const num  = overlay.querySelector('#sh-new-qty-num')?.value.trim();
-      const unit = overlay.querySelector('#sh-new-qty-unit')?.value;
-      const qty  = num ? `${num} ${unit}` : '';
-      ShoppingState.addItem(_tripId, catId, name, qty);
-      _sync();
-      overlay.remove();
-      _openCats.add(catId);
-      _rebuildCat(catId);
+    const shAddSaveBtn = overlay.querySelector('#sh-add-save');
+    shAddSaveBtn?.addEventListener('click', () => {
+      UIUtils.withBusyButton(shAddSaveBtn, () => {
+        const name = overlay.querySelector('#sh-new-name')?.value.trim();
+        if (!name) return;
+        const num  = overlay.querySelector('#sh-new-qty-num')?.value.trim();
+        const unit = overlay.querySelector('#sh-new-qty-unit')?.value;
+        const qty  = num ? `${num} ${unit}` : '';
+        ShoppingState.addItem(_tripId, catId, name, qty);
+        _sync();
+        overlay.remove();
+        _openCats.add(catId);
+        _rebuildCat(catId);
+      });
     });
   }
 

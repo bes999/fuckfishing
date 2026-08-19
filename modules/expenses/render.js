@@ -374,38 +374,41 @@ const ExpensesRender = (() => {
     overlay.querySelector('#exp-ov-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
 
-    overlay.querySelector('#exp-ov-save').addEventListener('click', () => {
-      const desc = overlay.querySelector('#exp-desc').value.trim();
-      const amt  = parseFloat(overlay.querySelector('#exp-amt').value) || 0;
-      const cat  = overlay.querySelector('#exp-cat').value;
-      const date = overlay.querySelector('#exp-date').value;
+    const expSaveBtn = overlay.querySelector('#exp-ov-save');
+    expSaveBtn.addEventListener('click', () => {
+      UIUtils.withBusyButton(expSaveBtn, () => {
+        const desc = overlay.querySelector('#exp-desc').value.trim();
+        const amt  = parseFloat(overlay.querySelector('#exp-amt').value) || 0;
+        const cat  = overlay.querySelector('#exp-cat').value;
+        const date = overlay.querySelector('#exp-date').value;
 
-      let paidBy = overlay.querySelector('#exp-who').value;
-      if (paidBy === '__manual__') paidBy = overlay.querySelector('#exp-who-manual').value.trim();
+        let paidBy = overlay.querySelector('#exp-who').value;
+        if (paidBy === '__manual__') paidBy = overlay.querySelector('#exp-who-manual').value.trim();
 
-      const participants = [...overlay.querySelectorAll('.exp-check-row')]
-        .filter(r => r.querySelector('[data-chk]').classList.contains('checked'))
-        .map(r => r.dataset.name);
+        const participants = [...overlay.querySelectorAll('.exp-check-row')]
+          .filter(r => r.querySelector('[data-chk]').classList.contains('checked'))
+          .map(r => r.dataset.name);
 
-      if (!desc) { overlay.querySelector('#exp-desc').focus(); return; }
-      if (!amt)  { overlay.querySelector('#exp-amt').focus();  return; }
-      if (!paidBy) { overlay.querySelector('#exp-who').focus(); return; }
+        if (!desc) { overlay.querySelector('#exp-desc').focus(); return; }
+        if (!amt)  { overlay.querySelector('#exp-amt').focus();  return; }
+        if (!paidBy) { overlay.querySelector('#exp-who').focus(); return; }
 
-      const entry = ExpensesData.normalizeExpense(
-        { desc, amount: amt, category: cat, paidBy, participants, date },
-        expenseId || ('tmp_' + Date.now())
-      );
+        const entry = ExpensesData.normalizeExpense(
+          { desc, amount: amt, category: cat, paidBy, participants, date },
+          expenseId || ('tmp_' + Date.now())
+        );
 
-      if (editing) {
-        ExpensesState.updateExpense(_tripId, expenseId, entry);
-        ExpensesFirebase.updateExpense(_tripId, expenseId, entry);
-      } else {
-        ExpensesState.addExpense(_tripId, entry);
-        ExpensesFirebase.addExpense(_tripId, entry);
-      }
+        if (editing) {
+          ExpensesState.updateExpense(_tripId, expenseId, entry);
+          ExpensesFirebase.updateExpense(_tripId, expenseId, entry);
+        } else {
+          ExpensesState.addExpense(_tripId, entry);
+          ExpensesFirebase.addExpense(_tripId, entry);
+        }
 
-      overlay.remove();
-      refresh();
+        overlay.remove();
+        refresh();
+      });
     });
   }
 

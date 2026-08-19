@@ -354,30 +354,33 @@ const CatchesRender = (() => {
       keptBtn?.classList.remove('active');
     });
 
-    body.querySelector('#ct-save-btn')?.addEventListener('click', () => {
-      const fish   = body.querySelector('#ct-fish')?.value || '';
-      const member = body.querySelector('#ct-member')?.value || '';
-      const river  = body.querySelector('#ct-river')?.value || '';
+    const saveBtn = body.querySelector('#ct-save-btn');
+    saveBtn?.addEventListener('click', () => {
+      UIUtils.withBusyButton(saveBtn, () => {
+        const fish   = body.querySelector('#ct-fish')?.value || '';
+        const member = body.querySelector('#ct-member')?.value || '';
+        const river  = body.querySelector('#ct-river')?.value || '';
 
-      if (!fish) return;
+        if (!fish) return;
 
-      const entry = CatchesData.normalizeCatch({
-        fish, count: _count, kept: _kept,
-        member, river,
-        date: new Date().toISOString().split('T')[0],
-      }, 'tmp_' + Date.now());
+        const entry = CatchesData.normalizeCatch({
+          fish, count: _count, kept: _kept,
+          member, river,
+          date: new Date().toISOString().split('T')[0],
+        }, 'tmp_' + Date.now());
 
-      CatchesState.addCatch(_tripId, entry);
-      CatchesFirebase.addCatch(_tripId, entry);
+        CatchesState.addCatch(_tripId, entry);
+        CatchesFirebase.addCatch(_tripId, entry);
 
-      // Сброс формы
-      _count = 1;
-      if (cntVal) cntVal.textContent = '1';
-      _kept = true;
-      keptBtn?.classList.add('active');
-      relBtn?.classList.remove('active');
+        // Сброс формы
+        _count = 1;
+        if (cntVal) cntVal.textContent = '1';
+        _kept = true;
+        keptBtn?.classList.add('active');
+        relBtn?.classList.remove('active');
 
-      refresh();
+        refresh();
+      });
     });
   }
 

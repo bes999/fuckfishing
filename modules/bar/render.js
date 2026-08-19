@@ -231,11 +231,13 @@ const BarRender = (() => {
         uid:    profile?.uid || 'anon',
         date:   new Date().toLocaleDateString('ru', { day: 'numeric', month: 'short' })
       };
-      BarState.pushComment(id, comment);
-      BarFirebase.addComment(id, comment);
-      input.value = '';
-      // Добавить комментарий в DOM без перерисовки
-      _appendComment(card, comment);
+      UIUtils.withBusyButton(sendBtn, async () => {
+        BarState.pushComment(id, comment);
+        BarFirebase.addComment(id, comment);
+        input.value = '';
+        // Добавить комментарий в DOM без перерисовки
+        _appendComment(card, comment);
+      });
     };
 
     sendBtn?.addEventListener('click', e => { e.stopPropagation(); _doSend(); });

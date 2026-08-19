@@ -227,13 +227,15 @@ const MenuRender = (() => {
     function _bindPickItems() {
       overlay.querySelectorAll('[data-action="pick-item"]').forEach(el => {
         el.addEventListener('click', () => {
-          const { day, meal, slot, itemId, itemName, itemSource } = el.dataset;
-          MenuState.updateSlot(_tripId, day, meal, slot, {
-            id: itemId, name: itemName, source: itemSource
+          UIUtils.withBusyButton(el, () => {
+            const { day, meal, slot, itemId, itemName, itemSource } = el.dataset;
+            MenuState.updateSlot(_tripId, day, meal, slot, {
+              id: itemId, name: itemName, source: itemSource
+            });
+            _syncFirebase();
+            overlay.remove();
+            _rerenderDay(day);
           });
-          _syncFirebase();
-          overlay.remove();
-          _rerenderDay(day);
         });
       });
     }

@@ -203,10 +203,12 @@ const RecipesRender = (() => {
         uid: profile?.uid || 'anon',
         date: new Date().toLocaleDateString('ru', { day: 'numeric', month: 'short' })
       };
-      RecipesState.pushComment(id, comment);
-      RecipesFirebase.addComment(id, comment);
-      input.value = '';
-      _appendComment(card, comment);
+      UIUtils.withBusyButton(sendBtn, async () => {
+        RecipesState.pushComment(id, comment);
+        RecipesFirebase.addComment(id, comment);
+        input.value = '';
+        _appendComment(card, comment);
+      });
     };
     sendBtn?.addEventListener('click', e => { e.stopPropagation(); _doSend(); });
     input?.addEventListener('keydown', e => { if (e.key === 'Enter') _doSend(); });
