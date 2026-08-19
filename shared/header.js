@@ -2,12 +2,15 @@
 /* globals AppRouter */
 
 /* =========================================================
-   AppHeader — сквозная шапка (аватар+имя слева, гамбургер справа)
-   и выезжающее меню со всеми разделами поездки. Список целиком
-   виден только когда открыта поездка (window.APP.currentTripId) —
-   почти все разделы приложения так или иначе относятся к поездке,
-   поэтому смысла показывать их вне её контекста нет; без открытой
-   поездки в меню только подсказка открыть её на вкладке "Поездки".
+   AppHeader — сквозная шапка (аватар+имя слева, тема/+поездка/
+   гамбургер справа) и выезжающее меню с двумя разделами:
+     "Личное"  — не привязано к конкретной поездке (снаряга,
+                 аптечка — они про человека, а не про группу),
+                 видно всегда.
+     "Поездка" — всё, что относится к группе на конкретном
+                 выезде; видно только когда есть открытая поездка
+                 (window.APP.currentTripId), иначе — подсказка
+                 открыть её на вкладке "Поездки".
 
    Публичный API:
      AppHeader.init(onNavigate)
@@ -20,6 +23,12 @@ const AppHeader = (() => {
   let _el   = null;
   let _open = false;
 
+  const PERSONAL_ITEMS = [
+    { id: 'gear',     label: 'Снаряга',   icon: 'ti-backpack' },
+    { id: 'medkit',   label: 'Аптечка',   icon: 'ti-first-aid-kit' },
+    { id: 'members',  label: 'Участники', icon: 'ti-users' },
+  ];
+
   const TRIP_ITEMS = [
     { id: 'guide',    label: 'Гид',          icon: 'ti-map-2' },
     { id: 'rivers',   label: 'Реки',         icon: 'ti-droplet' },
@@ -27,9 +36,6 @@ const AppHeader = (() => {
     { id: 'catches',  label: 'Улов',         icon: 'ti-fish' },
     { id: 'expenses', label: 'Расходы',      icon: 'ti-credit-card' },
     { id: 'shopping', label: 'Закупка',      icon: 'ti-shopping-cart' },
-    { id: 'members',  label: 'Участники',    icon: 'ti-users' },
-    { id: 'medkit',   label: 'Аптечка',      icon: 'ti-first-aid-kit' },
-    { id: 'gear',     label: 'Снаряга',      icon: 'ti-backpack' },
     { id: 'safety',   label: 'Безопасность', icon: 'ti-shield' },
     { id: 'bar',      label: 'Бар',          icon: 'ti-glass-full' },
     { id: 'recipes',  label: 'Рецепты',      icon: 'ti-chef-hat' },
@@ -42,24 +48,56 @@ const AppHeader = (() => {
     render();
   }
 
-  /* ── Верхняя строка: аватар+имя, гамбургер ── */
+  const _moonSvg = `<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>`;
+  const _sunSvg  = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
+
+  /* ── Верхняя строка: аватар+имя слева, тема/+поездка/гамбургер справа ── */
   function render() {
     if (!_el) return;
     const { name, avatar, initials } = _identity();
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
 
     _el.innerHTML = `
       <div class="ah-identity" data-action="ah-profile">
         <div class="ah-avatar">${avatar || initials}</div>
         <div class="ah-name">${_esc(name)}</div>
       </div>
-      <button class="ah-burger" data-action="ah-menu" aria-label="Меню">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>`;
+      <div class="ah-actions">
+        <button class="ah-icon-btn" data-action="ah-theme" aria-label="Тема">
+          <svg id="ahThemeSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${isDark ? _sunSvg : _moonSvg}</svg>
+        </button>
+        <button class="ah-icon-btn" data-action="ah-create-trip" aria-label="Новая поездка">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <button class="ah-burger" data-action="ah-menu" aria-label="Меню">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      </div>`;
 
     _el.querySelector('[data-action="ah-profile"]')?.addEventListener('click', () => _cb && _cb('profile'));
     _el.querySelector('[data-action="ah-menu"]')?.addEventListener('click', openDrawer);
+    _el.querySelector('[data-action="ah-theme"]')?.addEventListener('click', _toggleTheme);
+    _el.querySelector('[data-action="ah-create-trip"]')?.addEventListener('click', () => {
+      if (typeof AppNav !== 'undefined') AppNav.setActive('trips');
+      if (typeof AppRouter !== 'undefined') AppRouter.show('trips');
+      if (typeof TripsIndex !== 'undefined') {
+        TripsIndex.render();
+        setTimeout(() => TripsIndex.showCreate(), 50);
+      }
+    });
+  }
+
+  function _toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('theme_ff', next); } catch (e) {}
+    const svg = document.getElementById('ahThemeSvg');
+    if (svg) svg.innerHTML = next === 'dark' ? _sunSvg : _moonSvg;
   }
 
   function _identity() {
@@ -68,6 +106,15 @@ const AppHeader = (() => {
     const avatar  = profile?.avatar || '';
     const initials = (name[0] || '?').toUpperCase();
     return { name, avatar, initials };
+  }
+
+  function _statsSub() {
+    if (typeof TripsData === 'undefined') return '';
+    const trips = TripsData.getAll();
+    const done  = trips.filter(t => t.status === 'done').length;
+    let fish = 0;
+    trips.forEach(t => (t.fish || []).forEach(f => fish += f.count || 0));
+    return `${done} поездок · ${fish} рыб`;
   }
 
   /* ── Выезжающее меню ── */
@@ -92,10 +139,12 @@ const AppHeader = (() => {
         <div class="ah-drawer-avatar">${avatar || initials}</div>
         <div>
           <div class="ah-drawer-name">${_esc(name)}</div>
-          <div class="ah-drawer-sub">Открыть профиль</div>
+          <div class="ah-drawer-sub">${_esc(_statsSub())}</div>
         </div>
       </div>
       <div class="ah-drawer-body">
+        <div class="ah-drawer-group-label">Личное</div>
+        ${PERSONAL_ITEMS.map(_itemHtml).join('')}
         <div class="ah-drawer-group-label">Поездка${tripName ? ' — ' + _esc(tripName) : ''}</div>
         ${tripId
           ? TRIP_ITEMS.map(_itemHtml).join('')

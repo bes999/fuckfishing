@@ -30,7 +30,6 @@ const HomeRender = (() => {
     const stats    = TripsData.getYearStats(String(now.getFullYear()));
 
     el.innerHTML = `
-      ${_topbar(user)}
       <div class="page-scroll">
         ${_sectionLabel('Календарь')}
         ${_calendar()}
@@ -43,45 +42,6 @@ const HomeRender = (() => {
     _bindCalendar(el);
     _bindReadiness(el);
     _bindTripCards(el);
-    _bindTopbar(el, user);
-  }
-
-  // ── Topbar ──
-  function _topbar(user) {
-    const name   = user ? (user.displayName || user.email || 'Рыбак') : 'Рыбак';
-    const letter = name[0].toUpperCase();
-    const photo  = user && user.photoURL
-      ? `<img src="${user.photoURL}" alt="">`
-      : letter;
-
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const moonSvg = `<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>`;
-    const sunSvg  = `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`;
-
-    return `
-      <div class="home-topbar">
-        <div class="home-user-pill" data-action="open-profile">
-          <div class="home-avatar">${photo}</div>
-          <div>
-            <div class="home-user-name">${_esc(name)}</div>
-            <div class="home-user-sub">${_userSub()}</div>
-          </div>
-        </div>
-        <div class="home-topbar-right">
-          <button class="home-theme-btn" data-action="toggle-theme">
-            <svg id="themeSvg" viewBox="0 0 24 24">${isDark ? sunSvg : moonSvg}</svg>
-          </button>
-          <button class="home-btn-create" data-action="create-trip">＋ Поездка</button>
-        </div>
-      </div>`;
-  }
-
-  function _userSub() {
-    const trips = TripsData.getAll();
-    const done  = trips.filter(t => t.status === 'done').length;
-    let fish = 0;
-    trips.forEach(t => (t.fish || []).forEach(f => fish += f.count || 0));
-    return `${done} поездок · ${fish} рыб`;
   }
 
   // ── Calendar ──
@@ -361,37 +321,6 @@ const HomeRender = (() => {
   }
 
   // ── Bindings ──
-  function _bindTopbar(el, user) {
-    el.querySelector('[data-action="toggle-theme"]')?.addEventListener('click', () => {
-      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-      const next = isDark ? 'light' : 'dark';
-      document.documentElement.setAttribute('data-theme', next);
-      try { localStorage.setItem('theme_ff', next); } catch(e) {}
-      const svg = document.getElementById('themeSvg');
-      if (svg) {
-        svg.innerHTML = next === 'dark'
-          ? `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`
-          : `<path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>`;
-      }
-    });
-
-    el.querySelector('[data-action="create-trip"]')?.addEventListener('click', () => {
-      // Переходим на страницу Поездки и открываем создание
-      if (typeof AppNav !== 'undefined') AppNav.setActive('trips');
-      if (typeof AppRouter !== 'undefined') AppRouter.show('trips');
-      if (typeof TripsIndex !== 'undefined') {
-        TripsIndex.render();
-        setTimeout(() => TripsIndex.showCreate(), 50);
-      }
-    });
-
-    el.querySelector('[data-action="open-profile"]')?.addEventListener('click', () => {
-      if (typeof AppNav !== 'undefined') AppNav.setActive('profile');
-      if (typeof AppRouter !== 'undefined') AppRouter.show('members');
-      if (typeof MembersModule !== 'undefined') MembersModule.init();
-    });
-  }
-
   function _bindCalendar(el) {
     _renderCalGrid(el);
     el.querySelector('[data-cal="prev"]')?.addEventListener('click', () => {
