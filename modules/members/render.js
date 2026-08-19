@@ -65,7 +65,7 @@ const MembersRender = (() => {
     if (!pg) return;
 
     pg.innerHTML = `
-      <div class="topbar" style="display:flex;align-items:center;gap:12px;padding-top:52px">
+      <div class="topbar" style="display:flex;align-items:center;gap:12px;padding-top:14px">
         <button data-action="profile-back"
           style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;
                  cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">

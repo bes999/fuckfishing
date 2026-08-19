@@ -367,7 +367,7 @@ const TripCoverIndex = (() => {
       } else {
         // Заглушка (рыбалки или экспедиции без импорта)
         guideEl.innerHTML = `
-          <div style="padding:52px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">
+          <div style="padding:14px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">
             ${trip ? _esc(trip.name) : 'Поездка'}
           </div>
           <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">
@@ -458,7 +458,7 @@ const TripCoverIndex = (() => {
         .g-row-time{font-size:11px;color:var(--label3);min-width:80px;flex-shrink:0;padding-top:2px;font-weight:500}
         .g-row-act{font-size:13px;color:var(--label);line-height:1.45}
       </style>
-      <div style="background:var(--topbar-bg);color:#fff;padding:52px 16px 14px;position:sticky;top:0;z-index:10;margin-bottom:4px">
+      <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 14px;position:sticky;top:0;z-index:10;margin-bottom:4px">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
         <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
       </div>`;

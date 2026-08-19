@@ -9,7 +9,7 @@
 
 .sh-topbar {
   background: var(--topbar-bg);
-  padding: 48px 16px 12px;
+  padding: 14px 16px 12px;
   display: flex;
   align-items: center;
   gap: 12px;

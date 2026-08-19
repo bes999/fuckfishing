@@ -197,6 +197,10 @@ var MembersModule = (() => {
 
     if (uid === window.APP?.profile?.uid) {
       Object.assign(window.APP.profile, changes);
+      // Шапка показывает имя/аватар из window.APP.profile и не подписана
+      // на изменения — без явного вызова она осталась бы со старыми
+      // данными до перезагрузки или следующего входа в поездку.
+      if (typeof AppHeader !== 'undefined') AppHeader.render();
     }
 
     document.getElementById('edit-overlay')?.remove();
@@ -278,7 +282,6 @@ var MembersModule = (() => {
         document.getElementById('profile-overlay')?.remove();
         const uid = window.APP?.profile?.uid || '';
         if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
-        if (typeof AppNav !== 'undefined') AppNav.setActive('more');
         // Реальная точка входа аптечки — глобальная функция rMedkit(),
         // рендерящая в #p-medkit по состоянию medkitMode/medkitMemberId.
         // MedkitIndex нигде в проекте не определён.

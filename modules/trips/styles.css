@@ -3,7 +3,10 @@
 .trips-topbar {
   background: var(--topbar-bg);
   color: #fff;
-  padding: 52px 16px 13px;
+  /* Раньше 52px сверху компенсировали вырез экрана — теперь это делает
+     .page{padding-top} под сквозную шапку (shared/app.css), так что тут
+     нужен только обычный внутренний отступ. */
+  padding: 14px 16px 13px;
   display: flex; align-items: center; justify-content: space-between;
   box-shadow: 0 0.5px 0 rgba(255,255,255,0.12);
   flex-shrink: 0;
