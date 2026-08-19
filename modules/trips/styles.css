@@ -407,3 +407,12 @@
 #createSkip {
   margin-top: 8px;
 }
+
+/* ===== Desktop layout (>=880px) ===== */
+@media (min-width: 880px) {
+  #p-trips .year-body:not(.hidden) {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+}
