@@ -193,9 +193,11 @@
     // Раздел статичного нижнего таббара, который нужно подсветить для
     // каждого pageId. Разделы поездки (rivers/menu/...) подсвечивают ту же
     // вкладку "Поездка", что и guide — они все её продолжение. Разделы без
-    // записи здесь (bar/recipes/gear/...) не меняют текущую подсветку.
+    // записи здесь (bar/recipes/gear/profile/...) не меняют текущую подсветку —
+    // профиль больше не отдельная вкладка таббара, он открывается тапом
+    // по аватару в шапке (AppHeader).
     const BOTTOM_TAB_FOR = {
-      home: 'home', trips: 'trips', profile: 'profile',
+      home: 'home', trips: 'trips',
       guide: 'guide', rivers: 'guide', menu: 'guide',
       catches: 'guide', expenses: 'guide', shopping: 'guide',
     };

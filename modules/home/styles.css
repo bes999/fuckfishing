@@ -169,6 +169,7 @@
   padding: 8px 0 2px;
 }
 .year-month-sep:first-child { padding-top: 0; }
+.year-month-cards { display: flex; flex-direction: column; gap: 10px; }
 
 /* Expedition card */
 .exp-card {
@@ -241,3 +242,22 @@
 .badge-soon   { background: rgba(255,159,10,.15); color: var(--orange); border: .5px solid rgba(255,159,10,.35); }
 .badge-active { background: rgba(48,209,88,.15);  color: var(--green);  border: .5px solid rgba(48,209,88,.35); }
 .badge-done   { background: var(--bg3); color: var(--label3); border: .5px solid var(--sep); }
+
+/* ===== DESKTOP LAYOUT (Home page only) ===== */
+@media (min-width: 880px) {
+  .home-top-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .home-col-cal { grid-column: span 7; }
+  .home-col-upcoming { grid-column: span 5; }
+  .home-top-grid > .home-col-cal:only-child { grid-column: span 12; }
+
+  .year-month-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+}

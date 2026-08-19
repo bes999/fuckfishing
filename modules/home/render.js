@@ -31,10 +31,16 @@ const HomeRender = (() => {
 
     el.innerHTML = `
       <div class="page-scroll">
-        ${_sectionLabel('Календарь')}
-        ${_calendar()}
-        ${upcoming ? _sectionLabel('Ближайшее') : ''}
-        ${upcoming ? _upcomingBanner(upcoming) : ''}
+        <div class="home-top-grid">
+          <div class="home-col-cal">
+            ${_sectionLabel('Календарь')}
+            ${_calendar()}
+          </div>
+          ${upcoming ? `<div class="home-col-upcoming">
+            ${_sectionLabel('Ближайшее')}
+            ${_upcomingBanner(upcoming)}
+          </div>` : ''}
+        </div>
         ${_sectionLabel('Поездки')}
         ${_tripsFeed(byYear)}
       </div>`;
@@ -242,9 +248,11 @@ const HomeRender = (() => {
         return a.type === 'expedition' ? -1 : 1;
       });
       h += `<div class="year-month-sep">${MONTHS[m]}</div>`;
+      h += `<div class="year-month-cards">`;
       sorted.forEach(t => {
         h += t.type === 'expedition' ? _expCard(t) : _fishCard(t);
       });
+      h += `</div>`;
     });
 
     return h;
