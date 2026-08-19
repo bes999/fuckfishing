@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="shared/components.css">
   <link rel="stylesheet" href="shared/app.css">
   <link rel="stylesheet" href="shared/nav.css">
+  <link rel="stylesheet" href="shared/header.css">
 
   <!-- Module styles -->
   <link rel="stylesheet" href="modules/auth/styles.css">
@@ -45,6 +46,9 @@
 </head>
 <body>
 
+  <!-- Сквозная шапка: аватар+имя слева, гамбургер справа (рендерится сюда) -->
+  <div id="app-header"></div>
+
   <div id="app">
     <!-- Main pages -->
     <div id="p-home"    class="page"></div>
@@ -55,14 +59,12 @@
     <div id="p-guide"   class="page"></div>
     <div id="p-rivers"  class="page"></div>
     <div id="p-menu"    class="page"></div>
-    <div id="p-more"    class="page"></div>
     <div id="p-recipes" class="page"></div>
-    <div id="p-menu-trip" class="page"></div>
     <div id="p-shopping" class="page"></div>
     <div id="p-expenses" class="page"></div>
     <div id="p-catches" class="page"></div>
 
-    <!-- Legacy pages -->
+    <!-- Personal / reference pages -->
     <div id="p-members" class="page"></div>
     <div id="p-medkit"  class="page"></div>
     <div id="p-bar" class="page"></div>
@@ -105,6 +107,7 @@
 
   <!-- ── Navigation ── -->
   <script src="shared/nav.js"></script>
+  <script src="shared/header.js"></script>
 
   <!-- ── Home module ── -->
   <script src="modules/home/render.js"></script>
@@ -187,86 +190,84 @@
       }
     };
 
-    // Навигация — обработчик переключения
+    // Раздел статичного нижнего таббара, который нужно подсветить для
+    // каждого pageId. Разделы поездки (rivers/menu/...) подсвечивают ту же
+    // вкладку "Поездка", что и guide — они все её продолжение. Разделы без
+    // записи здесь (bar/recipes/gear/...) не меняют текущую подсветку.
+    const BOTTOM_TAB_FOR = {
+      home: 'home', trips: 'trips', profile: 'profile',
+      guide: 'guide', rivers: 'guide', menu: 'guide',
+      catches: 'guide', expenses: 'guide', shopping: 'guide',
+    };
+
+    // Навигация — единая точка входа для нижнего таббара И для
+    // выезжающего меню (AppHeader) — оба вызывают onNavigate(id).
     function onNavigate(pageId) {
       // Закрываем любые открытые оверлеи при навигации
       document.getElementById('create-overlay')?.remove();
       document.getElementById('trip-cover')?.remove();
+      if (typeof AppHeader !== 'undefined') AppHeader.closeDrawer();
+
+      const tripId = window.APP?.currentTripId || null;
 
       if (pageId === 'home') {
-        AppNav.setMode('main', 'home');
         AppRouter.show('home');
         HomeIndex.refresh();
       } else if (pageId === 'trips') {
         AppRouter.show('trips');
         TripsIndex.render();
+      } else if (pageId === 'guide') {
+        // Нижняя вкладка "Поездка" вне контекста поездки ведёт к списку поездок
+        if (!tripId) { onNavigate('trips'); return; }
+        AppRouter.show('guide');
       } else if (pageId === 'profile') {
         AppRouter.show('members');
         const uid = window.APP?.profile?.uid;
         if (uid && typeof MembersRender !== 'undefined') {
           MembersRender.showProfile(uid, uid);
         }
-      } else if (pageId === 'guide') {
-        AppRouter.show('guide');
+      } else if (pageId === 'members') {
+        // Список участников поездки — отдельно от "мой профиль"
+        AppRouter.show('members');
+        if (typeof MembersModule !== 'undefined') {
+          MembersModule.showList(document.getElementById('p-members'));
+        }
       } else if (pageId === 'rivers') {
         AppRouter.show('rivers');
-        const tripId   = window.APP?.currentTripId   || null;
-        const tripData = window.APP?.currentTripData  || null;
-        RiversIndex.init(
-          document.getElementById('p-rivers'),
-          tripData,
-          tripId
-        );
+        const tripData = window.APP?.currentTripData || null;
+        RiversIndex.init(document.getElementById('p-rivers'), tripData, tripId);
       } else if (pageId === 'menu') {
-      AppRouter.show('menu');
-      MenuIndex.show(document.getElementById('p-menu'), window.APP?.currentTripId);
-      
-      } else if (pageId === 'more') {
-   AppRouter.show('more');
-  const items = [
-    { id:'bar',      label:'Бар',          icon:'ti-glass-full',     ready:true  },
-    { id:'recipes',  label:'Рецепты',      icon:'ti-clipboard-list', ready:true },
-    { id:'catch',    label:'Улов',         icon:'ti-fish',           ready:true },
-    { id:'gear',     label:'Снаряга',      icon:'ti-backpack',       ready:true  },
-    { id:'expenses', label:'Расходы',      icon:'ti-credit-card',    ready:true },
-    { id:'members',  label:'Участники',    icon:'ti-users',          ready:true  },
-    { id:'medkit',   label:'Аптечка',      icon:'ti-first-aid-kit',  ready:true  },
-    { id:'safety',   label:'Безопасность', icon:'ti-shield',         ready:true  },
-    { id:'menu',     label:'Меню',         icon:'ti-clipboard-list', ready:true },
-    { id:'storage',  label:'Закупка',      icon:'ti-shopping-cart', ready:true },
-  
-  ];
-  document.getElementById('p-more').innerHTML = `
-    <div style="background:var(--topbar-bg);padding:48px 16px 14px">
-      <div style="color:#fff;font-size:18px;font-weight:700">Ещё</div>
-    </div>
-    <div style="padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-      ${items.map(it => `
-        <div data-more-id="${it.id}" style="background:var(--bg2);border-radius:14px;border:0.5px solid var(--sep);padding:16px 8px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent;aspect-ratio:1">
-          ${it.ready ? `<div style="width:6px;height:6px;border-radius:50%;background:#34c759;position:absolute;top:8px;right:8px"></div>` : ''}
-          <div style="width:42px;height:42px;border-radius:12px;background:${it.ready ? 'var(--accent-bg)' : 'rgba(128,128,128,0.08)'};display:flex;align-items:center;justify-content:center">
-            <i class="ti ${it.icon}" style="font-size:21px;color:${it.ready ? 'var(--accent)' : 'var(--label4)'}"></i>
-          </div>
-          <div style="font-size:12px;font-weight:500;color:${it.ready ? 'var(--label)' : 'var(--label4)'};text-align:center">${it.label}</div>
-        </div>`).join('')}
-    </div>`;
-  document.getElementById('p-more').querySelectorAll('[data-more-id]').forEach(el => {
-    el.addEventListener('click', () => {
-      const id = el.dataset.moreId;
-      if (id === 'bar') { AppRouter.show('bar'); BarIndex.show(document.getElementById('p-bar')); }
-      else if (id === 'gear') {AppRouter.show('gear'); const uid = window.APP?.profile?.uid; if (uid) GearModule.init(uid, true, document.getElementById('p-gear'));}
-      else if (id === 'medkit') { AppRouter.show('medkit'); if (typeof rMedkit === 'function') rMedkit(); }
-      else if (id === 'members') { AppRouter.show('members'); const uid = window.APP?.profile?.uid; if (uid) MembersRender.showProfile(uid, uid); }
-      else if (id === 'recipes') { AppRouter.show('recipes'); RecipesIndex.show(document.getElementById('p-recipes')); }
-      else if (id === 'menu') { AppRouter.show('menu'); MenuIndex.show(document.getElementById('p-menu'), window.APP?.currentTripId); }
-      else if (id === 'storage') { AppRouter.show('shopping'); ShoppingIndex.show(document.getElementById('p-shopping'), window.APP?.currentTripId); }
-      else if (id === 'expenses') { AppRouter.show('expenses'); ExpensesIndex.show(document.getElementById('p-expenses'), window.APP?.currentTripId); }
-      else if (id === 'catch') { AppRouter.show('catches'); CatchesIndex.show(document.getElementById('p-catches'), window.APP?.currentTripId); }
-      else if (id === 'safety') { AppRouter.show('safety'); SafetyIndex.show(document.getElementById('p-safety'), () => onNavigate('more')); }
-    });
-  });
-  }
-      AppNav.setActive(pageId);
+        AppRouter.show('menu');
+        MenuIndex.show(document.getElementById('p-menu'), tripId);
+      } else if (pageId === 'shopping') {
+        AppRouter.show('shopping');
+        ShoppingIndex.show(document.getElementById('p-shopping'), tripId);
+      } else if (pageId === 'expenses') {
+        AppRouter.show('expenses');
+        ExpensesIndex.show(document.getElementById('p-expenses'), tripId);
+      } else if (pageId === 'catches') {
+        AppRouter.show('catches');
+        CatchesIndex.show(document.getElementById('p-catches'), tripId);
+      } else if (pageId === 'bar') {
+        AppRouter.show('bar');
+        BarIndex.show(document.getElementById('p-bar'));
+      } else if (pageId === 'recipes') {
+        AppRouter.show('recipes');
+        RecipesIndex.show(document.getElementById('p-recipes'));
+      } else if (pageId === 'gear') {
+        AppRouter.show('gear');
+        const uid = window.APP?.profile?.uid;
+        if (uid) GearModule.init(uid, true, document.getElementById('p-gear'));
+      } else if (pageId === 'medkit') {
+        AppRouter.show('medkit');
+        if (typeof rMedkit === 'function') rMedkit();
+      } else if (pageId === 'safety') {
+        AppRouter.show('safety');
+        SafetyIndex.show(document.getElementById('p-safety'), () => onNavigate('home'));
+      }
+
+      const tabId = BOTTOM_TAB_FOR[pageId];
+      if (tabId) AppNav.setActive(tabId);
     }
 
     // Запуск после авторизации
@@ -274,8 +275,9 @@
       // Загружаем данные
       TripsData.load();
 
-      // Инициализируем навбар
+      // Инициализируем навбар и сквозную шапку
       AppNav.init(onNavigate);
+      AppHeader.init(onNavigate);
 
       // Показываем главную
       AppRouter.show('home');

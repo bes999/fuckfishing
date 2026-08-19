@@ -4,13 +4,14 @@
   min-height: 100vh;
 }
 
-/* Страница */
+/* Страница — отступ сверху под сквозную шапку (#app-header, см. shared/header.css) */
 .page {
   display: none;
   flex-direction: column;
   min-height: 100vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  padding-top: calc(env(safe-area-inset-top) + var(--app-header-h));
 }
 .page.active { display: flex; }
 

@@ -17,7 +17,7 @@ const RecipesIndex = (() => {
 
   function close() {
     RecipesFirebase.unsubscribe();
-    if (typeof onNavigate === 'function') onNavigate('more');
+    if (typeof onNavigate === 'function') onNavigate('home');
   }
 
   return { show, close };

@@ -15,8 +15,8 @@ const SafetyIndex = (() => {
     if (typeof _onClose === 'function') {
       _onClose();
     } else {
-      // fallback — вернуться в "ещё"
-      if (typeof onNavigate === 'function') onNavigate('more');
+      // fallback — вернуться на главную
+      if (typeof onNavigate === 'function') onNavigate('home');
     }
   }
 

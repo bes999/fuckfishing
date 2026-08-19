@@ -62,9 +62,7 @@ const CatchesIndex = (() => {
 
   function close() {
     CatchesFirebase.stopListening();
-    if (typeof AppRouter !== 'undefined') {
-      AppRouter.show('more');
-    }
+    if (typeof onNavigate === 'function') onNavigate('guide');
   }
 
   return { show, close };

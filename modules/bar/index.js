@@ -20,7 +20,7 @@ const BarIndex = (() => {
   function close() {
     BarFirebase.unsubscribe();
     // Возврат назад — определяется снаружи через onNavigate
-    if (typeof onNavigate === 'function') onNavigate('more');
+    if (typeof onNavigate === 'function') onNavigate('home');
   }
 
   return { show, close };

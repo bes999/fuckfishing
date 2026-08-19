@@ -327,16 +327,23 @@ const TripCoverIndex = (() => {
 
     el.querySelector('#coverEnter')?.addEventListener('click', () => {
       hide();
-      AppNav.setMode('trip', 'guide');
+      if (typeof AppNav !== 'undefined') AppNav.setActive('guide');
       if (typeof AppRouter !== 'undefined') AppRouter.show('guide');
 
-      const trip    = TripsData.getById(_tripId);
+      const trip = TripsData.getById(_tripId);
 
       // ── Сохраняем текущую поездку глобально (используется Реки, Меню и др.) ──
       if (window.APP) {
-        window.APP.currentTripId   = _tripId;
-        window.APP.currentTripData = trip?.importData || null;
+        window.APP.currentTripId = _tripId;
+        // Если есть подробный AI-импорт — используем его (там больше данных
+        // по каждой реке/точке). Иначе собираем минимальный объект из
+        // самой поездки, чтобы список рек/участников не терялся у поездок,
+        // заведённых вручную (см. rivers/index.js — читает tripData.rivers).
+        window.APP.currentTripData = trip?.importData || (trip
+          ? { name: trip.name, rivers: trip.rivers || [], participants: trip.participants || [] }
+          : null);
       }
+      if (typeof AppHeader !== 'undefined') AppHeader.render();
 
       const guideEl = document.getElementById('p-guide');
       if (!guideEl) return;

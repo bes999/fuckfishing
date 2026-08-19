@@ -28,7 +28,7 @@ const ShoppingIndex = (() => {
 
   function close() {
     ShoppingFirebase.unsubscribe();
-    if (typeof onNavigate === 'function') onNavigate('more');
+    if (typeof onNavigate === 'function') onNavigate('guide');
   }
 
   return { show, close };

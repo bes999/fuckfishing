@@ -36,7 +36,8 @@ const MenuIndex = (() => {
 
   function close() {
     MenuFirebase.unsubscribe();
-    if (typeof onNavigate === 'function') onNavigate('more');
+    // Меню — часть текущей поездки, поэтому "назад" ведёт в Гид, а не на Главную
+    if (typeof onNavigate === 'function') onNavigate('guide');
   }
 
   return { show, close };
