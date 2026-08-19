@@ -15,6 +15,7 @@ const TripCoverIndex = (() => {
   ];
 
   let _tripId = null;
+  let _guideHandler = null;
 
   function show(tripId) {
     _tripId = tripId;
@@ -352,7 +353,8 @@ const TripCoverIndex = (() => {
       if (trip?.importData?.route?.length) {
         guideEl.innerHTML = _renderGuide(trip);
         // Привязываем аккордеоны
-        guideEl.addEventListener('click', e => {
+        if (_guideHandler) guideEl.removeEventListener('click', _guideHandler);
+        _guideHandler = e => {
           const hd = e.target.closest('[data-target]');
           if (!hd) return;
           const body = document.getElementById(hd.dataset.target);
@@ -360,7 +362,8 @@ const TripCoverIndex = (() => {
           const chev = hd.querySelector('.g-acc-chev');
           const open = body.classList.toggle('show');
           if (chev) chev.classList.toggle('open', open);
-        });
+        };
+        guideEl.addEventListener('click', _guideHandler);
       } else {
         // Заглушка (рыбалки или экспедиции без импорта)
         guideEl.innerHTML = `

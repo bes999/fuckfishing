@@ -118,9 +118,19 @@ const GearRender = (() => {
     // Только корневые места (без родителя)
     var roots = locations.filter(function(l) { return !l.parentId; });
 
+    // Рекурсивно считает вес предметов места и всех вложенных мест
+    function _subtreeWeight(locId) {
+      var sum = items.filter(function(i) { return i.locationId === locId; })
+        .reduce(function(s,i) { return s+(Number(i.weight)||0); }, 0);
+      locations.filter(function(l) { return l.parentId === locId; }).forEach(function(child) {
+        sum += _subtreeWeight(child.id);
+      });
+      return sum;
+    }
+
     var cards = roots.map(function(loc) {
       var locItems  = items.filter(function(i) { return i.locationId === loc.id; });
-      var contentG  = locItems.reduce(function(s,i) { return s+(Number(i.weight)||0); }, 0);
+      var contentG  = _subtreeWeight(loc.id);
       var tareG     = Number(loc.tare) || 0;
       var totalG    = contentG + tareG;
       var children  = locations.filter(function(l) { return l.parentId === loc.id; });

@@ -399,6 +399,9 @@
 }
 
 .gear-sheet {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
   background: var(--modal-bg);
   border-radius: 20px 20px 0 0;
   box-shadow: 0 -8px 40px rgba(0,0,0,0.18);

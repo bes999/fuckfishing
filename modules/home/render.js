@@ -16,6 +16,8 @@ const HomeRender = (() => {
   ];
 
   let _calYear, _calMonth;
+  let _calendarHandler = null;
+  let _tripCardsHandler = null;
 
   // ── Полный рендер страницы ──
   function render(el, user) {
@@ -402,7 +404,8 @@ const HomeRender = (() => {
       if (_calMonth > 11) { _calMonth = 0; _calYear++; }
       _renderCalGrid(el);
     });
-    el.addEventListener('click', e => {
+    if (_calendarHandler) el.removeEventListener('click', _calendarHandler);
+    _calendarHandler = e => {
       const day = e.target.closest('.cal-day[data-date]');
       if (!day || day.classList.contains('other')) return;
       const date = day.dataset.date;
@@ -419,7 +422,8 @@ const HomeRender = (() => {
           setTimeout(() => TripsIndex.showCreate(date), 50);
         }
       }
-    });
+    };
+    el.addEventListener('click', _calendarHandler);
   }
 
   function _bindReadiness(el) {
@@ -439,7 +443,8 @@ const HomeRender = (() => {
   }
 
   function _bindTripCards(el) {
-    el.addEventListener('click', e => {
+    if (_tripCardsHandler) el.removeEventListener('click', _tripCardsHandler);
+    _tripCardsHandler = e => {
       const hd = e.target.closest('.year-hd');
       if (hd) {
         const section = hd.closest('.year-section');
@@ -462,7 +467,8 @@ const HomeRender = (() => {
       if (card && card.dataset.tripId) {
         HomeIndex.openTrip(card.dataset.tripId);
       }
-    });
+    };
+    el.addEventListener('click', _tripCardsHandler);
   }
 
   // ── Helpers ──

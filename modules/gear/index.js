@@ -33,7 +33,13 @@ const GearModule = (() => {
 
   async function _save() {
     if (!_uid || !_template) return;
-    await GearData.save(_uid, _template);
+    try {
+      await GearData.save(_uid, _template);
+    } catch (err) {
+      console.error('GearModule._save: сохранение снаряжения не удалось', err);
+      alert('Не удалось сохранить снаряжение. Проверь соединение и попробуй ещё раз.');
+      return;
+    }
     if (window.APP && window.APP.profile && window.APP.profile.uid === _uid) {
       window.APP.profile.gearLocations  = _template.locations;
       window.APP.profile.gearCategories = _template.categories;

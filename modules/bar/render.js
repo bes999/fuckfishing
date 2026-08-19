@@ -274,6 +274,12 @@ const BarRender = (() => {
   function refresh() {
     if (!_el) return;
     _el.querySelector('#bar-cards').innerHTML = _cards();
+    // Карточки, которые были раскрыты, регенерируются с новой разметкой
+    // тела (рейтинг/комментарии), но без обработчиков — перепривязываем их.
+    _openCards.forEach(id => {
+      const card = _el.querySelector(`.bar-card[data-id="${id}"]`);
+      if (card) _bindBodyEvents(card);
+    });
   }
 
   return { render, refresh };

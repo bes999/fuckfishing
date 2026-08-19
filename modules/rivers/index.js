@@ -16,6 +16,9 @@ var RiversIndex = (function () {
   var _kept   = true;   // улов: взяли / отпустили
   var _currentRiverId = null; // открытая карточка
   var _catchesUnsub = null; // отписка от CatchesFirebase.listen (карточка реки)
+  var _navHandler = null;      // хэндлер клика по навигатору (карточка реки)
+  var _catchDelHandler = null; // хэндлер удаления записи улова (карточка реки)
+  var _ptHandler = null;       // хэндлер редактирования/удаления точки (карточка реки)
 
   /* ──────────────────────────────────────────────────────
      localStorage helpers
@@ -161,10 +164,12 @@ var RiversIndex = (function () {
     if (backBtn) backBtn.addEventListener('click', _renderList);
 
     /* навигатор (парковка, точки) */
-    _el.addEventListener('click', function _navHandler(e) {
+    if (_navHandler) _el.removeEventListener('click', _navHandler);
+    _navHandler = function (e) {
       var btn = e.target.closest('[data-rv-nav]');
       if (btn) window.open(btn.getAttribute('data-rv-nav'), '_blank');
-    });
+    };
+    _el.addEventListener('click', _navHandler);
 
     /* взяли / отпустили */
     var togKept = document.getElementById('rv-tog-kept');
@@ -178,13 +183,15 @@ var RiversIndex = (function () {
     if (saveBtn) saveBtn.addEventListener('click', function () { _saveCatch(r); });
 
     /* удалить запись улова */
-    _el.addEventListener('click', function (e) {
+    if (_catchDelHandler) _el.removeEventListener('click', _catchDelHandler);
+    _catchDelHandler = function (e) {
       var del = e.target.closest('[data-catch-del]');
       if (!del) return;
       var idx = parseInt(del.getAttribute('data-catch-del'), 10);
       _delCatch(idx);
       _refreshCatchLog(r);
-    });
+    };
+    _el.addEventListener('click', _catchDelHandler);
 
     /* точки — добавить */
     var addPtBtn = document.getElementById('rv-add-pt-btn');
@@ -199,12 +206,14 @@ var RiversIndex = (function () {
     if (savePt) savePt.addEventListener('click', function () { _savePoint(r.id); });
 
     /* точки — редактировать / удалить */
-    _el.addEventListener('click', function (e) {
+    if (_ptHandler) _el.removeEventListener('click', _ptHandler);
+    _ptHandler = function (e) {
       var editBtn = e.target.closest('[data-pt-edit]');
       if (editBtn) { _editPoint(r.id, parseInt(editBtn.getAttribute('data-pt-edit'), 10)); return; }
       var delBtn = e.target.closest('[data-pt-del]');
       if (delBtn)  { _deletePoint(r.id, parseInt(delBtn.getAttribute('data-pt-del'), 10)); }
-    });
+    };
+    _el.addEventListener('click', _ptHandler);
 
     /* заметки */
     var notesEdit  = document.getElementById('rv-notes-edit');

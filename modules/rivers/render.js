@@ -258,7 +258,7 @@ var RiversRender = (function () {
     h += '  <div class="rv-catch-log-title">Улов на этой реке</div>';
     catches.forEach(function (c, i) {
       h += '<div class="rv-catch-entry" data-catch-idx="' + (c._idx !== undefined ? c._idx : i) + '">';
-      h += '  <span class="rv-catch-entry-l">' + c.fish + ' · ' + c.count + ' шт' + (c.member ? ' <span style="color:var(--label3);font-size:12px">· ' + c.member + '</span>' : '') + '</span>';
+      h += '  <span class="rv-catch-entry-l">' + c.fish + ' · ' + c.count + ' шт' + (c.member ? ' <span style="color:var(--label3);font-size:12px">· ' + _esc(c.member) + '</span>' : '') + '</span>';
       h += '  <span style="display:flex;align-items:center">';
       h += '  <span class="rv-catch-entry-r">' + (c.kept ? 'взяли' : 'отпустили') + '</span>';
       h += '  <span class="rv-catch-del" data-catch-del="' + (c._idx !== undefined ? c._idx : i) + '">×</span>';

@@ -11,9 +11,10 @@ function updateMedkitMeta(mode, memberId, itemId) {
   var leftInfo = '';
   if (itemState.left && itemState.unit) {
     leftInfo = itemState.left + ' ' + itemState.unit;
-    if (itemState.dose) {
-      var servings = Math.floor(parseFloat(itemState.left) / parseFloat(itemState.dose));
-      if (!isNaN(servings)) leftInfo += ' · ~' + servings + ' приём';
+    var doseNum = parseFloat(itemState.dose);
+    if (itemState.dose && !isNaN(doseNum) && doseNum > 0) {
+      var servings = Math.floor(parseFloat(itemState.left) / doseNum);
+      if (!isNaN(servings) && isFinite(servings)) leftInfo += ' · ~' + servings + ' приём';
     }
   }
 

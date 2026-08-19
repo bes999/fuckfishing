@@ -6,6 +6,7 @@ const TripsRender = (() => {
   const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
 
   let _filter = 'all'; // all | expedition | fishing
+  let _clickHandler = null;
 
   function render(el) {
     const now   = new Date().getFullYear();
@@ -135,7 +136,8 @@ const TripsRender = (() => {
   }
 
   function _bind(el) {
-    el.addEventListener('click', e => {
+    if (_clickHandler) el.removeEventListener('click', _clickHandler);
+    _clickHandler = e => {
       // Filter chips
       const chip = e.target.closest('[data-filter]');
       if (chip) {
@@ -165,7 +167,8 @@ const TripsRender = (() => {
       // Trip card
       const card = e.target.closest('[data-trip-id]');
       if (card && typeof TripsIndex !== 'undefined') TripsIndex.openTrip(card.dataset.tripId);
-    });
+    };
+    el.addEventListener('click', _clickHandler);
   }
 
   // Helpers

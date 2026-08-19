@@ -33,6 +33,9 @@ const GearData = (() => {
       gearCategories: template.categories,
       gearItems:      template.items,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    }).catch(function(err) {
+      console.error('GearData.save: не удалось сохранить снаряжение', err);
+      throw err;
     });
   }
 
