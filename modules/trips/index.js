@@ -567,6 +567,17 @@ const TripsIndex = (() => {
     _bindCreate(overlay);
   }
 
+  // Идёт ли поездка прямо сейчас (между startDate и endDate включительно)
+  function _tripStatus(startDate, endDate) {
+    const now = new Date();
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    end.setHours(23, 59, 59, 999);
+    if (end < now) return 'done';
+    if (start <= now) return 'active';
+    return 'upcoming';
+  }
+
   function _save() {
     const isExp = _draft.type === 'expedition';
 
@@ -583,7 +594,7 @@ const TripsIndex = (() => {
       rivers,
       participants: _draft.participants || [],
       comment:   _draft.comment || '',
-      status:    new Date(_draft.startDate) > new Date() ? 'upcoming' : 'done',
+      status:    _tripStatus(_draft.startDate, _draft.endDate || _draft.startDate),
       rating:    null,
       fish:      [],
       conditions: {},

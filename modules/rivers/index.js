@@ -6,6 +6,7 @@
    Публичный API:
      RiversIndex.init(el, tripData, tripId)
      RiversIndex.render()
+     RiversIndex.openRiver(idOrName)
    ========================================================= */
 var RiversIndex = (function () {
 
@@ -14,6 +15,7 @@ var RiversIndex = (function () {
   var _tripId = '';     // id экспедиции (для ключей localStorage)
   var _kept   = true;   // улов: взяли / отпустили
   var _currentRiverId = null; // открытая карточка
+  var _catchesUnsub = null; // отписка от CatchesFirebase.listen (карточка реки)
 
   /* ──────────────────────────────────────────────────────
      localStorage helpers
@@ -212,9 +214,13 @@ var RiversIndex = (function () {
     if (notesDel)  notesDel.addEventListener('click',  function () { _deleteNote(r.id); });
     if (notesSave) notesSave.addEventListener('click',  function () { _saveNote(r.id); });
     // [PATCH] Подписываемся на real-time обновления улова из Firebase
+    // Отписываемся от предыдущей подписки (если карточка реки открывалась
+    // ранее), иначе при каждом открытии карточки накапливался бы новый
+    // подписчик и они никогда не освобождались.
+    if (_catchesUnsub) { _catchesUnsub(); _catchesUnsub = null; }
     var tripId = window.APP && window.APP.currentTripId;
     if (tripId && typeof CatchesFirebase !== 'undefined') {
-      CatchesFirebase.listen(tripId, function(arr) {
+      _catchesUnsub = CatchesFirebase.listen(tripId, function(arr) {
         if (typeof CatchesState !== 'undefined') {
           CatchesState.setCatches(tripId, arr);
         }
@@ -462,5 +468,18 @@ var RiversIndex = (function () {
     }
   }
 
-  return { init: init, render: render };
+  /* Открыть карточку конкретной реки по id или названию.
+     Требует, чтобы init() уже был вызван (задаёт _el/_trip). */
+  function openRiver(idOrName) {
+    if (!_el) return;
+    var rivers = (_trip && _trip.rivers) ? _trip.rivers : [];
+    var r = null;
+    for (var i = 0; i < rivers.length; i++) {
+      if (rivers[i].id === idOrName || rivers[i].name === idOrName) { r = rivers[i]; break; }
+    }
+    if (!r) { _renderList(); return; }
+    _openDetail(r.id);
+  }
+
+  return { init: init, render: render, openRiver: openRiver };
 })();

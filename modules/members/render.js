@@ -47,10 +47,11 @@ const MembersRender = (() => {
 
   async function showProfile(uid, currentUid) {
     _activeTab = 'profile';
+    const tripId = window.APP?.currentTripId;
     const [profile, catchStat, balance] = await Promise.all([
       MembersFirebase.getProfile(uid),
-      MembersFirebase.getCatchStats(uid),
-      MembersFirebase.getExpenseBalance(uid)
+      MembersFirebase.getCatchStats(uid, tripId),
+      MembersFirebase.getExpenseBalance(uid, tripId)
     ]);
     if (!profile) return;
 
@@ -87,6 +88,7 @@ const MembersRender = (() => {
       </div>`;
 
     // Кнопка назад — на главную
+    // TODO: hardcoded 'home' — revisit once nav redesign (hamburger) lands, see back-navigation should return to entry point
     pg.querySelector('[data-action="profile-back"]')?.addEventListener('click', () => {
       if (typeof AppNav !== 'undefined') AppNav.setActive('home');
       if (typeof AppRouter !== 'undefined') AppRouter.show('home');
@@ -247,10 +249,12 @@ const MembersRender = (() => {
       if (orig) orig.id = 'p-medkit-hidden';
       document.getElementById('p-medkit-inline').id = 'p-medkit';
 
-      // Рендерим через MedkitIndex
-      if (typeof MedkitIndex !== 'undefined') {
-        MedkitIndex.show(document.getElementById('p-medkit'), d.profile.uid);
-      }
+      // Рендерим через реальную точку входа аптечки: rMedkit() рендерит
+      // в #p-medkit по глобальному состоянию medkitMode/medkitMemberId
+      // (MedkitIndex нигде в проекте не существует)
+      if (typeof setMedkitMode === 'function') setMedkitMode('personal');
+      if (typeof setMedkitMember === 'function') setMedkitMember(d.profile.uid);
+      else if (typeof rMedkit === 'function') rMedkit();
 
       // Убираем собственный топбар аптечки — он дублирует шапку профиля
       document.getElementById('p-medkit')?.querySelector('.topbar')?.remove();

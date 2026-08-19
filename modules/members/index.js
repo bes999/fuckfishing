@@ -27,9 +27,14 @@ var MembersModule = (() => {
     if (_unsub) { _unsub(); _unsub = null; }
   }
 
-  /* ── Init ── */
-  function init() {
-    const pg = document.getElementById('p-members');
+  /* ── Init ──
+     Реальный рендер ростера участников (карточки + кнопка "Пригласить").
+     Это ТА функция, которую должна вызывать навигация для пункта
+     "Участники" — в отличие от MembersRender.showProfile(uid, uid),
+     который всегда открывает профиль (isMe всегда true при uid===uid).
+     Экспонирована также как showList(el) — см. return ниже. */
+  function init(el) {
+    const pg = el || document.getElementById('p-members');
     if (!pg) return;
 
     pg.innerHTML = `
@@ -274,10 +279,12 @@ var MembersModule = (() => {
         const uid = window.APP?.profile?.uid || '';
         if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
         if (typeof AppNav !== 'undefined') AppNav.setActive('more');
-        if (typeof MedkitIndex !== 'undefined') {
-          if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
-          MedkitIndex.show(document.getElementById('p-medkit'), uid);
-        }
+        // Реальная точка входа аптечки — глобальная функция rMedkit(),
+        // рендерящая в #p-medkit по состоянию medkitMode/medkitMemberId.
+        // MedkitIndex нигде в проекте не определён.
+        if (typeof setMedkitMode === 'function') setMedkitMode('personal');
+        if (typeof setMedkitMember === 'function') setMedkitMember(uid);
+        else if (typeof rMedkit === 'function') rMedkit();
       }
 
       if (action === 'profile-edit') {
@@ -340,5 +347,8 @@ var MembersModule = (() => {
     });
   }
 
-  return { init, destroy };
+  // showList — понятное публичное имя для рендера ростера (в стиле
+  // XyzIndex.show(el) остальных модулей), алиас на init(). Добавлено для
+  // будущей навигационной перепроводки "Участники" -> ростер, а не профиль.
+  return { init, showList: init, destroy };
 })();

@@ -7,8 +7,11 @@ const AuthRender = (() => {
      LOGIN SCREEN
   ══════════════════════════════════════════════ */
   function showLoginScreen() {
-    document.getElementById('app').innerHTML = `
-      <div class="auth-screen" id="auth-screen">
+    document.getElementById('auth-screen')?.remove();
+    const el = document.createElement('div');
+    el.className = 'auth-screen';
+    el.id = 'auth-screen';
+    el.innerHTML = `
         <div class="auth-card">
           <div class="auth-logo">🎣</div>
           <h1 class="auth-title">FuckFishing</h1>
@@ -30,8 +33,10 @@ const AuthRender = (() => {
           </button>
 
           <div class="auth-error hidden" id="auth-error"></div>
-        </div>
-      </div>`;
+        </div>`;
+    // Оверлей поверх #app — не трогаем содержимое страниц под ним,
+    // иначе после логина контейнеры p-home/p-trips/... пропадают навсегда.
+    document.body.appendChild(el);
   }
 
   function hideLoginScreen() {

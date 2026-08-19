@@ -8,7 +8,12 @@ const CatchesIndex = (() => {
   function show(el, tripId) {
     _el     = el;
     _tripId = tripId;
-    if (!el || !tripId) return;
+    if (!el) return;
+
+    if (!tripId) {
+      el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--label3)">Поездка не выбрана</div>';
+      return;
+    }
 
     // Грузим участников из Firebase
     _loadMembers().then(() => {

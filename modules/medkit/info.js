@@ -11,7 +11,7 @@ var MEDKIT_INFO = {
     warn: 'Осторожно при проблемах с желудком, язве, чувствительности к НПВС.'
   },
 
-  pain_paracetamol: {
+  cold_paracetamol: {
     label: 'жар / боль',
     purpose: 'Снижение температуры и боли.',
     symptoms: 'Температура, головная боль, общая ломота.',
@@ -47,7 +47,7 @@ var MEDKIT_INFO = {
     warn: 'Не на открытую рану.'
   },
 
-  cold_suprastin: {
+  allergy_suprastin: {
     label: 'аллергия',
     purpose: 'Антигистаминное.',
     symptoms: 'Аллергия, зуд, отёк, реакция на укус.',
@@ -137,7 +137,7 @@ var MEDKIT_INFO = {
     warn: 'Осторожно при чувствительной коже.'
   },
 
-  wound_patch: {
+  wound_plaster: {
     label: 'порез / пластырь',
     purpose: 'Закрыть мелкую рану.',
     symptoms: 'Мелкие порезы, мозоли.',
@@ -155,7 +155,7 @@ var MEDKIT_INFO = {
     warn: 'Следить чтобы повязка не перетягивала.'
   },
 
-  eye_visine: {
+  eye_vizin: {
     label: 'глаза',
     purpose: 'Капли для глаз.',
     symptoms: 'Раздражение, покраснение.',
@@ -164,7 +164,7 @@ var MEDKIT_INFO = {
     warn: 'Если боль сильная и зрение падает — срочно к врачу.'
   },
 
-  nose_naftizin: {
+  cold_nazivin: {
     label: 'заложенность носа',
     purpose: 'Сосудосуживающее для носа.',
     symptoms: 'Сильная заложенность носа.',

@@ -5,6 +5,7 @@ const CatchesRender = (() => {
   let _el     = null;
   let _tripId = null;
   let _tab    = 'stats'; // 'stats' | 'add'
+  let _bodyHandler = null;
 
   // ── Entry point ──────────────────────────────────────────────
 
@@ -292,7 +293,8 @@ const CatchesRender = (() => {
     if (!body) return;
 
     // Удалить поимку
-    body.addEventListener('click', e => {
+    if (_bodyHandler) body.removeEventListener('click', _bodyHandler);
+    _bodyHandler = e => {
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       const action = btn.dataset.action;
@@ -306,7 +308,7 @@ const CatchesRender = (() => {
       }
 
       if (action === 'goto-river') {
-        // Переходим в раздел Реки и открываем карточку реки
+        // Переходим в раздел Реки и открываем карточку конкретной реки
         const riverName = btn.dataset.river;
         CatchesFirebase.stopListening();
         if (typeof onNavigate === 'function') {
@@ -314,16 +316,14 @@ const CatchesRender = (() => {
         }
         // Небольшая задержка чтобы rivers успел инициализироваться
         setTimeout(function() {
-          if (typeof RiversIndex !== 'undefined') {
-            var tripData = window.APP && window.APP.currentTripData;
-            var rivers = (tripData && tripData.rivers) || [];
-            var river = rivers.find(function(r) { return r.name === riverName; });
-            if (river) RiversIndex.render();
+          if (typeof RiversIndex !== 'undefined' && typeof RiversIndex.openRiver === 'function') {
+            RiversIndex.openRiver(riverName);
           }
         }, 150);
         return;
       }
-    });
+    };
+    body.addEventListener('click', _bodyHandler);
 
     // Форма добавления
     if (_tab !== 'add') return;

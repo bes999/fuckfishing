@@ -76,15 +76,35 @@ function rMedkitFilters(mode) {
   return h;
 }
 
+// Кэш реального списка участников поездки (источник — MembersFirebase,
+// см. modules/members/firebase.js). window.ST — не существует нигде в
+// проекте, это остаток от старой версии; тянем актуальные данные отсюда.
+var _medkitMembersCache = null;
+var _medkitMembersLoading = false;
+
+function _getMedkitMembers() {
+  if (_medkitMembersCache) return _medkitMembersCache;
+  if (!_medkitMembersLoading && typeof MembersFirebase !== 'undefined' && MembersFirebase.getAllMembers) {
+    _medkitMembersLoading = true;
+    MembersFirebase.getAllMembers().then(function(members) {
+      _medkitMembersCache = members || [];
+      _medkitMembersLoading = false;
+      // Перерисовываем, если пользователь всё ещё на личной аптечке
+      if (medkitMode === 'personal' && typeof rMedkit === 'function') rMedkit();
+    }).catch(function() { _medkitMembersLoading = false; });
+  }
+  return [];
+}
+
 function rMedkitMemberSwitcher(currentMemberId) {
-  var members = (window.ST && ST.members) ? ST.members.filter(function(m) { return m.isActive !== false; }) : [];
+  var members = _getMedkitMembers().filter(function(m) { return m.isActive !== false; });
   if (!members.length) return '';
   var h = '<div class="member-switcher"><div class="member-scroll">';
   for (var i = 0; i < members.length; i++) {
     var m = members[i];
     var initials = (m.displayName || 'NN').slice(0, 2).toUpperCase();
-    var prog = getMedkitProgress('personal', m._id);
-    h += '<div class="member-tab' + (m._id === currentMemberId ? ' active' : '') + '" onclick="setMedkitMember(\'' + m._id + '\')">';
+    var prog = getMedkitProgress('personal', m.uid);
+    h += '<div class="member-tab' + (m.uid === currentMemberId ? ' active' : '') + '" onclick="setMedkitMember(\'' + m.uid + '\')">';
     h += '<div class="member-avatar">' + initials + '</div>';
     h += '<span class="member-name">' + escHtml(m.displayName || 'Участник') + '</span>';
     h += '<span class="member-prog">' + prog.done + ' / ' + prog.total + '</span>';
@@ -96,9 +116,9 @@ function rMedkitMemberSwitcher(currentMemberId) {
 
 function getMemberName(memberId) {
   if (!memberId) return 'Участник';
-  var members = (window.ST && ST.members) ? ST.members : [];
+  var members = _getMedkitMembers();
   for (var i = 0; i < members.length; i++) {
-    if (members[i]._id === memberId) return members[i].displayName || 'Участник';
+    if (members[i].uid === memberId) return members[i].displayName || 'Участник';
   }
   return 'Участник';
 }

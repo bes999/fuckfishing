@@ -1,5 +1,5 @@
 'use strict';
-/* globals firebase, db, TRIP_ID */
+/* globals firebase, db */
 
 const MembersFirebase = (() => {
 
@@ -40,9 +40,9 @@ const MembersFirebase = (() => {
       .onSnapshot(s => cb(s.docs.map(d => d.data())), () => {});
   }
 
-  async function getCatchStats(uid) {
+  async function getCatchStats(uid, tripId) {
     try {
-      const s = await db.collection('trips').doc(TRIP_ID)
+      const s = await db.collection('trips').doc(tripId)
         .collection('catches').where('userId','==',uid).get();
       const catches = s.docs.map(d => d.data());
       const total  = catches.length;
@@ -52,10 +52,10 @@ const MembersFirebase = (() => {
     } catch (_) { return { total:0, weight:0, record:0 }; }
   }
 
-  async function getExpenseBalance(uid) {
+  async function getExpenseBalance(uid, tripId) {
     try {
       const [expSnap, membSnap] = await Promise.all([
-        db.collection('trips').doc(TRIP_ID).collection('expenses').get(),
+        db.collection('trips').doc(tripId).collection('expenses').get(),
         db.collection('members').get()
       ]);
       const count = membSnap.size || 1;

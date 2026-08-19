@@ -5,6 +5,7 @@ const ExpensesRender = (() => {
   let _el     = null;
   let _tripId = null;
   let _tab    = 'expenses'; // 'expenses' | 'balance' | 'summary'
+  let _bodyHandler = null;
 
   // ── Entry point ──────────────────────────────────────────────
 
@@ -570,7 +571,8 @@ const ExpensesRender = (() => {
     const body = _el?.querySelector('#exp-body');
     if (!body) return;
 
-    body.addEventListener('click', ev => {
+    if (_bodyHandler) body.removeEventListener('click', _bodyHandler);
+    _bodyHandler = ev => {
       const btn = ev.target.closest('[data-action]');
       if (!btn) return;
 
@@ -607,7 +609,8 @@ const ExpensesRender = (() => {
         ExpensesState.exportCSV(_tripId, trip ? trip.name : _tripId);
         return;
       }
-    });
+    };
+    body.addEventListener('click', _bodyHandler);
   }
 
   // ── Helpers ──────────────────────────────────────────────────

@@ -2,26 +2,52 @@
 
 const CatchesFirebase = (() => {
 
-  let _unsub = null;
+  let _unsub     = null;
+  let _tripId    = null;
+  let _callbacks = [];
 
   function _ref(tripId) {
     return firebase.firestore().collection('trips').doc(tripId);
   }
 
   // ── Realtime listener ────────────────────────────────────────
+  // Несколько экранов (например, Catches и карточка реки в Rivers) могут
+  // слушать одновременно — держим один Firestore onSnapshot на выбранную
+  // поездку и рассылаем данные всем подписанным колбэкам, вместо того
+  // чтобы последний вызвавший listen() отбирал подписку у предыдущего.
+  //
+  // Возвращает функцию отписки конкретно этого подписчика — вызывайте её,
+  // если экран может открываться/закрываться независимо от остальных
+  // (см. modules/rivers/index.js). Глобальный stopListening() по-прежнему
+  // сразу закрывает всё — его поведение для существующих вызовов не менялось.
 
   function listen(tripId, onCatches) {
-    stopListening();
-    _unsub = _ref(tripId).collection('catches')
-      .orderBy('createdAt', 'desc')
-      .onSnapshot(snap => {
-        const arr = [];
-        snap.forEach(doc => arr.push(CatchesData.normalizeCatch(doc.data(), doc.id)));
-        onCatches(arr);
-      }, err => console.warn('catches listen:', err));
+    if (_tripId !== tripId) {
+      stopListening();
+      _tripId = tripId;
+    }
+    _callbacks.push(onCatches);
+
+    if (!_unsub) {
+      _unsub = _ref(tripId).collection('catches')
+        .orderBy('createdAt', 'desc')
+        .onSnapshot(snap => {
+          const arr = [];
+          snap.forEach(doc => arr.push(CatchesData.normalizeCatch(doc.data(), doc.id)));
+          _callbacks.slice().forEach(cb => cb(arr));
+        }, err => console.warn('catches listen:', err));
+    }
+
+    return function unsubscribeOne() {
+      const idx = _callbacks.indexOf(onCatches);
+      if (idx !== -1) _callbacks.splice(idx, 1);
+      if (_callbacks.length === 0) stopListening();
+    };
   }
 
   function stopListening() {
+    _callbacks = [];
+    _tripId    = null;
     if (_unsub) { _unsub(); _unsub = null; }
   }
 
