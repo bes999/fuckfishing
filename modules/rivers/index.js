@@ -65,23 +65,41 @@ var RiversIndex = (function () {
   }
 
   function _delCatch(idx) {
-    var all = _getCatches();
-    all.splice(idx, 1);
-    _saveCatches(all);
+    // [PATCH] Удаляем через Firebase если доступен
+    var tripId = window.APP && window.APP.currentTripId;
+    var allCatches = (tripId && typeof CatchesState !== 'undefined')
+      ? CatchesState.getCatches(tripId)
+      : _getCatches();
+ 
+    var catchEntry = allCatches[idx];
+    if (!catchEntry) return;
+ 
+    if (tripId && typeof CatchesFirebase !== 'undefined' && catchEntry._id && !catchEntry._id.startsWith('tmp_')) {
+      CatchesFirebase.deleteCatch(tripId, catchEntry._id);
+      if (typeof CatchesState !== 'undefined') {
+        CatchesState.removeCatch(tripId, catchEntry._id);
+      }
+    } else {
+      // Fallback localStorage
+      var all = _getCatches();
+      all.splice(idx, 1);
+      _saveCatches(all);
+    }
   }
 
   /* ──────────────────────────────────────────────────────
      RENDER LIST
   ────────────────────────────────────────────────────── */
   function _renderList() {
-    _currentRiverId = null;
-    var rivers = (_trip && _trip.rivers) ? _trip.rivers : [];
-    _el.innerHTML = RiversRender.list(rivers);
-    _el.style.overflowY = 'auto';
-    _el.style.display = 'flex';
-    _el.style.flexDirection = 'column';
-    _bindList();
-  }
+  _currentRiverId = null;
+  var rivers = (_trip && _trip.rivers) ? _trip.rivers : [];
+  _el.innerHTML = RiversRender.list(rivers);
+  _el.style.overflowY = 'auto';
+  _el.style.flexDirection = 'column';
+  _el.scrollTop = 0;
+  window.scrollTo(0, 0);
+  _bindList();
+}
 
   function _bindList() {
     _el.addEventListener('click', _onListClick);
@@ -127,10 +145,11 @@ var RiversIndex = (function () {
       .filter(function (c) { return c.river === r.name; });
 
     _el.style.overflowY = 'hidden';
-    _el.style.display   = 'flex';
     _el.style.flexDirection = 'column';
     _el.innerHTML = RiversRender.detail(r, state);
-
+    var scroll = document.getElementById('rv-det-scroll');
+    if (scroll) scroll.scrollTop = 0;
+    _el.scrollTop = 0;
     _bindDetail(r);
   }
 
@@ -192,6 +211,23 @@ var RiversIndex = (function () {
     if (notesEdit) notesEdit.addEventListener('click', _editNote);
     if (notesDel)  notesDel.addEventListener('click',  function () { _deleteNote(r.id); });
     if (notesSave) notesSave.addEventListener('click',  function () { _saveNote(r.id); });
+    // [PATCH] Подписываемся на real-time обновления улова из Firebase
+    var tripId = window.APP && window.APP.currentTripId;
+    if (tripId && typeof CatchesFirebase !== 'undefined') {
+      CatchesFirebase.listen(tripId, function(arr) {
+        if (typeof CatchesState !== 'undefined') {
+          CatchesState.setCatches(tripId, arr);
+        }
+        // Обновляем лог текущей реки
+        var riverCatches = arr
+          .map(function(c, i) { return Object.assign({}, c, { _idx: i }); })
+          .filter(function(c) { return c.river === r.name; });
+        var logEl = document.getElementById('rv-catch-log');
+        if (logEl) {
+          logEl.outerHTML = RiversRender.catchLog(riverCatches);
+        }
+      });
+    }
   }
 
   /* ──────────────────────────────────────────────────────
@@ -205,28 +241,53 @@ var RiversIndex = (function () {
   }
 
   function _saveCatch(r) {
-    var fishEl = document.getElementById('rv-c-fish');
-    var cntEl  = document.getElementById('rv-c-cnt');
+    var fishEl   = document.getElementById('rv-c-fish');
+    var cntEl    = document.getElementById('rv-c-cnt');
+    var memberEl = document.getElementById('rv-c-member'); // [PATCH]
     if (!fishEl || !cntEl) return;
+ 
     var entry = {
-      date: new Date().toISOString().split('T')[0],
-      river: r.name,
-      fish:  fishEl.value,
-      count: parseInt(cntEl.value) || 1,
-      weight: 0,
-      kept:  _kept,
+      date:   new Date().toISOString().split('T')[0],
+      river:  r.name,
+      fish:   fishEl.value,
+      count:  parseInt(cntEl.value) || 1,
+      kept:   _kept,
+      member: memberEl ? (memberEl.value || '') : '', // [PATCH]
       createdAt: new Date().toISOString()
     };
-    _addCatch(entry);
+ 
+    // [PATCH] Сохраняем в Firebase через CatchesFirebase
+    var tripId = window.APP && window.APP.currentTripId;
+    if (tripId && typeof CatchesFirebase !== 'undefined') {
+      // Оптимистично добавляем в state
+      var tmpEntry = Object.assign({}, entry, { _id: 'tmp_' + Date.now() });
+      if (typeof CatchesState !== 'undefined') {
+        CatchesState.addCatch(tripId, tmpEntry);
+      }
+      CatchesFirebase.addCatch(tripId, entry);
+    } else {
+      // Fallback: старый localStorage
+      _addCatch(entry);
+    }
+ 
     _refreshCatchLog(r);
   }
 
   function _refreshCatchLog(r) {
-    var allCatches = _getCatches();
+    var allCatches;
+ 
+    // [PATCH] Если CatchesState доступен — читаем оттуда
+    var tripId = window.APP && window.APP.currentTripId;
+    if (tripId && typeof CatchesState !== 'undefined') {
+      allCatches = CatchesState.getCatches(tripId);
+    } else {
+      allCatches = _getCatches();
+    }
+ 
     var riverCatches = allCatches
       .map(function (c, i) { return Object.assign({}, c, { _idx: i }); })
       .filter(function (c) { return c.river === r.name; });
-
+ 
     var logEl = document.getElementById('rv-catch-log');
     if (!logEl) return;
     if (riverCatches.length === 0) {

@@ -113,7 +113,8 @@ function applyMedkitItemFilters(item, itemState) {
   if (medkitFilters.status) {
     var status = getMedkitItemStatus(itemState);
     var color = getMedkitItemColor(status);
-    if (medkitFilters.status === 'warn' && color !== 'warn') return false;
+    // FIX: 'warn' фильтр показывает и warn и yellow (оба — предупреждения об остатке)
+    if (medkitFilters.status === 'warn' && color !== 'warn' && color !== 'yellow') return false;
     if (medkitFilters.status === 'danger' && color !== 'danger') return false;
   }
   return true;

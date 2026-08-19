@@ -247,11 +247,9 @@ const MembersRender = (() => {
       if (orig) orig.id = 'p-medkit-hidden';
       document.getElementById('p-medkit-inline').id = 'p-medkit';
 
-      // Рендерим
-      if (typeof medkitMode !== 'undefined') {
-        medkitMode = 'personal';
-        medkitMemberId = d.profile.uid;
-        if (typeof rMedkit === 'function') rMedkit();
+      // Рендерим через MedkitIndex
+      if (typeof MedkitIndex !== 'undefined') {
+        MedkitIndex.show(document.getElementById('p-medkit'), d.profile.uid);
       }
 
       // Убираем собственный топбар аптечки — он дублирует шапку профиля

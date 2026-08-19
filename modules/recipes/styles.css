@@ -1,0 +1,323 @@
+/* ── Recipes module ── */
+
+.rec-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background: var(--bg);
+}
+
+.rec-topbar {
+  background: var(--topbar-bg);
+  padding: 48px 16px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.rec-back-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rec-back-btn:active { opacity: 0.6; }
+
+.rec-topbar__text { flex: 1; }
+
+.rec-topbar__title {
+  color: #fff;
+  font-size: 17px;
+  font-weight: 500;
+}
+
+.rec-topbar__sub {
+  color: rgba(255,255,255,0.5);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.rec-tabs {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--bg2);
+  border-bottom: 0.5px solid var(--sep);
+  padding: 0 12px;
+  position: sticky;
+  top: 80px;
+  z-index: 9;
+}
+
+.rec-tabs::-webkit-scrollbar { display: none; }
+
+.rec-tab {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--label3);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s;
+}
+
+.rec-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.rec-cards {
+  padding: 10px 12px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rec-card {
+  background: var(--bg2);
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--sep);
+  overflow: hidden;
+}
+
+.rec-card__head {
+  padding: 13px 14px 11px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rec-card__head:active { opacity: 0.7; }
+
+.rec-card__info { flex: 1; min-width: 0; }
+
+.rec-card__name {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rec-card__sub {
+  font-size: 12px;
+  color: var(--label3);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rec-card__meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.rec-time-pill {
+  font-size: 11px;
+  color: var(--label3);
+}
+
+.rec-rating-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--label2);
+}
+
+.rec-rating-pill .ti-star { font-size: 12px; color: var(--orange); }
+.rec-rating-pill--empty .ti-star { color: var(--label3); }
+
+.rec-card__chevron {
+  color: var(--label3);
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rec-card.open .rec-card__chevron { transform: rotate(180deg); }
+
+.rec-card__body {
+  padding: 0 14px 14px;
+  border-top: 0.5px solid var(--sep);
+}
+
+.rec-ing-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--label3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 12px 0 6px;
+}
+
+.rec-ing-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 0.5px solid var(--sep);
+  font-size: 14px;
+}
+
+.rec-ing-row:last-of-type { border-bottom: none; }
+.rec-ing-name { color: var(--label); }
+.rec-ing-qty { color: var(--label3); font-size: 13px; }
+
+.rec-method {
+  background: var(--bg3);
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--sep);
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--label2);
+  line-height: 1.55;
+}
+
+.rec-serve-with {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.rec-serve-with .ti { font-size: 13px; }
+
+.rec-rate-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.rec-rate-label {
+  font-size: 13px;
+  color: var(--label3);
+}
+
+.rec-stars { display: flex; gap: 4px; }
+
+.rec-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+  font-size: 20px;
+  color: var(--sep);
+  transition: color 0.1s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+  line-height: 1;
+}
+
+.rec-star .ti { font-size: 20px; }
+.rec-star.on .ti { color: var(--orange); }
+.rec-star:active { transform: scale(1.3); }
+
+.rec-comments {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rec-comment {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 0.5px solid var(--sep);
+}
+
+.rec-comment:last-child { border-bottom: none; }
+
+.rec-av {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.rec-comment__body { flex: 1; min-width: 0; }
+
+.rec-comment__text {
+  font-size: 13px;
+  color: var(--label2);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.rec-comment__author {
+  font-size: 11px;
+  color: var(--label3);
+  margin-top: 3px;
+}
+
+.rec-add-comment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rec-comment-input {
+  flex: 1;
+  background: var(--bg3);
+  border: 0.5px solid var(--sep);
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--label);
+  outline: none;
+  -webkit-appearance: none;
+}
+
+.rec-comment-input::placeholder { color: var(--label3); }
+.rec-comment-input:focus { border-color: var(--accent); }
+
+.rec-send-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: #fff;
+  transition: opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.rec-send-btn:active { opacity: 0.7; }
+.rec-send-btn .ti { font-size: 15px; }

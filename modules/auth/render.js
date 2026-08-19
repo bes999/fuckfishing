@@ -77,7 +77,7 @@ const AuthRender = (() => {
       conditions:  ''
     };
     // Скрываем login-screen если ещё виден
-    document.getElementById('auth-screen')?.style.setProperty('display','none');
+    document.getElementById('auth-screen')?.remove();
     _render();
   }
 

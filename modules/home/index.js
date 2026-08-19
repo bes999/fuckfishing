@@ -8,7 +8,6 @@ const HomeIndex = (() => {
   function init(el, user) {
     _el   = el;
     _user = user;
-    TripsData.load();
     _render();
   }
 
@@ -24,7 +23,7 @@ const HomeIndex = (() => {
     // Переход на обложку поездки
     const trip = TripsData.getById(tripId);
     if (!trip) return;
-    TripCoverIndex.show(tripId);
+    if (typeof TripCoverIndex !== 'undefined') TripCoverIndex.show(tripId);
   }
 
   return { init, refresh, openTrip };

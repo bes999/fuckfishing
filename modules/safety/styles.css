@@ -1,0 +1,253 @@
+/* ── Safety module styles ── */
+
+.sf-wrap {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* Topbar */
+.sf-topbar {
+  background: var(--topbar-bg);
+  color: #fff;
+  padding: 14px 16px 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  flex-shrink: 0;
+  box-shadow: 0 0.5px 0 rgba(255,255,255,0.12);
+}
+
+.sf-back {
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.sf-back:active { background: rgba(255,255,255,0.15); }
+
+.sf-topbar__text { flex: 1; min-width: 0; }
+.sf-topbar__title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+}
+.sf-topbar__sub {
+  font-size: 12px;
+  opacity: 0.72;
+  margin-top: 2px;
+}
+
+/* Scroll area */
+.sf-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Warning banner */
+.sf-warn-banner {
+  background: #FFF3CD;
+  border-left: 3px solid var(--orange);
+  border-radius: var(--radius-sm, 10px);
+  padding: 14px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+[data-theme="dark"] .sf-warn-banner {
+  background: rgba(255,159,10,0.12);
+}
+.sf-warn-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.sf-warn-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #533F03;
+  margin-bottom: 4px;
+}
+[data-theme="dark"] .sf-warn-title { color: var(--orange); }
+.sf-warn-text {
+  font-size: 13px;
+  color: #533F03;
+  line-height: 1.5;
+}
+[data-theme="dark"] .sf-warn-text { color: #FFD60A; }
+
+/* Section label */
+.sf-sec-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--label3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 18px 0 8px 4px;
+}
+.sf-sec-label:first-of-type { margin-top: 6px; }
+
+/* Generic card */
+.sf-card {
+  background: var(--bg2);
+  border-radius: var(--radius-md, 14px);
+  margin-bottom: 12px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+/* Row inside card */
+.sf-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 0.5px solid var(--sep2);
+}
+.sf-row:last-child { border-bottom: none; }
+
+.sf-row-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  width: 28px;
+  text-align: center;
+  padding-top: 1px;
+}
+.sf-row-body { flex: 1; min-width: 0; }
+.sf-row-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--label);
+  line-height: 1.4;
+}
+.sf-row-sub {
+  font-size: 12px;
+  color: var(--label3);
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+/* Steps (при встрече с медведем) */
+.sf-step-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 0.5px solid var(--sep2);
+}
+.sf-step-row:last-child { border-bottom: none; }
+
+.sf-step-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sf-step-num.danger {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--red);
+}
+[data-theme="dark"] .sf-step-num.danger {
+  background: rgba(255, 69, 58, 0.15);
+}
+
+.sf-step-text {
+  font-size: 14px;
+  color: var(--label2);
+  line-height: 1.5;
+  padding-top: 3px;
+  flex: 1;
+}
+
+/* Contacts card */
+.sf-contacts-card {
+  background: var(--bg2);
+  border-radius: var(--radius-md, 14px);
+  margin-bottom: 12px;
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+.sf-contact-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 13px 16px;
+  border-bottom: 0.5px solid var(--sep2);
+  gap: 12px;
+}
+.sf-contact-item:last-child { border-bottom: none; }
+
+.sf-contact-info { flex: 1; min-width: 0; }
+.sf-contact-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--label);
+}
+.sf-contact-sub {
+  font-size: 12px;
+  color: var(--label3);
+  margin-top: 1px;
+}
+
+.sf-contact-btn {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  flex-shrink: 0;
+  padding: 6px 0 6px 8px;
+  white-space: nowrap;
+}
+.sf-contact-btn.emergency {
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--red);
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 15px;
+  font-weight: 700;
+}
+[data-theme="dark"] .sf-contact-btn.emergency {
+  background: rgba(255, 69, 58, 0.15);
+  color: var(--red);
+}
+
+/* License card */
+.sf-license-card {
+  margin-bottom: 12px;
+}
+.sf-license-badge {
+  background: rgba(255, 159, 10, 0.12);
+  border: 1px solid rgba(255, 159, 10, 0.3);
+  border-radius: var(--radius-sm, 10px);
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--orange);
+  margin-bottom: 8px;
+  text-align: center;
+}

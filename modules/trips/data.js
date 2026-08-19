@@ -12,7 +12,7 @@ const TripsData = (() => {
         type: 'expedition',
         name: 'Сахалин 2026',
         startDate: '2026-06-10',
-        endDate: '2026-06-25',
+        endDate: '2026-06-17',
         rivers: [
           { name: 'р. Лангери', region: 'Сахалинская обл.' },
           { name: 'р. Буюклинка', region: 'Сахалинская обл.' }

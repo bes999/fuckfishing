@@ -1,7 +1,11 @@
 'use strict';
 /* globals db, MembersFirebase, MembersRender, AuthActions */
 
-const MembersModule = (() => {
+// FIX: var вместо const — иначе TDZ при обращении к MembersModule внутри IIFE
+var MembersModule = (() => {
+  // FIX: closure-переменная вместо MembersModule._listenerBound —
+  // внутри IIFE MembersModule ещё undefined, обращение к его свойствам падает
+  let _listenerBound = false;
   let _unsub = null;
 
   const AVATARS = ['🎣','🤙','🐟','🦈','😎','🧔','🏕️','🌊','🦅','🐻','🍺','🥃','👾','🎯','🐠','🦑','🐙','🏔️','🎿','🚤'];
@@ -11,6 +15,17 @@ const MembersModule = (() => {
     {id:'AB+',ru:'IV +'},{id:'AB−',ru:'IV −'},
     {id:'O+',ru:'I +'},{id:'O−',ru:'I −'},
   ];
+
+  // FIX: _esc перенесён наверх — использовался в _editTabPersonal/_editTabMedical,
+  // но был объявлен внутри if-блока, где в strict mode он недоступен снаружи
+  function _esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+  }
+
+  // FIX: destroy перенесён наверх — был внутри if-блока, а возвращался снаружи
+  function destroy() {
+    if (_unsub) { _unsub(); _unsub = null; }
+  }
 
   /* ── Init ── */
   function init() {
@@ -49,7 +64,7 @@ const MembersModule = (() => {
 
     const overlay = document.createElement('div');
     overlay.id = 'edit-overlay';
-    overlay.className = 'ob-overlay'; // переиспользуем стиль онбординга
+    overlay.className = 'ob-overlay';
     overlay.innerHTML = `
       <div class="ob-sheet">
         <div class="ob-grab"></div>
@@ -119,22 +134,18 @@ const MembersModule = (() => {
 
   function _switchEditTab(tab) {
     _editTab = tab;
-    // Кнопки
     document.querySelectorAll('#edit-overlay .p-stab').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === tab));
-    // Нужен текущий профиль
     MembersFirebase.getProfile(_editUid).then(profile => {
       if (!profile) return;
       const body = document.getElementById('edit-body');
       if (!body) return;
-      // Сохраним уже введённые данные перед переключением
       _collectCurrentEditData(profile);
       body.innerHTML = tab === 'personal' ? _editTabPersonal(profile) : _editTabMedical(profile);
       if (tab === 'personal') _bindEditMasks();
     });
   }
 
-  // Собираем данные из текущего открытого таба в объект профиля
   function _collectCurrentEditData(profile) {
     if (_editTab === 'personal') {
       const selAv = document.querySelector('#edit-overlay .ob-av-btn.sel');
@@ -158,10 +169,8 @@ const MembersModule = (() => {
     const profile = await MembersFirebase.getProfile(uid);
     if (!profile) return;
 
-    // Собираем данные из текущего видимого таба
     _collectCurrentEditData(profile);
 
-    // Валидация
     if (!profile.displayName?.trim()) {
       document.getElementById('edit-name')?.classList.add('field-error');
       return;
@@ -181,7 +190,6 @@ const MembersModule = (() => {
 
     await MembersFirebase.updateProfile(uid, changes);
 
-    // Обновляем APP.profile если это текущий пользователь
     if (uid === window.APP?.profile?.uid) {
       Object.assign(window.APP.profile, changes);
     }
@@ -192,7 +200,6 @@ const MembersModule = (() => {
   }
 
   function _bindEditMasks() {
-    // Маска телефона
     const phone = document.getElementById('edit-phone');
     if (phone) {
       if (!phone.value) phone.value = '+7 (';
@@ -217,7 +224,6 @@ const MembersModule = (() => {
       });
     }
 
-    // Маска даты
     const bday = document.getElementById('edit-birthday');
     if (bday) {
       bday.addEventListener('input', () => {
@@ -233,116 +239,105 @@ const MembersModule = (() => {
   /* ══════════════════════════════════════════════
      EVENTS
   ══════════════════════════════════════════════ */
-  document.addEventListener('click', async e => {
-    const t = e.target.closest('[data-action]');
-    if (!t) return;
-    const action = t.dataset.action;
+  if (!_listenerBound) {
+    _listenerBound = true;
+    document.addEventListener('click', async e => {
+      const t = e.target.closest('[data-action]');
+      if (!t) return;
+      const action = t.dataset.action;
 
-    if (action === 'member-open') {
-      const uid = t.dataset.uid;
-      if (uid) MembersRender.showProfile(uid, window.APP?.profile?.uid);
-    }
-
-    if (action === 'profile-tab') {
-      MembersRender.switchTab(t.dataset.tab);
-    }
-
-    if (action === 'member-invite') {
-      MembersRender.showInvite();
-    }
-
-    if (action === 'member-delete') {
-      const uid  = t.dataset.uid;
-      if (!uid) return;
-      const profile = await MembersFirebase.getProfile(uid);
-      const name = profile?.displayName || 'участника';
-      if (!confirm(`Удалить ${name} из списка участников?`)) return;
-      await MembersFirebase.deleteProfile(uid);
-      document.getElementById('profile-overlay')?.remove();
-    }
-
-    if (action === 'profile-medkit') {
-      // Закрываем профиль и открываем аптечку в режиме personal
-      document.getElementById('profile-overlay')?.remove();
-      const uid = window.APP?.profile?.uid || '';
-      // Переключаем на страницу аптечки
-      if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
-      if (typeof AppNav !== 'undefined') AppNav.setActive('more');
-      // Инициализируем аптечку в режиме personal для текущего пользователя
-      if (typeof medkitMode !== 'undefined') {
-        medkitMode = 'personal';
-        medkitMemberId = uid;
-        if (typeof rMedkit === 'function') rMedkit();
+      if (action === 'member-open') {
+        const uid = t.dataset.uid;
+        if (uid) MembersRender.showProfile(uid, window.APP?.profile?.uid);
       }
-    }
 
-    if (action === 'profile-edit') {
-      const uid = t.dataset.uid;
-      const profile = await MembersFirebase.getProfile(uid);
-      if (!profile) return;
-      _showEditSheet(uid, profile);
-    }
+      if (action === 'profile-tab') {
+        MembersRender.switchTab(t.dataset.tab);
+      }
 
-    if (action === 'edit-save') {
-      await _saveEdit(t.dataset.uid || _editUid);
-    }
+      if (action === 'member-invite') {
+        MembersRender.showInvite();
+      }
 
-    if (action === 'edit-cancel') {
-      document.getElementById('edit-overlay')?.remove();
-    }
+      if (action === 'member-delete') {
+        const uid  = t.dataset.uid;
+        if (!uid) return;
+        const profile = await MembersFirebase.getProfile(uid);
+        const name = profile?.displayName || 'участника';
+        if (!confirm(`Удалить ${name} из списка участников?`)) return;
+        await MembersFirebase.deleteProfile(uid);
+        document.getElementById('profile-overlay')?.remove();
+      }
 
-    if (action === 'edit-tab') {
-      _switchEditTab(t.dataset.tab);
-    }
+      if (action === 'profile-medkit') {
+        document.getElementById('profile-overlay')?.remove();
+        const uid = window.APP?.profile?.uid || '';
+        if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
+        if (typeof AppNav !== 'undefined') AppNav.setActive('more');
+        if (typeof MedkitIndex !== 'undefined') {
+          if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
+          MedkitIndex.show(document.getElementById('p-medkit'), uid);
+        }
+      }
 
-    if (action === 'edit-av') {
-      document.querySelectorAll('#edit-overlay .ob-av-btn').forEach(b => b.classList.remove('sel'));
-      t.classList.add('sel');
-    }
+      if (action === 'profile-edit') {
+        const uid = t.dataset.uid;
+        const profile = await MembersFirebase.getProfile(uid);
+        if (!profile) return;
+        _showEditSheet(uid, profile);
+      }
 
-    if (action === 'edit-blood') {
-      document.querySelectorAll('#edit-overlay .ob-blood-btn').forEach(b => b.classList.remove('sel'));
-      t.classList.add('sel');
-    }
+      if (action === 'edit-save') {
+        await _saveEdit(t.dataset.uid || _editUid);
+      }
 
-    if (action === 'emerg-add') {
-      const name  = prompt('Имя и кем приходится (напр. Анна, жена)');
-      if (!name?.trim()) return;
-      const phone = prompt('Телефон');
-      if (!phone?.trim()) return;
-      const profile = window.APP?.profile;
-      if (!profile) return;
-      const emerg = [...(profile.emergency||[]), {name:name.trim(), phone:phone.trim()}];
-      await MembersFirebase.updateProfile(profile.uid, {emergency:emerg});
-      profile.emergency = emerg;
-      const ov = document.getElementById('profile-overlay');
-      if (ov?._profileData) { ov._profileData.profile.emergency = emerg; MembersRender.switchTab('profile'); }
-    }
+      if (action === 'edit-cancel') {
+        document.getElementById('edit-overlay')?.remove();
+      }
 
-    if (action === 'emerg-del') {
-      const idx = Number(t.dataset.idx);
-      const profile = window.APP?.profile;
-      if (!profile) return;
-      const emerg = (profile.emergency||[]).filter((_,i) => i!==idx);
-      await MembersFirebase.updateProfile(profile.uid, {emergency:emerg});
-      profile.emergency = emerg;
-      const ov = document.getElementById('profile-overlay');
-      if (ov?._profileData) { ov._profileData.profile.emergency = emerg; MembersRender.switchTab('profile'); }
-    }
+      if (action === 'edit-tab') {
+        _switchEditTab(t.dataset.tab);
+      }
 
-    if (action === 'gear-add' || action === 'gear-del') {
-      // Обрабатывается в GearModule
-      return;
-    }
-  });
+      if (action === 'edit-av') {
+        document.querySelectorAll('#edit-overlay .ob-av-btn').forEach(b => b.classList.remove('sel'));
+        t.classList.add('sel');
+      }
 
-  /* ── Helpers ── */
-  function _esc(s) {
-    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-  }
+      if (action === 'edit-blood') {
+        document.querySelectorAll('#edit-overlay .ob-blood-btn').forEach(b => b.classList.remove('sel'));
+        t.classList.add('sel');
+      }
 
-  function destroy() {
-    if (_unsub) { _unsub(); _unsub = null; }
+      if (action === 'emerg-add') {
+        const name  = prompt('Имя и кем приходится (напр. Анна, жена)');
+        if (!name?.trim()) return;
+        const phone = prompt('Телефон');
+        if (!phone?.trim()) return;
+        const profile = window.APP?.profile;
+        if (!profile) return;
+        const emerg = [...(profile.emergency||[]), {name:name.trim(), phone:phone.trim()}];
+        await MembersFirebase.updateProfile(profile.uid, {emergency:emerg});
+        profile.emergency = emerg;
+        const ov = document.getElementById('profile-overlay');
+        if (ov?._profileData) { ov._profileData.profile.emergency = emerg; MembersRender.switchTab('profile'); }
+      }
+
+      if (action === 'emerg-del') {
+        const idx = Number(t.dataset.idx);
+        const profile = window.APP?.profile;
+        if (!profile) return;
+        const emerg = (profile.emergency||[]).filter((_,i) => i!==idx);
+        await MembersFirebase.updateProfile(profile.uid, {emergency:emerg});
+        profile.emergency = emerg;
+        const ov = document.getElementById('profile-overlay');
+        if (ov?._profileData) { ov._profileData.profile.emergency = emerg; MembersRender.switchTab('profile'); }
+      }
+
+      if (action === 'gear-add' || action === 'gear-del') {
+        return;
+      }
+    });
   }
 
   return { init, destroy };

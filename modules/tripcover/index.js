@@ -328,7 +328,7 @@ const TripCoverIndex = (() => {
     el.querySelector('#coverEnter')?.addEventListener('click', () => {
       hide();
       AppNav.setMode('trip', 'guide');
-      AppRouter.show('guide');
+      if (typeof AppRouter !== 'undefined') AppRouter.show('guide');
 
       const trip    = TripsData.getById(_tripId);
 
@@ -513,28 +513,6 @@ const TripCoverIndex = (() => {
   }
 
 
-
-  // Helpers
-  function _dateRange(start, end) {
-    if (!start) return '';
-    const s = new Date(start), e = new Date(end);
-    if (start === end) return `${s.getDate()} ${MONTHS_GEN[s.getMonth()]} ${s.getFullYear()}`;
-    if (s.getMonth() === e.getMonth() && s.getFullYear() === e.getFullYear())
-      return `${s.getDate()}–${e.getDate()} ${MONTHS_GEN[s.getMonth()]} ${s.getFullYear()}`;
-    return `${s.getDate()} ${MONTHS_GEN[s.getMonth()]} – ${e.getDate()} ${MONTHS_GEN[e.getMonth()]} ${e.getFullYear()}`;
-  }
-
-  function _seasonEmoji(dateStr) {
-    const m = parseInt(dateStr.slice(5,7));
-    if (m <= 2 || m === 12) return '❄️';
-    if (m <= 4) return '🌱';
-    if (m <= 8) return '☀️';
-    return '🍂';
-  }
-
-  function _esc(s) {
-    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
 
   return { show, hide, getCurrentTripId: () => _tripId };
 })();

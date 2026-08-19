@@ -24,10 +24,10 @@ const MembersFirebase = (() => {
   }
 
   async function updateProfile(uid, changes) {
-    await db.collection('members').doc(uid).update({
-      ...changes,
+    const payload = Object.assign({}, changes, {
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    await db.collection('members').doc(uid).update(payload);
   }
 
   async function deleteProfile(uid) {

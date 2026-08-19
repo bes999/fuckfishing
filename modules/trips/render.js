@@ -135,24 +135,19 @@ const TripsRender = (() => {
   }
 
   function _bind(el) {
-    // Удаляем старый обработчик если был
-    if (el._tripsClickHandler) {
-      el.removeEventListener('click', el._tripsClickHandler);
-    }
-
-    el._tripsClickHandler = e => {
+    el.addEventListener('click', e => {
       // Filter chips
       const chip = e.target.closest('[data-filter]');
       if (chip) {
         _filter = chip.dataset.filter;
-        TripsIndex.render();
+        if (typeof TripsIndex !== 'undefined') TripsIndex.render();
         return;
       }
 
       // Create button
       const createBtn = e.target.closest('[data-action="create"]');
       if (createBtn) {
-        TripsIndex.showCreate();
+        if (typeof TripsIndex !== 'undefined') TripsIndex.showCreate();
         return;
       }
 
@@ -169,10 +164,8 @@ const TripsRender = (() => {
 
       // Trip card
       const card = e.target.closest('[data-trip-id]');
-      if (card) TripsIndex.openTrip(card.dataset.tripId);
-    };
-
-    el.addEventListener('click', el._tripsClickHandler);
+      if (card && typeof TripsIndex !== 'undefined') TripsIndex.openTrip(card.dataset.tripId);
+    });
   }
 
   // Helpers

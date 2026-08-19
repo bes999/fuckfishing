@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>FuckFishing</title>
-
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css">
   <!-- Shared styles -->
   <link rel="stylesheet" href="shared/tokens.css">
   <link rel="stylesheet" href="shared/base.css">
@@ -16,11 +16,18 @@
   <link rel="stylesheet" href="modules/auth/styles.css">
   <link rel="stylesheet" href="modules/members/styles.css">
   <link rel="stylesheet" href="modules/medkit/styles.css">
+  <link rel="stylesheet" href="modules/safety/styles.css">
   <link rel="stylesheet" href="modules/gear/styles.css">
   <link rel="stylesheet" href="modules/home/styles.css">
   <link rel="stylesheet" href="modules/trips/styles.css">
   <link rel="stylesheet" href="modules/tripcover/styles.css">
   <link rel="stylesheet" href="modules/rivers/styles.css">
+  <link rel="stylesheet" href="modules/bar/styles.css">
+  <link rel="stylesheet" href="modules/recipes/styles.css">
+  <link rel="stylesheet" href="modules/menu/styles.css">
+  <link rel="stylesheet" href="modules/shopping/styles.css">
+  <link rel="stylesheet" href="modules/expenses/styles.css">
+  <link rel="stylesheet" href="modules/catches/styles.css">
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -49,10 +56,18 @@
     <div id="p-rivers"  class="page"></div>
     <div id="p-menu"    class="page"></div>
     <div id="p-more"    class="page"></div>
+    <div id="p-recipes" class="page"></div>
+    <div id="p-menu-trip" class="page"></div>
+    <div id="p-shopping" class="page"></div>
+    <div id="p-expenses" class="page"></div>
+    <div id="p-catches" class="page"></div>
 
     <!-- Legacy pages -->
     <div id="p-members" class="page"></div>
     <div id="p-medkit"  class="page"></div>
+    <div id="p-bar" class="page"></div>
+    <div id="p-safety"  class="page"></div>
+    <div id="p-gear" class="page"></div>
   </div>
 
   <!-- Navigation (рендерится сюда) -->
@@ -105,6 +120,52 @@
   <!-- ── Rivers module ── -->
   <script src="modules/rivers/render.js"></script>
   <script src="modules/rivers/index.js"></script>
+  
+  <!-- ── Bar module ── -->
+  <script src="modules/bar/data.js"></script>
+  <script src="modules/bar/state.js"></script>
+  <script src="modules/bar/firebase.js"></script>
+  <script src="modules/bar/render.js"></script>
+  <script src="modules/bar/index.js"></script>
+
+  <!-- ── Recipes module ── -->
+  <script src="modules/recipes/data.js"></script>
+  <script src="modules/recipes/state.js"></script>
+  <script src="modules/recipes/firebase.js"></script>
+  <script src="modules/recipes/render.js"></script>
+  <script src="modules/recipes/index.js"></script>
+
+  <!-- ── Menu module ── -->
+  <script src="modules/menu/data.js"></script>
+  <script src="modules/menu/state.js"></script>
+  <script src="modules/menu/firebase.js"></script>
+  <script src="modules/menu/render.js"></script>
+  <script src="modules/menu/index.js"></script>
+
+  <!-- ── Shopping module ── -->
+  <script src="modules/shopping/data.js"></script>
+  <script src="modules/shopping/state.js"></script>
+  <script src="modules/shopping/firebase.js"></script>
+  <script src="modules/shopping/render.js"></script>
+  <script src="modules/shopping/index.js"></script>
+
+  <!-- ── Expenses module ── -->
+  <script src="modules/expenses/data.js"></script>
+  <script src="modules/expenses/state.js"></script>
+  <script src="modules/expenses/firebase.js"></script>
+  <script src="modules/expenses/render.js"></script>
+  <script src="modules/expenses/index.js"></script>
+
+  <!-- ── Catches module ── -->
+  <script src="modules/catches/data.js"></script>
+  <script src="modules/catches/state.js"></script>
+  <script src="modules/catches/firebase.js"></script>
+  <script src="modules/catches/render.js"></script>
+  <script src="modules/catches/index.js"></script>
+
+  <!-- ── Safety module ── -->
+  <script src="modules/safety/render.js"></script>
+  <script src="modules/safety/index.js"></script>
 
   <!-- ── App init ── -->
   <script>
@@ -115,12 +176,14 @@
       _current: null,
 
       show(pageId) {
-        if (this._current) {
-          document.getElementById('p-' + this._current)?.classList.remove('active');
-        }
-        const el = document.getElementById('p-' + pageId);
-        if (el) el.classList.add('active');
-        this._current = pageId;
+      if (this._current) {
+      document.getElementById('p-' + this._current)?.classList.remove('active');
+      }
+      const el = document.getElementById('p-' + pageId);
+      if (el) el.classList.add('active');
+      this._current = pageId;
+      window.scrollTo(0, 0);
+      if (el) el.scrollTop = 0;
       }
     };
 
@@ -155,16 +218,54 @@
           tripId
         );
       } else if (pageId === 'menu') {
-        AppRouter.show('menu');
-        document.getElementById('p-menu').innerHTML = `
-          <div style="padding:52px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">Меню</div>
-          <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">🚧 В разработке</div>`;
+      AppRouter.show('menu');
+      MenuIndex.show(document.getElementById('p-menu'), window.APP?.currentTripId);
+      
       } else if (pageId === 'more') {
-        AppRouter.show('more');
-        document.getElementById('p-more').innerHTML = `
-          <div style="padding:52px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">Ещё</div>
-          <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">🚧 В разработке</div>`;
-      }
+   AppRouter.show('more');
+  const items = [
+    { id:'bar',      label:'Бар',          icon:'ti-glass-full',     ready:true  },
+    { id:'recipes',  label:'Рецепты',      icon:'ti-clipboard-list', ready:true },
+    { id:'catch',    label:'Улов',         icon:'ti-fish',           ready:true },
+    { id:'gear',     label:'Снаряга',      icon:'ti-backpack',       ready:true  },
+    { id:'expenses', label:'Расходы',      icon:'ti-credit-card',    ready:true },
+    { id:'members',  label:'Участники',    icon:'ti-users',          ready:true  },
+    { id:'medkit',   label:'Аптечка',      icon:'ti-first-aid-kit',  ready:true  },
+    { id:'safety',   label:'Безопасность', icon:'ti-shield',         ready:true  },
+    { id:'menu',     label:'Меню',         icon:'ti-clipboard-list', ready:true },
+    { id:'storage',  label:'Закупка',      icon:'ti-shopping-cart', ready:true },
+  
+  ];
+  document.getElementById('p-more').innerHTML = `
+    <div style="background:var(--topbar-bg);padding:48px 16px 14px">
+      <div style="color:#fff;font-size:18px;font-weight:700">Ещё</div>
+    </div>
+    <div style="padding:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+      ${items.map(it => `
+        <div data-more-id="${it.id}" style="background:var(--bg2);border-radius:14px;border:0.5px solid var(--sep);padding:16px 8px 14px;display:flex;flex-direction:column;align-items:center;gap:8px;cursor:pointer;position:relative;-webkit-tap-highlight-color:transparent;aspect-ratio:1">
+          ${it.ready ? `<div style="width:6px;height:6px;border-radius:50%;background:#34c759;position:absolute;top:8px;right:8px"></div>` : ''}
+          <div style="width:42px;height:42px;border-radius:12px;background:${it.ready ? 'var(--accent-bg)' : 'rgba(128,128,128,0.08)'};display:flex;align-items:center;justify-content:center">
+            <i class="ti ${it.icon}" style="font-size:21px;color:${it.ready ? 'var(--accent)' : 'var(--label4)'}"></i>
+          </div>
+          <div style="font-size:12px;font-weight:500;color:${it.ready ? 'var(--label)' : 'var(--label4)'};text-align:center">${it.label}</div>
+        </div>`).join('')}
+    </div>`;
+  document.getElementById('p-more').querySelectorAll('[data-more-id]').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.moreId;
+      if (id === 'bar') { AppRouter.show('bar'); BarIndex.show(document.getElementById('p-bar')); }
+      else if (id === 'gear') {AppRouter.show('gear'); const uid = window.APP?.profile?.uid; if (uid) GearModule.init(uid, true, document.getElementById('p-gear'));}
+      else if (id === 'medkit') { AppRouter.show('medkit'); if (typeof rMedkit === 'function') rMedkit(); }
+      else if (id === 'members') { AppRouter.show('members'); const uid = window.APP?.profile?.uid; if (uid) MembersRender.showProfile(uid, uid); }
+      else if (id === 'recipes') { AppRouter.show('recipes'); RecipesIndex.show(document.getElementById('p-recipes')); }
+      else if (id === 'menu') { AppRouter.show('menu'); MenuIndex.show(document.getElementById('p-menu'), window.APP?.currentTripId); }
+      else if (id === 'storage') { AppRouter.show('shopping'); ShoppingIndex.show(document.getElementById('p-shopping'), window.APP?.currentTripId); }
+      else if (id === 'expenses') { AppRouter.show('expenses'); ExpensesIndex.show(document.getElementById('p-expenses'), window.APP?.currentTripId); }
+      else if (id === 'catch') { AppRouter.show('catches'); CatchesIndex.show(document.getElementById('p-catches'), window.APP?.currentTripId); }
+      else if (id === 'safety') { AppRouter.show('safety'); SafetyIndex.show(document.getElementById('p-safety'), () => onNavigate('more')); }
+    });
+  });
+  }
       AppNav.setActive(pageId);
     }
 

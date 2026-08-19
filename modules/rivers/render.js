@@ -169,6 +169,8 @@ var RiversRender = (function () {
     h += _fishSelect('rv-c-fish');
     h += '    <input class="rv-catch-num" id="rv-c-cnt" type="number" value="1" min="1">';
     h += '  </div>';
+    // [PATCH] добавляем выбор участника
+    h += '  ' + _memberSelect('rv-c-member');
     h += '  <div class="rv-tog-row">';
     h += '    <button class="rv-tog active" id="rv-tog-kept" data-kept="1">Взяли</button>';
     h += '    <button class="rv-tog" id="rv-tog-rel" data-kept="0">Отпустили</button>';
@@ -256,10 +258,10 @@ var RiversRender = (function () {
     h += '  <div class="rv-catch-log-title">Улов на этой реке</div>';
     catches.forEach(function (c, i) {
       h += '<div class="rv-catch-entry" data-catch-idx="' + (c._idx !== undefined ? c._idx : i) + '">';
-      h += '  <span class="rv-catch-entry-l">' + c.fish + ' · ' + c.count + ' шт</span>';
+      h += '  <span class="rv-catch-entry-l">' + c.fish + ' · ' + c.count + ' шт' + (c.member ? ' <span style="color:var(--label3);font-size:12px">· ' + c.member + '</span>' : '') + '</span>';
       h += '  <span style="display:flex;align-items:center">';
-      h += '    <span class="rv-catch-entry-r">' + (c.kept ? 'взяли' : 'отпустили') + '</span>';
-      h += '    <span class="rv-catch-del" data-catch-del="' + (c._idx !== undefined ? c._idx : i) + '">×</span>';
+      h += '  <span class="rv-catch-entry-r">' + (c.kept ? 'взяли' : 'отпустили') + '</span>';
+      h += '  <span class="rv-catch-del" data-catch-del="' + (c._idx !== undefined ? c._idx : i) + '">×</span>';
       h += '  </span>';
       h += '</div>';
     });
@@ -275,6 +277,27 @@ var RiversRender = (function () {
       .replace(/"/g, '&quot;');
   }
 
+  function _memberSelect(id) {
+    // Берём участников из CatchesState если модуль загружен
+    var members = [];
+    var tripId  = window.APP && window.APP.currentTripId;
+    if (tripId && typeof CatchesState !== 'undefined') {
+      members = CatchesState.getMembers(tripId);
+    }
+    // Fallback: из participants поездки
+    if (!members.length && window.APP && window.APP.currentTripData) {
+      members = window.APP.currentTripData.participants || [];
+    }
+ 
+    var h = '<select class="rv-catch-sel rv-catch-member" id="' + id + '" style="margin-bottom:8px">';
+    h += '<option value="">Участник...</option>';
+    members.forEach(function(m) {
+      h += '<option value="' + m + '">' + m + '</option>';
+    });
+    h += '</select>';
+    return h;
+  }
+
   /* public */
-  return { list: list, detail: detail, catchLog: _catchLog, pointsList: _pointsList, navUrl: _navUrl };
+  return { list: list, detail: detail, catchLog: _catchLog, pointsList: _pointsList, navUrl: _navUrl, memberSelect: _memberSelect };
 })();

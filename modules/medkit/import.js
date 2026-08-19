@@ -11,7 +11,9 @@ function importFromBase(mode, memberId) {
     if (group.availableIn.indexOf(mode) < 0) continue;
 
     // пропускаем опциональные — пусть пользователь включает сам
-    if (group.personalOptional) continue;
+    // FIX: проверяем optional-флаг соответствующий текущему режиму
+    if (mode === 'personal' && group.personalOptional) continue;
+    if (mode === 'common' && group.commonOptional) continue;
 
     for (var i = 0; i < group.items.length; i++) {
       var item = group.items[i];

@@ -81,7 +81,7 @@ var AppNav = (function () {
     tabs.forEach(function (tab) {
       var isActive = tab.id === _active;
       h += '<div class="bnav' + (isActive ? ' active' : '') + '" data-nav-id="' + tab.id + '">';
-      h += '  <div class="bnav-active-dot"></div>';
+      h += '  <div class="bnav-dot"></div>';
       h += '  <svg viewBox="0 0 24 24">' + tab.svg + '</svg>';
       h += '  ' + tab.label;
       h += '</div>';

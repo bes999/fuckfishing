@@ -9,6 +9,8 @@
   display: none;
   flex-direction: column;
   min-height: 100vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .page.active { display: flex; }
 
@@ -33,7 +35,9 @@
 
 /* Страницы участников и аптечки (рендерятся в #p-members / #p-medkit) */
 #p-members,
-#p-medkit {
+#p-medkit,
+#p-catches,
+#p-safety {
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding-bottom: calc(83px + env(safe-area-inset-bottom));
