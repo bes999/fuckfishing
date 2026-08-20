@@ -264,6 +264,9 @@
       } else if (pageId === 'medkit') {
         AppRouter.show('medkit');
         if (typeof rMedkit === 'function') rMedkit();
+      } else if (pageId === 'medkit-reference') {
+        AppRouter.show('medkit');
+        if (typeof setMedkitMode === 'function') setMedkitMode('reference');
       } else if (pageId === 'safety') {
         AppRouter.show('safety');
         SafetyIndex.show(document.getElementById('p-safety'), () => onNavigate('home'));

@@ -23,7 +23,7 @@ function rMedkit() {
   h += '<div class="tb2">' + (mode === 'common' ? 'Общая' : 'Личная — ' + escHtml(getMemberName(memberId))) + ' · ' + progress.done + ' / ' + progress.total + '</div></div>';
   h += '<div class="tb-right">';
   h += '<span class="tb-sync" id="syncStatus"></span>';
-  h += '<button class="tb-btn" onclick="showMedkitImport()">⬇ Импорт</button>';
+  if (mode !== 'reference') h += '<button class="tb-btn" onclick="showMedkitImport()">⬇ Импорт</button>';
   h += '<button class="tb-btn" onclick="showMedkitSettings()">···</button>';
   h += '</div></div>';
 
@@ -632,7 +632,6 @@ function updateEmergencyList() {
   if (el) el.innerHTML = rEmergencyList(filtered);
 }
 
-function showMedkitImport() { alert('Импорт — будет реализован'); }
 function showMedkitSettings() { alert('Настройки — будет реализован'); }
 function showAddMedkitGroup() { alert('Добавить категорию — будет реализован'); }
 function showAddMedkitSlot(mode) { alert('Добавить место — будет реализован'); }

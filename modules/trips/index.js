@@ -7,6 +7,7 @@ const TripsIndex = (() => {
   let _draft = {};
   let _rivers = [];
   let _importedData = null;   // JSON от AI для экспедиций
+  let _dateTouched = false;   // true, если пользователь сам менял поля дат (не просто дефолт "сегодня")
   let _editMode   = false;    // true = редактирование существующей поездки
   let _editTripId = null;     // id редактируемой поездки
 
@@ -30,6 +31,7 @@ const TripsIndex = (() => {
   function showCreate(prefillDate) {
     _createStep = 0;
     _importedData = null;
+    _dateTouched = !!prefillDate;
     _draft = {
       type: 'fishing',
       name: '',
@@ -51,6 +53,7 @@ const TripsIndex = (() => {
     _editTripId = tripId;
     _createStep = 0;
     _importedData = trip.importData || null;
+    _dateTouched = true;
 
     _draft = {
       type:         trip.type,
@@ -372,6 +375,10 @@ const TripsIndex = (() => {
   }
 
   function _bindCreate(overlay) {
+    // Даты — если пользователь сам меняет поля, больше не даём импорту их перезаписать
+    document.getElementById('f-start')?.addEventListener('input', () => { _dateTouched = true; });
+    document.getElementById('f-end')?.addEventListener('input', () => { _dateTouched = true; });
+
     // Тип
     overlay.querySelectorAll('[data-type]').forEach(opt => {
       opt.addEventListener('click', () => {
@@ -389,8 +396,8 @@ const TripsIndex = (() => {
     // Кнопка назад
     document.getElementById('createBack')?.addEventListener('click', () => {
       if (_createStep === 0) { _closeCreate(); return; }
-      _createStep--;
       _saveCurrentFields();
+      _createStep--;
       _refreshCreate();
     });
 
@@ -515,9 +522,9 @@ const TripsIndex = (() => {
 
         // Автозаполнение полей из meta если пустые
         if (data.meta) {
-          if (data.meta.title       && !_draft.name)      _draft.name      = data.meta.title;
-          if (data.meta.dateFrom    && !_draft.startDate) _draft.startDate = data.meta.dateFrom;
-          if (data.meta.dateTo      && !_draft.endDate)   _draft.endDate   = data.meta.dateTo;
+          if (data.meta.title       && !_draft.name)   _draft.name      = data.meta.title;
+          if (data.meta.dateFrom    && !_dateTouched)  _draft.startDate = data.meta.dateFrom;
+          if (data.meta.dateTo      && !_dateTouched)  _draft.endDate   = data.meta.dateTo;
           if (data.meta.people      && !_draft.participants?.length) {
             // Оставляем пустым — пользователь заполнит имена, но people используется при сохранении
             _draft._people = data.meta.people;

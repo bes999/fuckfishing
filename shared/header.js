@@ -24,9 +24,10 @@ const AppHeader = (() => {
   let _open = false;
 
   const PERSONAL_ITEMS = [
-    { id: 'gear',     label: 'Снаряга',   icon: 'ti-backpack' },
-    { id: 'medkit',   label: 'Аптечка',   icon: 'ti-first-aid-kit' },
-    { id: 'members',  label: 'Участники', icon: 'ti-users' },
+    { id: 'gear',             label: 'Снаряга',   icon: 'ti-backpack' },
+    { id: 'medkit',           label: 'Аптечка',   icon: 'ti-first-aid-kit' },
+    { id: 'members',          label: 'Участники', icon: 'ti-users' },
+    { id: 'medkit-reference', label: 'Справка',   icon: 'ti-list' },
   ];
 
   const TRIP_ITEMS = [
