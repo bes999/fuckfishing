@@ -269,8 +269,13 @@ const MembersRender = (() => {
   /* ══════════════════════════════════════════════
      INVITE
   ══════════════════════════════════════════════ */
-  function showInvite() {
-    const url = window.location.href.split('?')[0].split('#')[0];
+  function showInvite(tripId, tripName) {
+    const base = window.location.href.split('?')[0].split('#')[0];
+    const url = tripId ? `${base}?joinTrip=${encodeURIComponent(tripId)}` : base;
+    const title = tripId ? `Пригласить в «${tripName || 'поездку'}»` : 'Пригласить участника';
+    const desc = tripId
+      ? 'Отправь ссылку — человек войдёт через Google или email и сразу попадёт в эту поездку.'
+      : 'Отправь ссылку — участник войдёт через Google или email и появится в списке.';
     const overlay = document.createElement('div');
     overlay.className = 'profile-overlay';
     overlay.id = 'invite-overlay';
@@ -278,9 +283,9 @@ const MembersRender = (() => {
       <div class="profile-sheet">
         <div class="profile-grab"></div>
         <div class="profile-scroll">
-          <div class="modal-title" style="margin-bottom:8px">Пригласить участника</div>
+          <div class="modal-title" style="margin-bottom:8px">${_esc(title)}</div>
           <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
-            Отправь ссылку — участник войдёт через Google или email и появится в списке.
+            ${_esc(desc)}
           </p>
           <div class="invite-url">${_esc(url)}</div>
           <button class="action-btn" data-action="invite-copy">📋 Скопировать ссылку</button>

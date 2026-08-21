@@ -312,7 +312,46 @@
           TripsIndex.init(document.getElementById('p-trips'));
 
           _tripsBooted = true;
+
+          _processJoinInvite();
         });
+    }
+
+    // Ссылка-приглашение в конкретную поездку (?joinTrip=<id>) — переживает
+    // и Google-попап, и онбординг нового пользователя, т.к. ни то, ни
+    // другое не уводит со страницы. Обрабатывается один раз здесь, когда
+    // кэш поездок уже точно наполнен.
+    function _processJoinInvite() {
+      const tripId = new URLSearchParams(location.search).get('joinTrip');
+      if (!tripId) return;
+
+      // Чистим URL сразу — обновление страницы не должно повторять вступление
+      history.replaceState(null, '', location.pathname + location.hash);
+
+      const trip = TripsData.getById(tripId);
+      if (!trip) { alert('Ссылка на поездку недействительна — возможно, поездку удалили.'); return; }
+
+      const uid  = window.APP?.user?.uid;
+      const name = window.APP?.profile?.displayName || '';
+
+      if (uid && (trip.memberIds || []).includes(uid)) {
+        TripCoverIndex.show(tripId);
+        return;
+      }
+
+      UIUtils.confirmSheet(`Присоединиться к поездке «${trip.name}»?`, {
+        title: 'Приглашение в поездку', okLabel: 'Присоединиться', danger: false
+      }).then(ok => {
+        if (!ok) return;
+
+        const participants = trip.participants || [];
+        const nameAlreadyListed = participants.some(p => p.toLowerCase() === name.toLowerCase());
+        const newParticipants = nameAlreadyListed || !name ? participants : [...participants, name];
+        const newMemberIds = uid ? [...new Set([...(trip.memberIds || []), uid])] : (trip.memberIds || []);
+
+        TripsData.updateTrip(tripId, { participants: newParticipants, memberIds: newMemberIds })
+          .then(() => TripCoverIndex.show(tripId));
+      });
     }
 
     // Запуск auth (startApp будет вызван из _boot() в auth/index.js)
