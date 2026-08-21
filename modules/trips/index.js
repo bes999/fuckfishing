@@ -419,7 +419,7 @@ const TripsIndex = (() => {
     document.getElementById('createSave')?.addEventListener('click', e => {
       UIUtils.withBusyButton(e.currentTarget, () => {
         _saveCurrentFields();
-        _save();
+        return _save();
       });
     });
 
@@ -587,7 +587,7 @@ const TripsIndex = (() => {
     return 'upcoming';
   }
 
-  function _save() {
+  async function _save() {
     const isExp = _draft.type === 'expedition';
 
     // Реки для экспедиции — из importedData или пустые
@@ -595,13 +595,17 @@ const TripsIndex = (() => {
       ? (_importedData?.rivers?.map(r => ({ name: r.name, region: r.type || '' })) || [])
       : _rivers;
 
+    const participants = _draft.participants || [];
+    const memberIds = await _matchMemberIds(participants);
+
     const trip = {
       type:      _draft.type,
       name:      _draft.name || _autoName(),
       startDate: _draft.startDate,
       endDate:   _draft.endDate || _draft.startDate,
       rivers,
-      participants: _draft.participants || [],
+      participants,
+      memberIds,
       comment:   _draft.comment || '',
       status:    _tripStatus(_draft.startDate, _draft.endDate || _draft.startDate),
       rating:    null,
@@ -617,22 +621,41 @@ const TripsIndex = (() => {
     if (_editMode && _editTripId) {
       // В режиме редактирования сохраняем существующие данные рейтинга, улова и т.д.
       const existing = TripsData.getById(_editTripId);
-      TripsData.updateTrip(_editTripId, {
+      await TripsData.updateTrip(_editTripId, {
         name:        trip.name,
         startDate:   trip.startDate,
         endDate:     trip.endDate,
         rivers:      trip.rivers,
         participants: trip.participants,
+        memberIds:   trip.memberIds,
         comment:     trip.comment,
         status:      trip.status,
         importData:  trip.importData !== undefined ? trip.importData : (existing?.importData || null),
       });
     } else {
-      TripsData.addTrip(trip);
+      trip.ownerId = window.APP?.user?.uid || null;
+      await TripsData.addTrip(trip);
     }
     _closeCreate();
     render();
     if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+  }
+
+  // Сопоставляет вписанные вручную имена участников с реальными профилями
+  // (по displayName, без учёта регистра) — задел на будущее приглашение
+  // в поездку и роли. Само поле participants (строки) не меняется — от
+  // него по-прежнему зависят Расходы/Улов/Реки/Безопасность/CSV-экспорт.
+  async function _matchMemberIds(participants) {
+    if (!participants.length || typeof MembersFirebase === 'undefined') return [];
+    try {
+      const members = await MembersFirebase.getAllMembers();
+      const byName = new Map(members.map(m => [(m.displayName || '').trim().toLowerCase(), m.uid]));
+      return participants
+        .map(name => byName.get(String(name).trim().toLowerCase()))
+        .filter(Boolean);
+    } catch (e) {
+      return [];
+    }
   }
 
   function _closeCreate() {

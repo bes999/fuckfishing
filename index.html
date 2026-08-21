@@ -104,6 +104,8 @@
   <script src="modules/medkit/index.js"></script>
 
   <!-- ── Trips data (shared between home & trips pages) ── -->
+  <script src="modules/trips/firebase.js"></script>
+  <script src="modules/trips/state.js"></script>
   <script src="modules/trips/data.js"></script>
 
   <!-- ── Navigation ── -->
@@ -277,20 +279,40 @@
     }
 
     // Запуск после авторизации
+    let _tripsBooted = false;
+
     function startApp(user) {
-      // Загружаем данные
-      TripsData.load();
+      // Реалтайм-подписка на поездки (Firestore) — держим кэш (TripsState)
+      // актуальным на весь сеанс. До первого снапшота — просто наполняем
+      // кэш молча; после того как страницы уже инициализированы (см. ниже),
+      // каждый новый снапшот перерисовывает Главную и Поездки.
+      TripsFirebase.listen(trips => {
+        TripsState.setTrips(trips);
+        if (_tripsBooted) {
+          if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+          if (typeof TripsIndex !== 'undefined') TripsIndex.render();
+        }
+      });
 
-      // Инициализируем навбар и сквозную шапку
-      AppNav.init(onNavigate);
-      AppHeader.init(onNavigate);
+      // Ждём первый снапшот (обычно почти мгновенно — офлайн-персистентность
+      // включена в shared/config.js), затем один раз мигрируем локальные
+      // поездки, которых ещё нет в Firestore, и только после этого
+      // инициализируем страницы — так сохраняется прежняя гарантия "к
+      // моменту первого рендера данные уже есть".
+      TripsFirebase.ready()
+        .then(() => TripsData.migrateFromLocalStorage())
+        .catch(() => {})
+        .then(() => {
+          AppNav.init(onNavigate);
+          AppHeader.init(onNavigate);
 
-      // Показываем главную
-      AppRouter.show('home');
-      HomeIndex.init(document.getElementById('p-home'), user);
+          AppRouter.show('home');
+          HomeIndex.init(document.getElementById('p-home'), user);
 
-      // Инициализируем страницу поездок (лениво)
-      TripsIndex.init(document.getElementById('p-trips'));
+          TripsIndex.init(document.getElementById('p-trips'));
+
+          _tripsBooted = true;
+        });
     }
 
     // Запуск auth (startApp будет вызван из _boot() в auth/index.js)

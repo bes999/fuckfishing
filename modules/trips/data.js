@@ -1,10 +1,18 @@
 'use strict';
 
+// Фасад над TripsState (синхронный кэш) + TripsFirebase (запись в Firestore).
+// Публичный API специально не поменялся относительно старой чисто-localStorage
+// версии — все страницы продолжают звать TripsData.getAll()/getById()/... как
+// раньше, синхронно; данные под капотом теперь настоящие и общие для всех
+// устройств/участников, а не заперты в localStorage одного браузера.
 const TripsData = (() => {
 
   const KEY = 'ff_trips';
+  const MIGRATED_KEY = 'ff_trips_migrated_v1';
 
-  // Дефолтные данные (Сахалин уже есть)
+  // Дефолтные данные — используются только как источник для одноразовой
+  // миграции, если в этом браузере ещё не было ни одного запуска с Firestore
+  // и localStorage тоже пуст (самый первый запуск приложения когда-либо).
   const _defaults = {
     trips: [
       {
@@ -109,147 +117,58 @@ const TripsData = (() => {
     ]
   };
 
-  let _state = null;
+  // --- Одноразовая миграция localStorage → Firestore ---
+  // Заливает в Firestore те локальные поездки, которых там ещё нет (по id).
+  // Идемпотентна: повторный вызов при уже стоящем флаге ничего не делает.
+  function migrateFromLocalStorage() {
+    if (localStorage.getItem(MIGRATED_KEY)) return Promise.resolve();
 
-  // --- Load ---
-  function load() {
+    let local;
     try {
       const raw = localStorage.getItem(KEY);
-      _state = raw ? JSON.parse(raw) : JSON.parse(JSON.stringify(_defaults));
-    } catch(e) {
-      _state = JSON.parse(JSON.stringify(_defaults));
+      local = raw ? JSON.parse(raw).trips : _defaults.trips;
+    } catch (e) {
+      local = _defaults.trips;
     }
-    return _state;
+    if (!Array.isArray(local)) local = [];
+
+    const existingIds = new Set(TripsState.getAll().map(t => t.id));
+    const missing = local.filter(t => t && t.id && !existingIds.has(t.id));
+
+    if (!missing.length) {
+      localStorage.setItem(MIGRATED_KEY, '1');
+      return Promise.resolve();
+    }
+
+    return Promise.all(missing.map(t => TripsFirebase.addTrip(t)))
+      .then(() => { localStorage.setItem(MIGRATED_KEY, '1'); })
+      .catch(e => { console.warn('trips migration:', e); });
   }
 
-  // --- Save ---
-  function save() {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(_state));
-    } catch(e) {}
-  }
+  // --- Чтение — синхронно, из кэша (TripsState) ---
+  function getAll()             { return TripsState.getAll(); }
+  function getById(id)          { return TripsState.getById(id); }
+  function getUpcoming()        { return TripsState.getUpcoming(); }
+  function getByYear()          { return TripsState.getByYear(); }
+  function getCalendarMarkers() { return TripsState.getCalendarMarkers(); }
+  function getYearStats(year)   { return TripsState.getYearStats(year); }
 
-  // Статус — идёт ли поездка прямо сейчас (между startDate и endDate).
-  // Пересчитывается при каждом чтении списка, а не только при сохранении
-  // поездки — иначе поездка "upcoming" остаётся такой в интерфейсе и
-  // после того, как она уже фактически началась, до первого редактирования.
-  function _liveStatus(trip) {
-    if (!trip.startDate) return trip.status;
-    const now = new Date();
-    const start = new Date(trip.startDate);
-    const end = new Date(trip.endDate || trip.startDate);
-    end.setHours(23, 59, 59, 999);
-    if (end < now) return 'done';
-    if (start <= now) return 'active';
-    return 'upcoming';
-  }
-
-  // --- Get all ---
-  function getAll() {
-    if (!_state) load();
-    _state.trips.forEach(t => {
-      // "done" поездки не трогаем — рейтинг/улов проставляются вручную
-      // после возвращения, дата тут не должна ничего перезаписывать.
-      if (t.status !== 'done') t.status = _liveStatus(t);
-    });
-    return _state.trips;
-  }
-
-  // --- Get by id ---
-  function getById(id) {
-    return getAll().find(t => t.id === id) || null;
-  }
-
-  // --- Get upcoming (nearest future trip) ---
-  function getUpcoming() {
-    const now = new Date();
-    return getAll()
-      .filter(t => t.status === 'upcoming' || t.status === 'active')
-      .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))[0] || null;
-  }
-
-  // --- Get grouped by year ---
-  function getByYear() {
-    const trips = getAll().slice().sort((a, b) =>
-      new Date(b.startDate) - new Date(a.startDate)
-    );
-    const years = {};
-    trips.forEach(t => {
-      const y = t.startDate.slice(0, 4);
-      if (!years[y]) years[y] = [];
-      years[y].push(t);
-    });
-    return years;
-  }
-
-  // --- Get calendar markers ---
-  function getCalendarMarkers() {
-    const markers = {};
-    getAll().forEach(t => {
-      const start = new Date(t.startDate);
-      const end = new Date(t.endDate);
-      let cur = new Date(start);
-      while (cur <= end) {
-        const key = cur.toISOString().slice(0, 10);
-        const isFuture = cur >= new Date();
-        markers[key] = {
-          type: t.type,
-          status: t.status,
-          tripId: t.id,
-          isFuture
-        };
-        cur.setDate(cur.getDate() + 1);
-      }
-    });
-    return markers;
-  }
-
-  // --- Stats for current year ---
-  function getYearStats(year) {
-    const trips = getAll().filter(t => {
-      return t.startDate.startsWith(year) && t.status === 'done';
-    });
-    let fishCount = 0;
-    const species = new Set();
-    trips.forEach(t => {
-      (t.fish || []).forEach(f => {
-        fishCount += f.count || 0;
-        if (f.species) species.add(f.species);
-      });
-    });
-    return {
-      trips: trips.length,
-      fish: fishCount,
-      species: species.size
-    };
-  }
-
-  // --- Add trip ---
+  // --- Запись — асинхронно, через Firestore ---
   function addTrip(trip) {
-    if (!_state) load();
     trip.id = trip.id || 'trip_' + Date.now();
-    trip.createdAt = new Date().toISOString().slice(0, 10);
-    _state.trips.unshift(trip);
-    save();
-    return trip;
+    trip.createdAt = trip.createdAt || new Date().toISOString().slice(0, 10);
+    return TripsFirebase.addTrip(trip);
   }
 
-  // --- Update trip ---
   function updateTrip(id, changes) {
-    if (!_state) load();
-    const idx = _state.trips.findIndex(t => t.id === id);
-    if (idx < 0) return null;
-    Object.assign(_state.trips[idx], changes);
-    save();
-    return _state.trips[idx];
+    return TripsFirebase.updateTrip(id, changes);
   }
 
-  // --- Update readiness ---
   function updateReadiness(tripId, key, val) {
     const trip = getById(tripId);
-    if (!trip || !trip.readiness) return;
+    if (!trip || !trip.readiness) return Promise.resolve();
     trip.readiness[key] = val;
-    save();
+    return TripsFirebase.updateTrip(tripId, { readiness: trip.readiness });
   }
 
   // --- Status label ---
@@ -262,5 +181,10 @@ const TripsData = (() => {
     return { upcoming: 'badge-soon', active: 'badge-active', done: 'badge-done' }[status] || 'badge-done';
   }
 
-  return { load, getAll, getById, getUpcoming, getByYear, getCalendarMarkers, getYearStats, addTrip, updateTrip, updateReadiness, statusLabel, statusClass };
+  return {
+    migrateFromLocalStorage,
+    getAll, getById, getUpcoming, getByYear, getCalendarMarkers, getYearStats,
+    addTrip, updateTrip, updateReadiness,
+    statusLabel, statusClass,
+  };
 })();
