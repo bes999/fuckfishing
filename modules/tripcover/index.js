@@ -22,6 +22,26 @@ const TripCoverIndex = (() => {
     const trip = TripsData.getById(tripId);
     if (!trip) return;
 
+    // Для завершённых поездок обложка показывает живую статистику улова
+    // и расходов — подтягиваем её один раз (не через listen(), чтобы не
+    // оборвать подписку уже открытых страниц Улов/Расходы) перед рендером.
+    if (trip.status === 'done') {
+      Promise.all([
+        CatchesFirebase.getOnce(tripId),
+        ExpensesFirebase.getOnce(tripId)
+      ]).then(([catches, expenseData]) => {
+        CatchesState.setCatches(tripId, catches);
+        ExpensesState.setExpenses(tripId, expenseData.expenses);
+        ExpensesState.setSettlements(tripId, expenseData.settlements);
+        _renderCover(trip);
+      });
+      return;
+    }
+
+    _renderCover(trip);
+  }
+
+  function _renderCover(trip) {
     document.getElementById('trip-cover')?.remove();
 
     const el = document.createElement('div');
@@ -188,39 +208,58 @@ const TripCoverIndex = (() => {
         </div>`;
     }
 
-    // Stats
-    const totalFish = (t.fish||[]).reduce((s,f) => s + (f.count||0), 0);
-    const species   = (t.fish||[]).length;
-    if (totalFish) {
+    // Улов — живые данные (modules/catches/state.js), не старое статичное t.fish
+    const stats = typeof CatchesState !== 'undefined' ? CatchesState.computeStats(t.id) : null;
+    if (stats && stats.total) {
       h += `
         <div class="cover-section">
           <div class="cover-stats-grid">
             <div class="cover-stat">
-              <div class="cover-stat-num">${totalFish}</div>
+              <div class="cover-stat-num">${stats.total}</div>
               <div class="cover-stat-label">рыб поймано</div>
             </div>
             <div class="cover-stat">
-              <div class="cover-stat-num">${species}</div>
-              <div class="cover-stat-label">${species === 1 ? 'вид' : 'вида'}</div>
+              <div class="cover-stat-num">${stats.species}</div>
+              <div class="cover-stat-label">${stats.species === 1 ? 'вид' : 'вида'}</div>
             </div>
           </div>
         </div>`;
+      h += _barSection('Видовой состав', stats.topFish, '🐟', 'шт');
+      h += _barSection('По участникам', stats.topMembers, '🎣', 'шт');
+      h += _barSection('По рекам', stats.topRivers, '📍', 'шт');
     }
 
-    // Fish breakdown
-    if (t.fish && t.fish.length) {
-      const max = Math.max(...t.fish.map(f => f.count));
+    // Расходы — живые данные (modules/expenses/state.js)
+    const money = typeof ExpensesState !== 'undefined' ? ExpensesState.computeSummary(t.id) : null;
+    if (money && money.total) {
       h += `
         <div class="cover-section">
-          <div class="cover-section-head"><div class="cover-section-title">Видовой состав</div></div>
-          ${t.fish.map(f => `
-            <div class="cover-fish-row">
-              <div class="cover-fish-name">🐟 ${_esc(f.species)}</div>
-              <div class="cover-fish-bar-wrap">
-                <div class="cover-fish-bar" style="width:${Math.round(f.count/max*100)}%"></div>
-              </div>
-              <div class="cover-fish-count">${f.count} шт</div>
-            </div>`).join('')}
+          <div class="cover-section-head"><div class="cover-section-title">Расходы</div></div>
+          <div class="cover-stats-grid">
+            <div class="cover-stat">
+              <div class="cover-stat-num">${_rub(money.total)}</div>
+              <div class="cover-stat-label">всего</div>
+            </div>
+            <div class="cover-stat">
+              <div class="cover-stat-num">${_rub(money.avgShare)}</div>
+              <div class="cover-stat-label">на человека</div>
+            </div>
+          </div>
+          ${money.rows.map(r => {
+            const sign = r.netDiff >= 0 ? '+' : '−';
+            const cls  = r.netDiff >= 0 ? 'pos' : 'neg';
+            return `
+              <div class="cover-money-row">
+                <div class="cover-money-name">${_esc(r.name)}</div>
+                <div class="cover-money-meta">заплатил ${_rub(r.paid)}</div>
+                <div class="cover-money-diff cover-money-diff--${cls}">${sign}${_rub(Math.abs(Math.round(r.netDiff)))}</div>
+              </div>`;
+          }).join('')}
+          ${money.transfers.length ? `
+            <div class="cover-money-transfers">
+              ${money.transfers.map(tr => `
+                <div class="cover-money-transfer">${_esc(tr.from)} → ${_esc(tr.to)} · ${_rub(tr.amount)}</div>`).join('')}
+            </div>` : ''}
         </div>`;
     }
 
@@ -406,6 +445,30 @@ const TripCoverIndex = (() => {
 
   function _esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function _rub(val) {
+    return Math.round(val || 0).toLocaleString('ru-RU') + ' ₽';
+  }
+
+  // Общая полоска "имя + бар + число" — переиспользуется для видового
+  // состава, разбивки по участникам и по рекам (modules/catches/state.js
+  // computeStats уже отдаёт эти три списка в одинаковой форме).
+  function _barSection(title, items, icon, unit) {
+    if (!items || !items.length) return '';
+    const max = Math.max(...items.map(i => i.count));
+    return `
+      <div class="cover-section">
+        <div class="cover-section-head"><div class="cover-section-title">${_esc(title)}</div></div>
+        ${items.map(i => `
+          <div class="cover-fish-row">
+            <div class="cover-fish-name">${icon} ${_esc(i.name)}</div>
+            <div class="cover-fish-bar-wrap">
+              <div class="cover-fish-bar" style="width:${Math.round(i.count/max*100)}%"></div>
+            </div>
+            <div class="cover-fish-count">${i.count} ${unit}</div>
+          </div>`).join('')}
+      </div>`;
   }
 
   // ─── Рендер страницы Гид из importData ───────────────────────────────────

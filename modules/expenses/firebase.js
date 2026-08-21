@@ -36,6 +36,21 @@ const ExpensesFirebase = (() => {
     if (_unsubSettlements) { _unsubSettlements(); _unsubSettlements = null; }
   }
 
+  // Разовое чтение без подписки — для обложки завершённой поездки, чтобы
+  // не обрывать уже идущую (если есть) подписку страницы Расходы.
+  function getOnce(tripId) {
+    return Promise.all([
+      _ref(tripId).collection('expenses').orderBy('createdAt', 'desc').get(),
+      _ref(tripId).collection('settlements').orderBy('createdAt', 'desc').get()
+    ]).then(([expSnap, settleSnap]) => {
+      const expenses = [];
+      expSnap.forEach(doc => expenses.push(ExpensesData.normalizeExpense(doc.data(), doc.id)));
+      const settlements = [];
+      settleSnap.forEach(doc => settlements.push(ExpensesData.normalizeSettlement(doc.data(), doc.id)));
+      return { expenses, settlements };
+    }).catch(e => { console.warn('expenses getOnce:', e); return { expenses: [], settlements: [] }; });
+  }
+
   // ── Expenses ─────────────────────────────────────────────────
 
   function addExpense(tripId, entry) {
@@ -93,7 +108,7 @@ const ExpensesFirebase = (() => {
   }
 
   return {
-    listen, stopListening,
+    listen, stopListening, getOnce,
     addExpense, updateExpense, deleteExpense,
     addSettlement, deleteSettlement,
     saveCategories, loadCategories,

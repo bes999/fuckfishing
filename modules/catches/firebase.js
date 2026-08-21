@@ -51,6 +51,20 @@ const CatchesFirebase = (() => {
     if (_unsub) { _unsub(); _unsub = null; }
   }
 
+  // Разовое чтение без подписки — для обложки завершённой поездки, чтобы
+  // не задевать уже идущую (если есть) подписку страницы Улов.
+  function getOnce(tripId) {
+    return _ref(tripId).collection('catches')
+      .orderBy('createdAt', 'desc')
+      .get()
+      .then(snap => {
+        const arr = [];
+        snap.forEach(doc => arr.push(CatchesData.normalizeCatch(doc.data(), doc.id)));
+        return arr;
+      })
+      .catch(e => { console.warn('catches getOnce:', e); return []; });
+  }
+
   // ── CRUD ─────────────────────────────────────────────────────
 
   function addCatch(tripId, entry) {
@@ -99,7 +113,7 @@ const CatchesFirebase = (() => {
   }
 
   return {
-    listen, stopListening,
+    listen, stopListening, getOnce,
     addCatch, deleteCatch,
     migrateFromLocalStorage,
   };
