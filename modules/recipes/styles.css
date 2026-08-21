@@ -80,7 +80,7 @@
 }
 
 .rec-cards {
-  padding: 10px 12px 32px;
+  padding: 10px 12px calc(83px + env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
   gap: 8px;

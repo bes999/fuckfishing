@@ -270,6 +270,11 @@ const RecipesRender = (() => {
         }
       });
     });
+    // Уже открытые карточки после ре-рендера (refresh() — срабатывает от
+    // каждого снапшота Firestore) отрисовываются сразу с телом внутри
+    // _card(), но их кнопки (рейтинг/комментарий/удаление) без этого
+    // остаются без обработчиков — перепривязываем отдельно.
+    _el.querySelectorAll('.rec-card.open').forEach(card => _bindBodyEvents(card));
   }
 
   function _bindBodyEvents(card) {
