@@ -12,6 +12,7 @@ const BarRender = (() => {
     el.innerHTML = `
       <div class="bar-wrap">
         ${_topbar()}
+        <div class="bar-tabs-label">Напитки на основе</div>
         ${_tabs()}
         <div class="bar-cards" id="bar-cards">
           ${_cards()}
