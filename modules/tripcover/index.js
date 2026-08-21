@@ -590,6 +590,28 @@ const TripCoverIndex = (() => {
       h += _acc('Маршрут по дням', rb, true);
     }
 
+    // ── Меню по дням (из AI-импорта — только чтение; живое планирование
+    // с рецептами остаётся в отдельном разделе «Меню») ──────────────────
+    if (d.menu && d.menu.length) {
+      let mb = '';
+      d.menu.forEach((day, idx) => {
+        const dayId = 'gmenu_' + idx;
+        mb += `<div class="g-day-hd" data-target="${dayId}">
+          <span class="g-day-title">${_esc(day.day)}${day.date ? ' — ' + _esc(day.date) : ''}${day.special ? ' ★' : ''}</span>
+          <span class="g-acc-chev">⌄</span>
+        </div>
+        <div class="g-day-body" id="${dayId}">`;
+        (day.meals || []).forEach(meal => {
+          mb += `<div class="g-row">
+            <span class="g-row-time">${_esc(meal.type)}</span>
+            <span class="g-row-act">${_esc(meal.text)}${meal.cocktail ? ' · 🍸 ' + _esc(meal.cocktail) : ''}</span>
+          </div>`;
+        });
+        mb += `</div>`;
+      });
+      h += _acc('🍽️ Меню', mb, false);
+    }
+
     h += `<div style="height:20px"></div>`;
     return h;
   }
