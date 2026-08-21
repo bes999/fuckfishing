@@ -69,7 +69,7 @@ const GearRender = (() => {
       return _tripSwitcher(activeTripId, tripList) + '<div class="gear-trip-empty">'
         + '<div class="gear-trip-empty-icon">'+ _svg(0, 26) +'</div>'
         + '<div class="gear-trip-empty-t">Снаряга не взята в поездку</div>'
-        + '<div class="gear-trip-empty-s">Зайди в поездку и нажми «Взять мой шаблон»</div>'
+        + '<div class="gear-trip-empty-s">Открой обложку поездки и нажми на иконку снаряги</div>'
         + '</div>';
     }
     return _tripSwitcher(activeTripId, tripList)
@@ -302,7 +302,8 @@ const GearRender = (() => {
   }
 
   function _tripCard(snap) {
-    var date = snap.savedAt ? new Date(snap.savedAt).toLocaleDateString('ru') : '';
+    var date = (snap.updatedAt && typeof snap.updatedAt.toDate === 'function')
+      ? snap.updatedAt.toDate().toLocaleDateString('ru') : '';
     return '<div class="gear-trip-card">'
       + '<div class="gear-trip-name">'+_esc(snap.tripName != null ? snap.tripName : 'Поездка')+'</div>'
       + (date ? '<div class="gear-trip-sub">Снимок от '+date+'</div>' : '')

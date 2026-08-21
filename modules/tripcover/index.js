@@ -80,6 +80,9 @@ const TripCoverIndex = (() => {
           <button class="cover-icon-btn" id="coverInvite" title="Пригласить">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
           </button>
+          <button class="cover-icon-btn" id="coverGear" title="Снаряга">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/><rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 11h16"/><path d="M9 16h.01M15 16h.01"/></svg>
+          </button>
           ${window.APP?.user?.uid === t.ownerId ? `
           <button class="cover-icon-btn" id="coverEdit" title="Редактировать">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -344,6 +347,19 @@ const TripCoverIndex = (() => {
       if (typeof TripsIndex !== 'undefined') TripsIndex.showEdit(_tripId);
     });
 
+    // Снаряга — свой список под эту поездку
+    el.querySelector('#coverGear')?.addEventListener('click', async () => {
+      const uid = window.APP?.user?.uid;
+      if (!uid || typeof GearData === 'undefined') return;
+      await GearData.ensureLoaded(uid);
+      if (GearData.hasTripSnapshot(_tripId)) {
+        hide();
+        _openGear(_tripId);
+      } else {
+        _showGearSourcePicker(trip);
+      }
+    });
+
     // Чекбоксы готовности
     el.addEventListener('click', e => {
       const check = e.target.closest('[data-cover-readiness]');
@@ -486,6 +502,64 @@ const TripCoverIndex = (() => {
         overlay.remove();
         if (typeof onNavigate === 'function') onNavigate('trips');
       }
+    });
+  }
+
+  // ── Снаряга: переход в модуль сразу на вкладке нужной поездки ──
+  function _openGear(tripId) {
+    if (window.APP) window.APP._gearOpenTrip = tripId;
+    if (typeof onNavigate === 'function') onNavigate('gear');
+  }
+
+  // ── Снаряга: пикер источника при первом создании списка под поездку —
+  // с нуля, из личного базового шаблона, или скопировать с любой другой
+  // прошлой поездки пользователя (повторяющиеся направления типа Приобье). ──
+  function _showGearSourcePicker(trip) {
+    const uid = window.APP?.user?.uid;
+    if (!uid || typeof GearData === 'undefined') return;
+    const others = GearData.getTripList(uid).filter(t => t.id !== _tripId);
+
+    document.getElementById('gear-source-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'gear-source-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Список снаряги — «${_esc(trip.name)}»</div>
+        <div class="tqp-list">
+          <div class="tqp-row" data-gear-source="template">
+            <div class="tqp-name">Мой базовый шаблон</div>
+          </div>
+          <div class="tqp-row" data-gear-source="blank">
+            <div class="tqp-name">Создать с нуля</div>
+          </div>
+          ${others.map(t => `
+            <div class="tqp-row" data-gear-source="${t.id}">
+              <div class="tqp-name">Как в «${_esc(t.name)}»</div>
+            </div>`).join('')}
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', async e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const row = e.target.closest('[data-gear-source]');
+      if (!row) return;
+      const source = row.dataset.gearSource;
+      overlay.remove();
+      try {
+        if (typeof GearModule !== 'undefined') {
+          await GearModule.createTripList(uid, _tripId, trip.name, source);
+        }
+      } catch (err) {
+        console.error('GearModule.createTripList:', err);
+        alert('Не удалось создать список снаряги. Проверь соединение и попробуй ещё раз.');
+        return;
+      }
+      hide();
+      _openGear(_tripId);
     });
   }
 

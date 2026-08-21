@@ -186,7 +186,7 @@
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.5);
   display: flex; align-items: flex-end;
-  z-index: 900;
+  z-index: 1200;
   opacity: 0;
   transition: opacity 0.2s;
 }

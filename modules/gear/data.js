@@ -39,47 +39,68 @@ const GearData = (() => {
     });
   }
 
-  /* ── Чекбоксы поездки (localStorage) ── */
+  /* ── Списки снаряги по поездкам (Firestore, gear_trip_snapshots) ──
+     Кэш в памяти на пользователя — читается синхронно всеми остальными
+     функциями ниже, наполняется один раз через ensureLoaded(uid). Видно
+     всем участникам (read: isMember()), редактирует только владелец. */
+  let _snapshots  = {};   // { tripId: {uid, tripId, tripName, locations, categories, items, checked} }
+  let _loadedForUid = null;
+  let _loadPromise  = null;
+
+  function _docId(uid, tripId) { return uid + '_' + tripId; }
+
+  function ensureLoaded(uid) {
+    if (_loadedForUid === uid) return _loadPromise;
+    _loadedForUid = uid;
+    _loadPromise = db.collection('gear_trip_snapshots').where('uid', '==', uid).get()
+      .then(snap => {
+        _snapshots = {};
+        snap.forEach(doc => { _snapshots[doc.data().tripId] = doc.data(); });
+      })
+      .catch(err => {
+        console.error('GearData.ensureLoaded: не удалось загрузить списки поездок', err);
+        _snapshots = {};
+      });
+    return _loadPromise;
+  }
+
+  /* ── Чекбоксы поездки ── */
   function getChecked(uid, tripId) {
-    try {
-      return JSON.parse(localStorage.getItem('gear_checked_' + uid + '_' + tripId) || '[]');
-    } catch (_) { return []; }
+    return (_snapshots[tripId] && _snapshots[tripId].checked) || [];
   }
 
-  function setChecked(uid, tripId, ids) {
-    localStorage.setItem('gear_checked_' + uid + '_' + tripId, JSON.stringify(ids));
+  async function setChecked(uid, tripId, ids) {
+    if (_snapshots[tripId]) _snapshots[tripId].checked = ids;
+    await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId))
+      .set({ checked: ids }, { merge: true })
+      .catch(err => console.error('GearData.setChecked:', err));
   }
 
-  /* ── Снимок шаблона для поездки (localStorage) ── */
+  /* ── Снимок списка для поездки ── */
   function getTripSnapshot(uid, tripId) {
-    try {
-      return JSON.parse(localStorage.getItem('gear_snap_' + uid + '_' + tripId) || 'null');
-    } catch (_) { return null; }
+    return _snapshots[tripId] || null;
   }
 
-  function saveTripSnapshot(uid, tripId, tripName, template) {
+  async function saveTripSnapshot(uid, tripId, tripName, template) {
     const snap = {
-      tripId, tripName,
-      savedAt: Date.now(),
-      locations:  template.locations,
-      categories: template.categories,
-      items:      template.items
+      uid, tripId, tripName,
+      locations:  template.locations  || [],
+      categories: template.categories || [],
+      items:      template.items      || [],
+      checked:    [],
+      updatedAt:  firebase.firestore.FieldValue.serverTimestamp()
     };
-    localStorage.setItem('gear_snap_' + uid + '_' + tripId, JSON.stringify(snap));
-
-    // Обновляем список поездок
-    const trips = getTripList(uid);
-    if (!trips.find(function(t) { return t.id === tripId; })) {
-      trips.push({ id: tripId, name: tripName });
-      localStorage.setItem('gear_trips_' + uid, JSON.stringify(trips));
-    }
+    await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId)).set(snap);
+    _snapshots[tripId] = snap;
     return snap;
   }
 
   function getTripList(uid) {
-    try {
-      return JSON.parse(localStorage.getItem('gear_trips_' + uid) || '[]');
-    } catch (_) { return []; }
+    return Object.values(_snapshots).map(s => ({ id: s.tripId, name: s.tripName }));
+  }
+
+  function hasTripSnapshot(tripId) {
+    return !!_snapshots[tripId];
   }
 
   /* ── Генератор ID ── */
@@ -87,5 +108,9 @@ const GearData = (() => {
     return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
   }
 
-  return { load, save, getChecked, setChecked, getTripSnapshot, saveTripSnapshot, getTripList, uid };
+  return {
+    load, save,
+    ensureLoaded, getChecked, setChecked, getTripSnapshot, saveTripSnapshot, getTripList, hasTripSnapshot,
+    uid,
+  };
 })();

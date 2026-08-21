@@ -86,6 +86,14 @@ service cloud.firestore {
       allow delete: if isMember() && resource.data.createdBy == request.auth.uid;
     }
 
+    // Личные списки снаряги под конкретную поездку — видны всем участникам
+    // (как расходы/улов), но создавать/менять/удалять может только владелец.
+    match /gear_trip_snapshots/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isMember() && resource.data.uid == request.auth.uid;
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }

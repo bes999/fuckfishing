@@ -9,13 +9,16 @@ const GearModule = (() => {
   var _activeTrip = 'template';
   var _tripList   = [];
 
-  /* ── Инициализация ── */
-  async function init(uid, isMe, container) {
+  /* ── Инициализация ──
+     openTrip — необязательный id поездки, на вкладку которой сразу открыться
+     (используется кнопкой снаряги на обложке поездки, если снимок уже есть). */
+  async function init(uid, isMe, container, openTrip) {
     _uid        = uid;
     _isMe       = isMe;
     _container  = container;
-    _activeTrip = 'template';
+    await GearData.ensureLoaded(uid);
     _tripList   = GearData.getTripList(uid);
+    _activeTrip = (openTrip && GearData.hasTripSnapshot(openTrip)) ? openTrip : 'template';
     _template   = await GearData.load(uid);
     _render();
   }
@@ -506,18 +509,28 @@ const GearModule = (() => {
   /* ── Публичный API ── */
 
   /**
-   * Вызывается из поездки при нажатии «Взять мой шаблон».
-   * tripId — ID поездки (Firestore doc id), tripName — название.
+   * Создаёт список снаряги под поездку из выбранного источника.
+   * source: 'blank' | 'template' | tripId прошлой поездки.
    */
-  async function takeTemplateToTrip(uid, tripId, tripName) {
-    var tmpl = await GearData.load(uid);
-    GearData.saveTripSnapshot(uid, tripId, tripName, tmpl);
-    // Обновляем список если модуль активен для этого пользователя
+  async function createTripList(uid, tripId, tripName, source) {
+    await GearData.ensureLoaded(uid);
+    var tmpl;
+    if (source === 'blank') {
+      tmpl = { locations: [], categories: [], items: [] };
+    } else if (source === 'template') {
+      tmpl = await GearData.load(uid);
+    } else {
+      var srcSnap = GearData.getTripSnapshot(uid, source);
+      tmpl = srcSnap
+        ? { locations: srcSnap.locations, categories: srcSnap.categories, items: srcSnap.items }
+        : { locations: [], categories: [], items: [] };
+    }
+    await GearData.saveTripSnapshot(uid, tripId, tripName, tmpl);
     if (_uid === uid) {
       _tripList = GearData.getTripList(uid);
       _renderAndRestore();
     }
   }
 
-  return { init, takeTemplateToTrip };
+  return { init, createTripList };
 })();

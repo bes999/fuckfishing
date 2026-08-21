@@ -267,7 +267,9 @@
       } else if (pageId === 'gear') {
         AppRouter.show('gear');
         const uid = window.APP?.profile?.uid;
-        if (uid) GearModule.init(uid, true, document.getElementById('p-gear'));
+        const openTrip = window.APP?._gearOpenTrip || null;
+        if (window.APP) window.APP._gearOpenTrip = null;
+        if (uid) GearModule.init(uid, true, document.getElementById('p-gear'), openTrip);
       } else if (pageId === 'medkit') {
         AppRouter.show('medkit');
         if (typeof rMedkit === 'function') rMedkit();
