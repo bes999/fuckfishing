@@ -84,6 +84,7 @@ const GearRender = (() => {
       + '<div class="gear-empty-t">Снаряга не добавлена</div>'
       + '<div class="gear-empty-s">Создай места хранения и категории, добавь снаряжение. Вес поможет не перегрузиться.</div>'
       + '<button class="gear-empty-btn" data-action="gear-cat-add">Создать первую категорию</button>'
+      + '<div class="gear-empty-import" data-action="gear-import-open">Или импортировать список текстом</div>'
       + '</div>';
   }
 
@@ -216,7 +217,10 @@ const GearRender = (() => {
 
   function _categoriesSection(template, isMe, tripMode, checkedIds) {
     var header = isMe
-      ? '<div class="gear-sec-hd"><div class="gear-sec-t">Категории</div><div class="gear-sec-a" data-action="gear-cat-add"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Категория</div></div>'
+      ? '<div class="gear-sec-hd"><div class="gear-sec-t">Категории</div><div style="display:flex;gap:14px">'
+        + '<div class="gear-sec-a" data-action="gear-import-open"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Импорт</div>'
+        + '<div class="gear-sec-a" data-action="gear-cat-add"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Категория</div>'
+        + '</div></div>'
       : '<div class="gear-sec-hd"><div class="gear-sec-t">Категории</div></div>';
 
     var catsHtml = template.categories.map(function(cat, idx) {
@@ -503,6 +507,24 @@ const GearRender = (() => {
       + '</div></div>';
   }
 
+  function sheetImportText() {
+    return '<div class="gear-sheet-overlay" id="gear-import-sheet">'
+      + '<div class="gear-sheet">'
+      + '<div class="gear-sheet-grab"></div>'
+      + '<div class="gear-sheet-header">'
+      + '<div class="gear-sheet-cancel" data-action="gear-sheet-close">Отмена</div>'
+      + '<div class="gear-sheet-title">Импорт списком</div>'
+      + '<div class="gear-sheet-done" data-action="gear-import-save">Готово</div>'
+      + '</div>'
+      + '<div class="gear-sheet-body">'
+      + '<div class="gear-import-hint">Вставь список из заметок — по одному предмету на строке. Строка, заканчивающаяся двоеточием, начинает новую категорию («Одежда:»). Без заголовков всё попадёт в одну категорию «Импорт».</div>'
+      + '<div class="gear-field-group">'
+      + '<textarea class="gear-import-ta" id="gear-import-text" rows="12" placeholder="Одежда:\nКуртка\nШтаны\n\nСнасти:\nСпиннинг\nКатушка"></textarea>'
+      + '</div>'
+      + '<button class="gear-btn-primary" data-action="gear-import-save">Импортировать</button>'
+      + '</div></div></div>';
+  }
+
   function sheetCategoryMenu(cat) {
     return '<div class="gear-sheet-overlay" id="gear-ctx-sheet">'
       + '<div class="gear-sheet gear-sheet-sm">'
@@ -538,7 +560,7 @@ const GearRender = (() => {
   return {
     tabMain, tabTrip,
     sheetAddLocation, sheetAddCategory, sheetAddItem,
-    sheetPickLocation, sheetCategoryMenu,
+    sheetPickLocation, sheetCategoryMenu, sheetImportText,
     nestedPanel,
     PRESET_ICONS,
     _esc

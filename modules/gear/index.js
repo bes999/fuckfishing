@@ -50,7 +50,7 @@ const GearModule = (() => {
     }
   }
 
-  var _SHEET_IDS = ['gear-loc-sheet','gear-cat-sheet','gear-item-sheet','gear-pick-sheet','gear-ctx-sheet'];
+  var _SHEET_IDS = ['gear-loc-sheet','gear-cat-sheet','gear-item-sheet','gear-pick-sheet','gear-ctx-sheet','gear-import-sheet'];
 
   function _closeAllSheets() {
     _SHEET_IDS.forEach(function(id) { var el = document.getElementById(id); if (el) el.remove(); });
@@ -107,6 +107,28 @@ const GearModule = (() => {
   }
 
   function _esc(s) { return GearRender._esc(s); }
+
+  // Разбирает вставленный текст на категории/предметы: строка, оканчивающаяся
+  // двоеточием, открывает новую категорию, остальные непустые строки —
+  // предметы в неё (bullets вроде "-"/"•"/"1." отбрасываются). Без заголовков
+  // всё уходит в одну категорию "Импорт".
+  function _parseImportText(text) {
+    var lines = String(text || '').split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+    var groups = [];
+    var current = null;
+    lines.forEach(function(line) {
+      if (/:$/.test(line) && line.length < 60) {
+        current = { name: line.replace(/:$/, '').trim(), items: [] };
+        groups.push(current);
+        return;
+      }
+      var item = line.replace(/^[-–—*•]\s*/, '').replace(/^\d+[.)]\s*/, '').trim();
+      if (!item) return;
+      if (!current) { current = { name: 'Импорт', items: [] }; groups.push(current); }
+      current.items.push(item);
+    });
+    return groups;
+  }
 
   /* ══════════════════════════════════════════════
      СОБЫТИЯ — один глобальный обработчик
@@ -355,6 +377,34 @@ const GearModule = (() => {
       } else {
         _template.categories.push({ id: GearData.uid(), name: catName, iconIdx: catIcon });
       }
+      _closeAllSheets();
+      await _save();
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-import-open') {
+      if (!_isMe) return;
+      _openSheet(GearRender.sheetImportText());
+      return;
+    }
+
+    if (action === 'gear-import-save') {
+      var importText = (document.getElementById('gear-import-text') || {value:''}).value;
+      var groups = _parseImportText(importText);
+      if (!groups.length) { _closeAllSheets(); return; }
+      groups.forEach(function(g) {
+        var existingCat = _template.categories.find(function(c) { return c.name === g.name; });
+        var gCatId;
+        if (existingCat) { gCatId = existingCat.id; }
+        else {
+          gCatId = GearData.uid();
+          _template.categories.push({ id: gCatId, name: g.name, iconIdx: 0 });
+        }
+        g.items.forEach(function(name) {
+          _template.items.push({ id: GearData.uid(), name: name, categoryId: gCatId, weight: '', locationId: '', note: '' });
+        });
+      });
       _closeAllSheets();
       await _save();
       _renderAndRestore();
