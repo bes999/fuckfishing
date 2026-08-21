@@ -68,7 +68,12 @@ const AuthActions = (() => {
       createdAt:   firebase.firestore.FieldValue.serverTimestamp()
     };
 
-    await db.collection('members').doc(_user.uid).set(_profile);
+    try {
+      await db.collection('members').doc(_user.uid).set(_profile);
+    } catch (e) {
+      alert('Этот email пока не приглашён. Попроси того, кто уже пользуется приложением, сначала отправить тебе приглашение.');
+      return;
+    }
     _boot();
   }
 

@@ -288,6 +288,12 @@ const MembersRender = (() => {
           <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
             ${_esc(desc)}
           </p>
+
+          <div class="invite-email-label">Email человека — чтобы разрешить ему регистрацию</div>
+          <input type="email" class="invite-email-input" id="invite-email-input" placeholder="friend@example.com" autocomplete="off">
+          <button class="action-btn" data-action="invite-allow-email">Разрешить регистрацию</button>
+          <div class="invite-email-status" id="invite-email-status"></div>
+
           <div class="invite-url">${_esc(url)}</div>
           <button class="action-btn" data-action="invite-copy">📋 Скопировать ссылку</button>
           <button class="picker-cancel" data-action="invite-close">Закрыть</button>
@@ -302,6 +308,18 @@ const MembersRender = (() => {
         navigator.clipboard?.writeText(url).catch(()=>{});
         const btn = overlay.querySelector('[data-action="invite-copy"]');
         if (btn) { btn.textContent = '✓ Скопировано'; setTimeout(() => overlay.remove(), 1000); }
+      }
+      if (a === 'invite-allow-email') {
+        const input  = overlay.querySelector('#invite-email-input');
+        const status = overlay.querySelector('#invite-email-status');
+        const email  = input?.value.trim();
+        if (!email) return;
+        MembersFirebase.addInvite(email).then(() => {
+          if (status) status.textContent = `✓ ${email} теперь может зарегистрироваться`;
+          if (input) input.value = '';
+        }).catch(() => {
+          if (status) status.textContent = 'Не получилось — попробуй ещё раз';
+        });
       }
     });
   }

@@ -34,6 +34,17 @@ const MembersFirebase = (() => {
     await db.collection('members').doc(uid).delete();
   }
 
+  // Разрешить регистрацию конкретному email — аллоулист, проверяется
+  // Firestore rules при онбординге (см. firestore.rules, isInvited()).
+  async function addInvite(email) {
+    const id = String(email || '').trim().toLowerCase();
+    if (!id) return;
+    await db.collection('invites').doc(id).set({
+      invitedBy: window.APP?.user?.uid || null,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  }
+
   function subscribeMembers(cb) {
     return db.collection('members')
       .orderBy('createdAt')
@@ -69,5 +80,5 @@ const MembersFirebase = (() => {
     } catch (_) { return { paid:0, share:0, balance:0 }; }
   }
 
-  return { getProfile, getAllMembers, updateProfile, deleteProfile, subscribeMembers, getCatchStats, getExpenseBalance };
+  return { getProfile, getAllMembers, updateProfile, deleteProfile, addInvite, subscribeMembers, getCatchStats, getExpenseBalance };
 })();

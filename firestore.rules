@@ -1,0 +1,55 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+
+    function isMember() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+
+    function isOrganizer() {
+      return isMember() &&
+        get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == 'organizer';
+    }
+
+    // Разрешено пройти онбординг, только если email из Firebase Auth
+    // токена уже есть в аллоулисте /invites — заполняется существующими
+    // участниками через "Пригласить" (modules/members/render.js).
+    function isInvited() {
+      return isSignedIn() && request.auth.token.email != null &&
+        exists(/databases/$(database)/documents/invites/$(request.auth.token.email.lower()));
+    }
+
+    match /members/{uid} {
+      // Читать список нужно даже до онбординга — completeOnboarding()
+      // (modules/auth/index.js) проверяет "я первый пользователь?" ДО
+      // того как свой профиль создан.
+      allow read:   if isMember() || isInvited();
+      allow create: if isSignedIn() && request.auth.uid == uid && isInvited();
+      allow update: if isMember() && (request.auth.uid == uid || isOrganizer());
+      allow delete: if isMember() && isOrganizer();
+    }
+
+    match /invites/{email} {
+      allow read:            if isMember();
+      allow create, delete:  if isMember();
+      allow update:          if false;
+    }
+
+    match /trips/{tripId} {
+      allow read, write: if isMember();
+      match /{subcollection}/{docId} {
+        allow read, write: if isMember();
+      }
+    }
+
+    match /menu/{tripId}        { allow read, write: if isMember(); }
+    match /shopping/{tripId}    { allow read, write: if isMember(); }
+    match /bar_reviews/{id}     { allow read, write: if isMember(); }
+    match /recipes_reviews/{id} { allow read, write: if isMember(); }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
