@@ -180,3 +180,51 @@
   transition: background 0.15s;
 }
 .cover-icon-btn:active { background: rgba(255,255,255,0.22); }
+
+/* Быстрый попап выбора поездки (нижняя вкладка "Поездка" без открытой поездки) */
+.tqp-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: flex-end;
+  z-index: 900;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.tqp-overlay.open { opacity: 1; }
+.tqp-sheet {
+  width: 100%; max-width: 480px; margin: 0 auto;
+  background: var(--bg2);
+  border-radius: 20px 20px 0 0;
+  padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.tqp-handle {
+  width: 36px; height: 4px;
+  background: var(--sep);
+  border-radius: 2px;
+  margin: 0 auto 14px;
+}
+.tqp-title { font-size: 17px; font-weight: 700; color: var(--label); margin-bottom: 10px; }
+.tqp-list { margin-bottom: 6px; }
+.tqp-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 12px 4px;
+  border-bottom: 0.5px solid var(--sep2);
+  cursor: pointer;
+}
+.tqp-row:last-child { border-bottom: none; }
+.tqp-row:active { background: var(--bg3); }
+.tqp-name { font-size: 15px; font-weight: 600; color: var(--label); }
+.tqp-dates { font-size: 12px; color: var(--label3); margin-top: 2px; }
+.tqp-all {
+  width: 100%;
+  background: var(--bg3);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 12px; font-size: 14px; font-weight: 600;
+  color: var(--label2);
+  cursor: pointer;
+  margin-top: 6px;
+}

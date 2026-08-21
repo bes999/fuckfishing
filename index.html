@@ -222,8 +222,13 @@
         AppRouter.show('trips');
         TripsIndex.render();
       } else if (pageId === 'guide') {
-        // Нижняя вкладка "Поездка" вне контекста поездки ведёт к списку поездок
-        if (!tripId) { onNavigate('trips'); return; }
+        // Нижняя вкладка "Поездка" вне контекста поездки — быстрый попап
+        // выбора (или сразу внутрь, если актуальная поездка одна)
+        if (!tripId) {
+          if (typeof TripCoverIndex !== 'undefined') TripCoverIndex.showQuickPicker();
+          else onNavigate('trips');
+          return;
+        }
         AppRouter.show('guide');
       } else if (pageId === 'profile') {
         AppRouter.show('members');

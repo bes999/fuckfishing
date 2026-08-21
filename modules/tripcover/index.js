@@ -376,52 +376,115 @@ const TripCoverIndex = (() => {
 
     el.querySelector('#coverEnter')?.addEventListener('click', () => {
       hide();
-      if (typeof AppNav !== 'undefined') AppNav.setActive('guide');
-      if (typeof AppRouter !== 'undefined') AppRouter.show('guide');
+      enterTrip(_tripId);
+    });
+  }
 
-      const trip = TripsData.getById(_tripId);
+  // Полный вход в поездку — переключает нижнюю вкладку/роутер на Гид,
+  // проставляет window.APP.currentTripId/currentTripData (используется
+  // Реки/Меню/Расходы и др.), рендерит сам Гид. Вынесено из обработчика
+  // #coverEnter, чтобы им же мог пользоваться быстрый попап выбора поездки
+  // (showQuickPicker) — минуя саму обложку.
+  function enterTrip(tripId) {
+    if (typeof AppNav !== 'undefined') AppNav.setActive('guide');
+    if (typeof AppRouter !== 'undefined') AppRouter.show('guide');
 
-      // ── Сохраняем текущую поездку глобально (используется Реки, Меню и др.) ──
-      if (window.APP) {
-        window.APP.currentTripId = _tripId;
-        // Если есть подробный AI-импорт — используем его (там больше данных
-        // по каждой реке/точке). Иначе собираем минимальный объект из
-        // самой поездки, чтобы список рек/участников не терялся у поездок,
-        // заведённых вручную (см. rivers/index.js — читает tripData.rivers).
-        window.APP.currentTripData = trip?.importData || (trip
-          ? { name: trip.name, rivers: trip.rivers || [], participants: trip.participants || [] }
-          : null);
-      }
-      if (typeof AppHeader !== 'undefined') AppHeader.render();
+    const trip = TripsData.getById(tripId);
 
-      const guideEl = document.getElementById('p-guide');
-      if (!guideEl) return;
+    // ── Сохраняем текущую поездку глобально (используется Реки, Меню и др.) ──
+    if (window.APP) {
+      window.APP.currentTripId = tripId;
+      // Если есть подробный AI-импорт — используем его (там больше данных
+      // по каждой реке/точке). Иначе собираем минимальный объект из
+      // самой поездки, чтобы список рек/участников не терялся у поездок,
+      // заведённых вручную (см. rivers/index.js — читает tripData.rivers).
+      window.APP.currentTripData = trip?.importData || (trip
+        ? { name: trip.name, rivers: trip.rivers || [], participants: trip.participants || [] }
+        : null);
+    }
+    if (typeof AppHeader !== 'undefined') AppHeader.render();
 
-      // Если у экспедиции есть импортированные данные — рендерим маршрут
-      if (trip?.importData?.route?.length) {
-        guideEl.innerHTML = _renderGuide(trip);
-        // Привязываем аккордеоны
-        if (_guideHandler) guideEl.removeEventListener('click', _guideHandler);
-        _guideHandler = e => {
-          const hd = e.target.closest('[data-target]');
-          if (!hd) return;
-          const body = document.getElementById(hd.dataset.target);
-          if (!body) return;
-          const chev = hd.querySelector('.g-acc-chev');
-          const open = body.classList.toggle('show');
-          if (chev) chev.classList.toggle('open', open);
-        };
-        guideEl.addEventListener('click', _guideHandler);
-      } else {
-        // Заглушка (рыбалки или экспедиции без импорта)
-        guideEl.innerHTML = `
-          <div style="padding:14px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">
-            ${trip ? _esc(trip.name) : 'Поездка'}
-          </div>
-          <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">
-            🚧 Маршрут не добавлен.<br><br>
-            Загрузи JSON-файл от AI в настройках поездки.
-          </div>`;
+    const guideEl = document.getElementById('p-guide');
+    if (!guideEl) return;
+
+    // Если у экспедиции есть импортированные данные — рендерим маршрут
+    if (trip?.importData?.route?.length) {
+      guideEl.innerHTML = _renderGuide(trip);
+      // Привязываем аккордеоны
+      if (_guideHandler) guideEl.removeEventListener('click', _guideHandler);
+      _guideHandler = e => {
+        const hd = e.target.closest('[data-target]');
+        if (!hd) return;
+        const body = document.getElementById(hd.dataset.target);
+        if (!body) return;
+        const chev = hd.querySelector('.g-acc-chev');
+        const open = body.classList.toggle('show');
+        if (chev) chev.classList.toggle('open', open);
+      };
+      guideEl.addEventListener('click', _guideHandler);
+    } else {
+      // Заглушка (рыбалки или экспедиции без импорта)
+      guideEl.innerHTML = `
+        <div style="padding:14px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">
+          ${trip ? _esc(trip.name) : 'Поездка'}
+        </div>
+        <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">
+          🚧 Маршрут не добавлен.<br><br>
+          Загрузи JSON-файл от AI в настройках поездки.
+        </div>`;
+    }
+  }
+
+  // ── Быстрый выбор поездки — когда нажали нижнюю вкладку "Поездка", а
+  // открытой поездки нет. Раньше сразу кидало в список ("Планы"); теперь,
+  // если есть 2+ актуальных (не завершённых) поездки — короткий попап,
+  // выбор сразу ведёт в Гид, без обложки/кнопки "Войти". Если актуальная
+  // поездка ровно одна — заходим в неё сразу, без лишнего тапа. Если
+  // актуальных нет вообще — как раньше, список поездок.
+  function showQuickPicker() {
+    const trips = (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
+      .filter(t => t.status !== 'done')
+      .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+    if (!trips.length) {
+      if (typeof onNavigate === 'function') onNavigate('trips');
+      return;
+    }
+    if (trips.length === 1) {
+      enterTrip(trips[0].id);
+      return;
+    }
+
+    document.getElementById('trip-quickpick-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'trip-quickpick-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">В какую поездку?</div>
+        <div class="tqp-list">
+          ${trips.map(t => `
+            <div class="tqp-row" data-trip-id="${t.id}">
+              <div>
+                <div class="tqp-name">${_esc(t.name)}</div>
+                <div class="tqp-dates">${_dateRange(t.startDate, t.endDate)}</div>
+              </div>
+              <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
+            </div>`).join('')}
+        </div>
+        <button class="tqp-all" data-action="tqp-all">Все поездки</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const row = e.target.closest('[data-trip-id]');
+      if (row) { overlay.remove(); enterTrip(row.dataset.tripId); return; }
+      if (e.target.closest('[data-action="tqp-all"]')) {
+        overlay.remove();
+        if (typeof onNavigate === 'function') onNavigate('trips');
       }
     });
   }
@@ -618,5 +681,5 @@ const TripCoverIndex = (() => {
 
 
 
-  return { show, hide, getCurrentTripId: () => _tripId };
+  return { show, hide, enterTrip, showQuickPicker, getCurrentTripId: () => _tripId };
 })();
