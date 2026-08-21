@@ -22,6 +22,14 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/invites/$(request.auth.token.email.lower()));
     }
 
+    // Организатор КОНКРЕТНОЙ поездки (её создатель, trip.ownerId) — не
+    // путать с isOrganizer() выше, это app-wide profile.role, другое поле
+    // с другим смыслом (см. modules/auth/index.js).
+    function isTripOrganizer(tripId) {
+      return isMember() &&
+        get(/databases/$(database)/documents/trips/$(tripId)).data.ownerId == request.auth.uid;
+    }
+
     match /members/{uid} {
       // Читать список нужно даже до онбординга — completeOnboarding()
       // (modules/auth/index.js) проверяет "я первый пользователь?" ДО
@@ -40,6 +48,22 @@ service cloud.firestore {
 
     match /trips/{tripId} {
       allow read, write: if isMember();
+
+      // Удалить чужую запись расхода/улова может только организатор ЭТОЙ
+      // поездки — свою запись (createdBy == себя) может удалить любой.
+      // Редактирование/чтение остаются открытыми всем участникам, как и
+      // раньше — здесь закрывается только delete.
+      match /expenses/{docId} {
+        allow read, create, update: if isMember();
+        allow delete: if isMember() &&
+          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId));
+      }
+      match /catches/{docId} {
+        allow read, create, update: if isMember();
+        allow delete: if isMember() &&
+          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId));
+      }
+
       match /{subcollection}/{docId} {
         allow read, write: if isMember();
       }

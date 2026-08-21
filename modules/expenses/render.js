@@ -78,6 +78,8 @@ const ExpensesRender = (() => {
     const expenses  = ExpensesState.getExpenses(_tripId);
     const cats      = ExpensesState.getCategories(_tripId);
     const catMap    = Object.fromEntries(cats.map(c => [c.id, c]));
+    const myUid      = window.APP?.user?.uid;
+    const isOrganizer = typeof TripsData !== 'undefined' && TripsData.getById(_tripId)?.ownerId === myUid;
 
     return `
       <div class="exp-scroll">
@@ -101,12 +103,12 @@ const ExpensesRender = (() => {
         ${expenses.length === 0 ? `<div class="exp-empty">Расходов пока нет</div>` : ''}
 
         <div class="exp-list">
-          ${expenses.map(e => _expenseRow(e, catMap)).join('')}
+          ${expenses.map(e => _expenseRow(e, catMap, myUid === e.createdBy || isOrganizer)).join('')}
         </div>
       </div>`;
   }
 
-  function _expenseRow(e, catMap) {
+  function _expenseRow(e, catMap, canDelete) {
     const cat = catMap[e.category] || { title: e.category, icon: 'ti-dots' };
     return `
       <div class="exp-entry" data-id="${e._id}">
@@ -122,9 +124,10 @@ const ExpensesRender = (() => {
             <button class="exp-entry__btn" data-action="edit-expense" data-id="${e._id}" aria-label="Редактировать">
               <i class="ti ti-pencil" aria-hidden="true"></i>
             </button>
+            ${canDelete ? `
             <button class="exp-entry__btn exp-entry__btn--del" data-action="del-expense" data-id="${e._id}" aria-label="Удалить">
               <i class="ti ti-trash" aria-hidden="true"></i>
-            </button>
+            </button>` : ''}
           </div>
         </div>
       </div>`;

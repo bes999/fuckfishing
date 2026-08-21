@@ -145,6 +145,20 @@ const TripsData = (() => {
       .catch(e => { console.warn('trips migration:', e); });
   }
 
+  // --- Одноразовый бэкафилл ownerId (роли на уровне поездки) ---
+  // Поездки, созданные до появления этого поля (включая все мигрированные
+  // из localStorage), становятся "твоими" — назначаем текущего пользователя
+  // организатором. Идемпотентно само по себе: условие — отсутствие поля,
+  // отдельный флаг не нужен.
+  function backfillOwnerId() {
+    const uid = window.APP?.user?.uid;
+    if (!uid) return Promise.resolve();
+    const missing = TripsState.getAll().filter(t => !t.ownerId);
+    if (!missing.length) return Promise.resolve();
+    return Promise.all(missing.map(t => TripsFirebase.updateTrip(t.id, { ownerId: uid })))
+      .catch(e => { console.warn('trips backfillOwnerId:', e); });
+  }
+
   // --- Чтение — синхронно, из кэша (TripsState) ---
   function getAll()             { return TripsState.getAll(); }
   function getById(id)          { return TripsState.getById(id); }
@@ -200,7 +214,7 @@ const TripsData = (() => {
   }
 
   return {
-    migrateFromLocalStorage,
+    migrateFromLocalStorage, backfillOwnerId,
     getAll, getById, getUpcoming, getByYear, getCalendarMarkers, getYearStats,
     addTrip, updateTrip, updateReadiness, addParticipant,
     statusLabel, statusClass,

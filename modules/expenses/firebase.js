@@ -57,6 +57,7 @@ const ExpensesFirebase = (() => {
     const data = Object.assign({}, entry);
     delete data._id;
     data.createdAt = data.createdAt || new Date().toISOString();
+    data.createdBy = window.APP?.user?.uid || null;
     return _ref(tripId).collection('expenses').add(data)
       .then(ref => ref.id)
       .catch(e => console.warn('addExpense:', e));

@@ -301,6 +301,7 @@
       // моменту первого рендера данные уже есть".
       TripsFirebase.ready()
         .then(() => TripsData.migrateFromLocalStorage())
+        .then(() => TripsData.backfillOwnerId())
         .catch(() => {})
         .then(() => {
           AppNav.init(onNavigate);

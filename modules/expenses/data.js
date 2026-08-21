@@ -28,6 +28,7 @@ const ExpensesData = (() => {
       participants: Array.isArray(data.participants) ? data.participants : [],
       date: data.date || new Date().toISOString().split('T')[0],
       createdAt: data.createdAt || new Date().toISOString(),
+      createdBy: data.createdBy || null,
     };
   }
 

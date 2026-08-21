@@ -36,6 +36,7 @@ const CatchesData = (() => {
       member:    data.member    || '',
       date:      data.date      || new Date().toISOString().split('T')[0],
       createdAt: data.createdAt || new Date().toISOString(),
+      createdBy: data.createdBy || null,
     };
   }
 

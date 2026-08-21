@@ -167,7 +167,7 @@ const CatchesRender = (() => {
         <!-- Лента последних поимок -->
         <div class="ct-sec-label">Все поимки</div>
         <div class="ct-card">
-          ${catches.map(c => _catchRow(c, true)).join('')}
+          ${catches.map(c => _catchRow(c, _canDelete(c))).join('')}
         </div>
 
       </div>`;
@@ -242,13 +242,19 @@ const CatchesRender = (() => {
         ${catches.length ? `
         <div class="ct-sec-label">Последние поимки</div>
         <div class="ct-card">
-          ${catches.slice(0, 10).map(c => _catchRow(c, true)).join('')}
+          ${catches.slice(0, 10).map(c => _catchRow(c, _canDelete(c))).join('')}
         </div>` : ''}
 
       </div>`;
   }
 
   // ── Catch row ────────────────────────────────────────────────
+
+  function _canDelete(c) {
+    const myUid = window.APP?.user?.uid;
+    if (myUid && c.createdBy === myUid) return true;
+    return typeof TripsData !== 'undefined' && TripsData.getById(_tripId)?.ownerId === myUid;
+  }
 
   function _catchRow(c, showDelete) {
     return `
