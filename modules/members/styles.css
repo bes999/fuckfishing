@@ -254,3 +254,19 @@
 .members-grid {
   padding-bottom: calc(83px + env(safe-area-inset-bottom));
 }
+
+/* Trip picker sheet (профиль участника → "В поездку") */
+.trip-pick-list {
+  margin-bottom: 14px;
+}
+.trip-pick-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  padding: 12px 4px;
+  border-bottom: 0.5px solid var(--sep);
+  cursor: pointer;
+}
+.trip-pick-row:last-child { border-bottom: none; }
+.trip-pick-name { font-size: 14px; font-weight: 600; color: var(--label); }
+.trip-pick-dates { font-size: 12px; color: var(--label3); margin-top: 2px; }
+.trip-pick-status { font-size: 12px; color: var(--label3); white-space: nowrap; }

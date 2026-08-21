@@ -171,6 +171,24 @@ const TripsData = (() => {
     return TripsFirebase.updateTrip(tripId, { readiness: trip.readiness });
   }
 
+  // --- Добавить человека в участники поездки (инвайт-ссылка, пикер из
+  // профиля и т.д. — общая точка входа, чтобы не дублировать логику
+  // "заменить строку-имя на uid или дописать новое имя" в разных местах) ---
+  function addParticipant(tripId, { uid, name } = {}) {
+    const trip = getById(tripId);
+    if (!trip) return Promise.reject(new Error('trip not found'));
+
+    const participants = trip.participants || [];
+    const memberIds = trip.memberIds || [];
+    if (uid && memberIds.includes(uid)) return Promise.resolve(trip);
+
+    const nameAlreadyListed = name && participants.some(p => p.toLowerCase() === name.toLowerCase());
+    const newParticipants = (nameAlreadyListed || !name) ? participants : [...participants, name];
+    const newMemberIds = uid ? [...new Set([...memberIds, uid])] : memberIds;
+
+    return TripsFirebase.updateTrip(tripId, { participants: newParticipants, memberIds: newMemberIds });
+  }
+
   // --- Status label ---
   function statusLabel(status) {
     return { upcoming: '⏳ Скоро', active: '🟢 Идёт', done: '✓ Завершена' }[status] || '';
@@ -184,7 +202,7 @@ const TripsData = (() => {
   return {
     migrateFromLocalStorage,
     getAll, getById, getUpcoming, getByYear, getCalendarMarkers, getYearStats,
-    addTrip, updateTrip, updateReadiness,
+    addTrip, updateTrip, updateReadiness, addParticipant,
     statusLabel, statusClass,
   };
 })();

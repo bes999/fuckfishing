@@ -268,6 +268,12 @@ var MembersModule = (() => {
         MembersRender.showInvite();
       }
 
+      if (action === 'member-add-trip') {
+        const uid  = t.dataset.uid;
+        const name = t.dataset.name;
+        if (uid) MembersRender.showTripPicker(uid, name);
+      }
+
       if (action === 'member-delete') {
         const uid  = t.dataset.uid;
         if (!uid) return;

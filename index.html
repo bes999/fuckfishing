@@ -343,13 +343,7 @@
         title: 'Приглашение в поездку', okLabel: 'Присоединиться', danger: false
       }).then(ok => {
         if (!ok) return;
-
-        const participants = trip.participants || [];
-        const nameAlreadyListed = participants.some(p => p.toLowerCase() === name.toLowerCase());
-        const newParticipants = nameAlreadyListed || !name ? participants : [...participants, name];
-        const newMemberIds = uid ? [...new Set([...(trip.memberIds || []), uid])] : (trip.memberIds || []);
-
-        TripsData.updateTrip(tripId, { participants: newParticipants, memberIds: newMemberIds })
+        TripsData.addParticipant(tripId, { uid, name })
           .then(() => TripCoverIndex.show(tripId));
       });
     }

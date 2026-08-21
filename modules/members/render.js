@@ -84,7 +84,7 @@ const MembersRender = (() => {
         <div id="profile-tab-content">
           ${_tabProfile(profile, isMe)}
         </div>
-        ${_profileActions(profile.uid, isMe, isOrg)}
+        ${_profileActions(profile.uid, isMe, isOrg, profile.displayName)}
       </div>`;
 
     // Кнопка назад — на главную
@@ -204,10 +204,11 @@ const MembersRender = (() => {
       (isMe ? `<div class="p-gear-add" data-action="gear-add">+ Добавить</div>` : '');
   }
 
-  function _profileActions(uid, isMe, isOrg) {
+  function _profileActions(uid, isMe, isOrg, name) {
     return `<div class="p-actions">
       ${isMe ? `<button class="p-btn-edit" data-action="profile-edit" data-uid="${uid}">✏️ Редактировать</button>` : ''}
       ${isMe ? `<button class="p-btn-out" data-action="auth-signout">Выйти</button>` : ''}
+      ${!isMe ? `<button class="p-btn-edit" data-action="member-add-trip" data-uid="${uid}" data-name="${_esc(name)}">➕ В поездку</button>` : ''}
       ${!isMe && isOrg ? `<button class="p-btn-edit" data-action="profile-edit" data-uid="${uid}">✏️ Редактировать</button>` : ''}
       ${!isMe && isOrg ? `<button class="p-btn-del" data-action="member-delete" data-uid="${uid}" data-name="${_esc(uid)}">🗑️ Удалить</button>` : ''}
     </div>`;
@@ -305,7 +306,58 @@ const MembersRender = (() => {
     });
   }
 
+  /* ══════════════════════════════════════════════
+     ДОБАВИТЬ УЖЕ ЗАРЕГИСТРИРОВАННОГО ЧЕЛОВЕКА В ПОЕЗДКУ
+     (пикер прямо с его профиля — без ссылки, uid уже известен)
+  ══════════════════════════════════════════════ */
+  function showTripPicker(uid, name) {
+    const trips = (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
+      .filter(t => t.status !== 'done')
+      .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+
+    const rows = trips.length ? trips.map(t => {
+      const already = (t.memberIds || []).includes(uid);
+      return `
+        <div class="trip-pick-row" data-action="${already ? '' : 'trip-pick-select'}" data-trip-id="${t.id}">
+          <div>
+            <div class="trip-pick-name">${_esc(t.name)}</div>
+            <div class="trip-pick-dates">${_fmtDate(t.startDate)} – ${_fmtDate(t.endDate)}</div>
+          </div>
+          <div class="trip-pick-status">${already ? '✓ уже там' : ''}</div>
+        </div>`;
+    }).join('') : `<div style="padding:16px 0;color:var(--label3);font-size:14px;text-align:center">Нет открытых поездок</div>`;
+
+    document.getElementById('trip-pick-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'profile-overlay';
+    overlay.id = 'trip-pick-overlay';
+    overlay.innerHTML = `
+      <div class="profile-sheet">
+        <div class="profile-grab"></div>
+        <div class="profile-scroll">
+          <div class="modal-title" style="margin-bottom:8px">Добавить ${_esc(name || 'участника')} в поездку</div>
+          <div class="trip-pick-list">${rows}</div>
+          <button class="picker-cancel" data-action="trip-pick-close">Закрыть</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const row = e.target.closest('[data-action="trip-pick-select"]');
+      if (row) {
+        TripsData.addParticipant(row.dataset.tripId, { uid, name }).then(() => overlay.remove());
+        return;
+      }
+      if (e.target.closest('[data-action="trip-pick-close"]')) overlay.remove();
+    });
+  }
+
   /* ── Helpers ── */
+  function _fmtDate(d) {
+    try { return new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }); }
+    catch (e) { return d; }
+  }
   function _ageWord(n) {
     const mod10 = n % 10, mod100 = n % 100;
     if (mod10 === 1 && mod100 !== 11) return 'год';
@@ -317,5 +369,5 @@ const MembersRender = (() => {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
   }
 
-  return { renderList, showProfile, switchTab, showInvite };
+  return { renderList, showProfile, switchTab, showInvite, showTripPicker };
 })();
