@@ -13,10 +13,12 @@ const RecipesIndex = (() => {
     }
     RecipesRender.render(_el);
     RecipesFirebase.subscribe(() => RecipesRender.refresh());
+    RecipesFirebase.subscribeCustom(() => RecipesRender.refresh());
   }
 
   function close() {
     RecipesFirebase.unsubscribe();
+    RecipesFirebase.unsubscribeCustom();
     if (typeof onNavigate === 'function') onNavigate('home');
   }
 

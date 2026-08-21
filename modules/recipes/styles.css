@@ -321,3 +321,83 @@
 
 .rec-send-btn:active { opacity: 0.7; }
 .rec-send-btn .ti { font-size: 15px; }
+
+/* Добавить рецепт */
+.rec-add-btn {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; cursor: pointer; flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-add-btn:active { opacity: 0.7; }
+
+.rec-del-btn {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%;
+  background: none; border: none;
+  color: var(--red, #ff453a);
+  font-size: 13px; font-weight: 600;
+  padding: 10px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-del-btn:active { opacity: 0.6; }
+
+.rec-add-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex; align-items: flex-end;
+  z-index: 400;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.rec-add-overlay.open { opacity: 1; }
+.rec-add-sheet {
+  width: 100%; max-width: 480px; margin: 0 auto;
+  background: var(--bg2);
+  border-radius: 20px 20px 0 0;
+  padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.rec-add-handle {
+  width: 36px; height: 4px;
+  background: var(--sep);
+  border-radius: 2px;
+  margin: 0 auto 14px;
+}
+.rec-add-title { font-size: 17px; font-weight: 700; color: var(--label); margin-bottom: 14px; }
+.rec-add-label {
+  font-size: 12px; font-weight: 600; color: var(--label3);
+  margin-bottom: 5px; letter-spacing: 0.03em;
+}
+.rec-add-input, .rec-add-textarea {
+  width: 100%;
+  background: var(--bg3);
+  border: 0.5px solid var(--sep);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--label);
+  font-size: 14px;
+  font-family: inherit;
+  margin-bottom: 10px;
+  box-sizing: border-box;
+}
+.rec-add-textarea { min-height: 70px; resize: vertical; }
+.rec-add-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.rec-add-actions { padding-top: 8px; }
+.rec-add-save {
+  width: 100%;
+  background: var(--accent);
+  color: #fff; border: none;
+  border-radius: var(--radius-md);
+  padding: 13px; font-size: 15px; font-weight: 600;
+  cursor: pointer;
+}

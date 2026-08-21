@@ -30,6 +30,9 @@ const RecipesRender = (() => {
           <div class="rec-topbar__title">Рецепты</div>
           <div class="rec-topbar__sub">Кулинарная книга экспедиции</div>
         </div>
+        <button class="rec-add-btn" id="rec-add" aria-label="Добавить рецепт">
+          <i class="ti ti-plus" aria-hidden="true"></i>
+        </button>
       </div>`;
   }
 
@@ -44,8 +47,9 @@ const RecipesRender = (() => {
 
   function _cards() {
     const cat = RecipesData.getCategories().find(c => c.id === _activeCat);
-    if (!cat) return '';
-    return cat.cocktails.map(r => _card(r)).join('');
+    const builtIn = cat ? cat.cocktails : [];
+    const custom  = RecipesState.getCustomRecipes(_activeCat);
+    return builtIn.map(r => _card(r)).join('') + custom.map(r => _card(r)).join('');
   }
 
   function _card(r) {
@@ -111,11 +115,19 @@ const RecipesRender = (() => {
         </div>
       </div>`).join('');
 
+    const myUid = window.APP?.user?.uid;
+    const deleteBtn = r.createdBy && r.createdBy === myUid
+      ? `<button class="rec-del-btn" data-action="del-recipe" data-id="${r.id}">
+           <i class="ti ti-trash" aria-hidden="true"></i> Удалить рецепт
+         </button>`
+      : '';
+
     return `
       <div class="rec-card__body">
         ${ingredients}
         <div class="rec-method">${_esc(r.method)}</div>
         ${serveWith}
+        ${deleteBtn}
         <div class="rec-rate-row">
           <span class="rec-rate-label">Оценить:</span>
           <div class="rec-stars" role="group" aria-label="Оценка рецепта">${stars}</div>
@@ -151,7 +163,92 @@ const RecipesRender = (() => {
     _el.querySelector('#rec-back')?.addEventListener('click', () => {
       if (typeof RecipesIndex !== 'undefined') RecipesIndex.close();
     });
+    _el.querySelector('#rec-add')?.addEventListener('click', showAddForm);
     _bindCardEvents();
+  }
+
+  // ── Добавить свой рецепт ────────────────────────────────────────────
+  function showAddForm() {
+    document.getElementById('rec-add-overlay')?.remove();
+
+    const cats = RecipesData.getCategories();
+    const catOptions = cats.map(c =>
+      `<option value="${c.id}" ${c.id === _activeCat ? 'selected' : ''}>${_esc(c.label)}</option>`
+    ).join('');
+
+    const overlay = document.createElement('div');
+    overlay.className = 'rec-add-overlay';
+    overlay.id = 'rec-add-overlay';
+    overlay.innerHTML = `
+      <div class="rec-add-sheet">
+        <div class="rec-add-handle"></div>
+        <div class="rec-add-scroll">
+          <div class="rec-add-title">Новый рецепт</div>
+
+          <div class="rec-add-label">Категория</div>
+          <select class="rec-add-input" id="rec-add-cat">${catOptions}</select>
+
+          <div class="rec-add-label">Название</div>
+          <input class="rec-add-input" id="rec-add-name" type="text" placeholder="Малосольная сима">
+
+          <div class="rec-add-row-2">
+            <div>
+              <div class="rec-add-label">Коротко (необязательно)</div>
+              <input class="rec-add-input" id="rec-add-sub" type="text" placeholder="8-12 ч без огня">
+            </div>
+            <div>
+              <div class="rec-add-label">Время</div>
+              <input class="rec-add-input" id="rec-add-time" type="text" placeholder="15 мин актив.">
+            </div>
+          </div>
+
+          <div class="rec-add-label">Ингредиенты — по одному на строке, через тире количество (необязательно)</div>
+          <textarea class="rec-add-textarea" id="rec-add-ing" placeholder="Филе — 800 г&#10;Соль крупная — 2 ст.л.&#10;Перец + укроп"></textarea>
+
+          <div class="rec-add-label">Способ приготовления</div>
+          <textarea class="rec-add-textarea" id="rec-add-method" placeholder="Не мыть — обсушить. Натереть смесью..."></textarea>
+
+          <div class="rec-add-label">Подать с (необязательно)</div>
+          <input class="rec-add-input" id="rec-add-serve" type="text" placeholder="Джин-тоник">
+        </div>
+        <div class="rec-add-actions">
+          <button class="rec-add-save" id="rec-add-save">Добавить</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.remove();
+    });
+
+    overlay.querySelector('#rec-add-save').addEventListener('click', async e => {
+      const name = overlay.querySelector('#rec-add-name').value.trim();
+      if (!name) { overlay.querySelector('#rec-add-name').focus(); return; }
+
+      const ingLines = overlay.querySelector('#rec-add-ing').value.split('\n').map(l => l.trim()).filter(Boolean);
+      const ingredients = ingLines.map(line => {
+        const parts = line.split(/\s+—\s+|\s+-\s+/);
+        return parts.length > 1
+          ? { name: parts[0].trim(), qty: parts.slice(1).join(' ').trim() }
+          : { name: line, qty: '' };
+      });
+
+      const recipe = {
+        category: overlay.querySelector('#rec-add-cat').value,
+        name,
+        sub: overlay.querySelector('#rec-add-sub').value.trim(),
+        time: overlay.querySelector('#rec-add-time').value.trim(),
+        ingredients,
+        method: overlay.querySelector('#rec-add-method').value.trim(),
+        serveWith: overlay.querySelector('#rec-add-serve').value.trim() || null,
+      };
+
+      await UIUtils.withBusyButton(e.currentTarget, async () => {
+        await RecipesFirebase.addRecipe(recipe);
+      });
+      overlay.remove();
+    });
   }
 
   function _bindCardEvents() {
@@ -167,7 +264,7 @@ const RecipesRender = (() => {
         } else {
           _openCards.add(id);
           card.classList.add('open');
-          const r = RecipesData.getRecipeById(id);
+          const r = RecipesData.getRecipeById(id) || RecipesState.getCustomRecipeById(id);
           if (r) card.insertAdjacentHTML('beforeend', _cardBody(r));
           _bindBodyEvents(card);
         }
@@ -213,6 +310,15 @@ const RecipesRender = (() => {
     sendBtn?.addEventListener('click', e => { e.stopPropagation(); _doSend(); });
     input?.addEventListener('keydown', e => { if (e.key === 'Enter') _doSend(); });
     input?.addEventListener('click', e => e.stopPropagation());
+
+    const delBtn = card.querySelector('[data-action="del-recipe"]');
+    delBtn?.addEventListener('click', async e => {
+      e.stopPropagation();
+      const ok = await UIUtils.confirmSheet('Удалить этот рецепт?', { okLabel: 'Удалить' });
+      if (!ok) return;
+      await RecipesFirebase.deleteRecipe(id);
+      _openCards.delete(id);
+    });
   }
 
   function _appendComment(card, comment) {

@@ -18,6 +18,16 @@ const RecipesState = (() => {
 
   function setReviews(reviews) { _reviews = reviews; _save(); }
 
+  // --- Свои рецепты (добавленные через интерфейс, помимо встроенного
+  // каталога в data.js) — id нормализуем в `id`, чтобы карточки/рейтинги
+  // работали одинаково что со встроенными, что со своими рецептами.
+  let _custom = [];
+  function setCustomRecipes(arr) {
+    _custom = (arr || []).map(r => Object.assign({}, r, { id: r._id }));
+  }
+  function getCustomRecipes(catId) { return _custom.filter(r => r.category === catId); }
+  function getCustomRecipeById(id) { return _custom.find(r => r.id === id) || null; }
+
   function get(id) { return _reviews[id] || { ratings: {}, comments: [] }; }
 
   function getAvgRating(id) {
@@ -44,5 +54,8 @@ const RecipesState = (() => {
     _save();
   }
 
-  return { load, setReviews, get, getAvgRating, getUserRating, getComments, setRating, pushComment };
+  return {
+    load, setReviews, get, getAvgRating, getUserRating, getComments, setRating, pushComment,
+    setCustomRecipes, getCustomRecipes, getCustomRecipeById,
+  };
 })();

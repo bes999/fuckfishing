@@ -3,7 +3,9 @@
 const RecipesFirebase = (() => {
 
   const COLLECTION = 'recipes_reviews';
+  const CUSTOM_COLLECTION = 'recipes_custom';
   let _unsubscribe = null;
+  let _unsubCustom = null;
 
   function subscribe(onUpdate) {
     if (_unsubscribe) _unsubscribe();
@@ -41,5 +43,38 @@ const RecipesFirebase = (() => {
     } catch (_) {}
   }
 
-  return { subscribe, unsubscribe, saveRating, addComment };
+  // --- Свои рецепты — отдельная коллекция от рейтингов/комментариев ---
+  function subscribeCustom(onUpdate) {
+    if (_unsubCustom) _unsubCustom();
+    try {
+      _unsubCustom = db.collection(CUSTOM_COLLECTION)
+        .onSnapshot(snap => {
+          const arr = [];
+          snap.forEach(doc => arr.push(Object.assign({ _id: doc.id }, doc.data())));
+          RecipesState.setCustomRecipes(arr);
+          onUpdate();
+        }, () => {});
+    } catch (_) {}
+  }
+
+  function unsubscribeCustom() {
+    if (_unsubCustom) { _unsubCustom(); _unsubCustom = null; }
+  }
+
+  async function addRecipe(recipe) {
+    const data = Object.assign({}, recipe);
+    data.createdBy = window.APP?.user?.uid || null;
+    data.createdAt = new Date().toISOString();
+    const ref = await db.collection(CUSTOM_COLLECTION).add(data);
+    return ref.id;
+  }
+
+  async function deleteRecipe(id) {
+    await db.collection(CUSTOM_COLLECTION).doc(id).delete();
+  }
+
+  return {
+    subscribe, unsubscribe, saveRating, addComment,
+    subscribeCustom, unsubscribeCustom, addRecipe, deleteRecipe,
+  };
 })();

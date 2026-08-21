@@ -78,6 +78,14 @@ service cloud.firestore {
     match /bar_reviews/{id}     { allow read, write: if isMember(); }
     match /recipes_reviews/{id} { allow read, write: if isMember(); }
 
+    // Рецепты, добавленные участниками через интерфейс (помимо встроенного
+    // каталога, который зашит прямо в код и не хранится в Firestore) —
+    // удалить может только автор.
+    match /recipes_custom/{id} {
+      allow read, create, update: if isMember();
+      allow delete: if isMember() && resource.data.createdBy == request.auth.uid;
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }
