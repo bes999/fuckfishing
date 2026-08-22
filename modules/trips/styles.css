@@ -411,6 +411,33 @@
   margin-top: 8px;
 }
 
+/* Переключатель "Квиз / Файл от AI" */
+.exp-mode-tabs {
+  display: flex; gap: 8px; margin-bottom: 16px;
+  background: var(--bg2); border-radius: var(--radius-md); padding: 4px;
+}
+.exp-mode-tab {
+  flex: 1; text-align: center; padding: 9px 8px;
+  font-size: 13px; font-weight: 600; color: var(--label3);
+  border-radius: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background .15s, color .15s;
+}
+.exp-mode-tab.on { background: var(--accent); color: #fff; }
+
+/* Квиз: добавление реки/места */
+.quiz-river-add {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 8px;
+}
+.quiz-river-add-btn { margin-top: 0; }
+
+/* Квиз: маршрут по дням */
+.quiz-route-hint {
+  font-size: 11px; color: var(--label4); line-height: 1.5;
+  margin-bottom: 8px;
+}
+.quiz-route-ta { min-height: 140px; }
+
 /* ===== Desktop layout (>=880px) ===== */
 @media (min-width: 880px) {
   #p-trips .year-body:not(.hidden) {

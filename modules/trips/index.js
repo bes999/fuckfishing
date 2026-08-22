@@ -6,7 +6,10 @@ const TripsIndex = (() => {
   let _createStep = 0;
   let _draft = {};
   let _rivers = [];
-  let _importedData = null;   // JSON от AI для экспедиций
+  let _importedData = null;   // JSON от AI для экспедиций (или собранный из квиза — та же форма)
+  let _expMode = 'quiz';      // 'quiz' | 'file' — способ заполнения данных маршрута экспедиции
+  let _quizRivers = [];       // реки, добавленные вручную в квизе (name+region, без карты)
+  let _quizRouteText = '';    // сырой текст маршрута по дням из квиза, парсится в route[]
   let _dateTouched = false;   // true, если пользователь сам менял поля дат (не просто дефолт "сегодня")
   let _editMode   = false;    // true = редактирование существующей поездки
   let _editTripId = null;     // id редактируемой поездки
@@ -31,6 +34,9 @@ const TripsIndex = (() => {
   function showCreate(prefillDate) {
     _createStep = 0;
     _importedData = null;
+    _expMode = 'quiz';
+    _quizRivers = [];
+    _quizRouteText = '';
     _dateTouched = !!prefillDate;
     _draft = {
       type: 'fishing',
@@ -53,6 +59,9 @@ const TripsIndex = (() => {
     _editTripId = tripId;
     _createStep = 0;
     _importedData = trip.importData || null;
+    _expMode = _importedData ? 'file' : 'quiz';
+    _quizRivers = [];
+    _quizRouteText = '';
     _dateTouched = true;
 
     _draft = {
@@ -185,7 +194,7 @@ const TripsIndex = (() => {
     const imported = _importedData;
     const hasData  = !!imported;
 
-    // Превью если данные уже загружены
+    // Превью если данные уже загружены (файл от AI)
     const previewHtml = hasData ? `
       <div class="import-preview">
         <div class="import-preview-title">✅ Данные загружены</div>
@@ -208,6 +217,36 @@ const TripsIndex = (() => {
         <div class="import-dz-hint">или перетащите файл сюда</div>
       </div>` : '';
 
+    const quizHtml = `
+      <div class="field-group">
+        <div class="field-label">Реки / места</div>
+        <div class="rivers-list" id="quizRiversList">
+          ${_quizRivers.map((r,i) => `
+            <div class="river-item">
+              <div class="river-item-body">
+                <div class="river-item-name">${_esc(r.name)}</div>
+                ${r.region ? `<div class="river-item-sub">📍 ${_esc(r.region)}</div>` : ''}
+              </div>
+              <button class="river-remove" data-quiz-river-idx="${i}">×</button>
+            </div>`).join('')}
+        </div>
+        <div class="quiz-river-add">
+          <input class="field-input" id="f-quiz-river-name" type="text" placeholder="Название реки">
+          <input class="field-input" id="f-quiz-river-region" type="text" placeholder="Регион (необязательно)">
+          <button class="btn-secondary quiz-river-add-btn" id="quizRiverAdd">+ Добавить место</button>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="field-label">
+          Маршрут по дням
+          <span class="field-hint-inline">— необязательно</span>
+        </div>
+        <div class="quiz-route-hint">Строка с двоеточием на конце — новый день («День 1 — прилёт:»). Дальше — пункты расписания, время можно указать в начале строки.</div>
+        <textarea class="field-textarea quiz-route-ta" id="f-quiz-route" rows="7"
+                  placeholder="День 1 — прилёт:&#10;09:15 Прилёт, багаж&#10;13:00 Выезд на реку&#10;&#10;День 2 — рыбалка:&#10;Целый день на воде">${_esc(_quizRouteText)}</textarea>
+      </div>`;
+
     return `
       ${_steps()}
 
@@ -221,14 +260,16 @@ const TripsIndex = (() => {
         </div>
       </div>
 
+      <div class="exp-mode-tabs">
+        <div class="exp-mode-tab ${_expMode === 'quiz' ? 'on' : ''}" data-exp-mode="quiz">📝 Квиз</div>
+        <div class="exp-mode-tab ${_expMode === 'file' ? 'on' : ''}" data-exp-mode="file">🤖 Файл от AI</div>
+      </div>
+
+      ${_expMode === 'quiz' ? quizHtml : `
       <div class="import-section">
-        <div class="field-label" style="margin-bottom:10px">
-          Данные маршрута
-          <span class="field-hint-inline">— необязательно, можно добавить позже</span>
-        </div>
         ${previewHtml}
         ${uploadHtml}
-      </div>`;
+      </div>`}`;
   }
 
   // ─── Шаг 1 РЫБАЛКА: поля без изменений ─────────────────────────────────
@@ -363,8 +404,9 @@ const TripsIndex = (() => {
     const isExp  = _draft.type === 'expedition';
 
     if (!isLast) {
-      // На шаге импорта для экспедиции — можно пропустить
-      const skipHtml = (_createStep === 1 && isExp && !_importedData)
+      // На шаге импорта файлом для экспедиции — можно пропустить (в квизе
+      // поля и так помечены необязательными, отдельная кнопка не нужна)
+      const skipHtml = (_createStep === 1 && isExp && _expMode === 'file' && !_importedData)
         ? `<button class="btn-secondary" id="createSkip">Пропустить →</button>`
         : '';
       return `<button class="btn-primary" id="createNext">Далее →</button>${skipHtml}`;
@@ -430,6 +472,32 @@ const TripsIndex = (() => {
     });
 
     // ── Импорт JSON (только для экспедиции, шаг 1) ──────────────────────
+
+    // Переключатель способа заполнения данных маршрута (квиз / файл от AI)
+    overlay.querySelectorAll('[data-exp-mode]').forEach(tab => {
+      tab.addEventListener('click', () => {
+        _saveCurrentFields();
+        _expMode = tab.dataset.expMode;
+        _refreshCreate();
+      });
+    });
+
+    // Квиз: добавить реку/место
+    document.getElementById('quizRiverAdd')?.addEventListener('click', () => {
+      const nameInp   = document.getElementById('f-quiz-river-name');
+      const regionInp = document.getElementById('f-quiz-river-region');
+      const name = nameInp?.value.trim();
+      if (!name) { nameInp?.focus(); return; }
+      _quizRivers.push({ name, region: regionInp?.value.trim() || '' });
+      _refreshCreate();
+    });
+
+    overlay.querySelectorAll('[data-quiz-river-idx]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _quizRivers.splice(parseInt(btn.dataset.quizRiverIdx), 1);
+        _refreshCreate();
+      });
+    });
 
     // Сброс импорта
     document.getElementById('importReset')?.addEventListener('click', () => {
@@ -548,6 +616,44 @@ const TripsIndex = (() => {
     }
   }
 
+  // Разбирает текст маршрута квиза на дни: строка с двоеточием на конце —
+  // новый день, остальные строки — пункты расписания. Время в начале строки
+  // ("09:15 текст") распознаётся и уходит в отдельную колонку, как в
+  // AI-импорте — те же поля {t, rows:[[time,text],...]}, чтобы Гид рендерил
+  // квиз-маршрут точно так же, как импортированный.
+  function _parseRouteText(text) {
+    const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean);
+    const days = [];
+    let current = null;
+    lines.forEach(line => {
+      if (/:$/.test(line) && line.length < 80) {
+        current = { t: line.replace(/:$/, '').trim(), rows: [] };
+        days.push(current);
+        return;
+      }
+      const m = line.match(/^(\d{1,2}[:.]\d{2}(?:\s*[-–]\s*\d{1,2}[:.]\d{2})?)\s*[—\-–]?\s*(.*)$/);
+      const time = m ? m[1] : '';
+      const rest = m ? (m[2] || '') : line;
+      if (!current) { current = { t: 'День 1', rows: [] }; days.push(current); }
+      current.rows.push([time, rest]);
+    });
+    return days;
+  }
+
+  // Собирает importData из полей квиза (та же форма, что у AI JSON) — так
+  // весь остальной код (Гид, Реки, сводка на шаге 3, сохранение) работает
+  // одинаково независимо от источника данных.
+  function _buildQuizImportData() {
+    const days = _parseRouteText(_quizRouteText);
+    if (!_quizRivers.length && !days.length) return null;
+    return {
+      meta:   { title: _draft.name || '' },
+      // id обязателен — Реки открывают карточку по data-rv-open="r.id"
+      rivers: _quizRivers.map((r, i) => ({ id: 'quiz_river_' + i, name: r.name, type: r.region })),
+      route:  days
+    };
+  }
+
   function _saveCurrentFields() {
     if (_createStep === 0) {
       _draft.name      = document.getElementById('f-name')?.value.trim() || '';
@@ -558,6 +664,9 @@ const TripsIndex = (() => {
       if (_draft.type === 'fishing') {
         _draft.comment = document.getElementById('f-comment')?.value.trim() || '';
         _draft.rivers  = _rivers;
+      } else if (_expMode === 'quiz') {
+        _quizRouteText = document.getElementById('f-quiz-route')?.value || '';
+        _importedData = _buildQuizImportData();
       }
       // Участники — общие для обоих типов
       const partVal = document.getElementById('f-participant')?.value.trim();
@@ -670,12 +779,16 @@ const TripsIndex = (() => {
   }
 
   function _autoName() {
-    if (_draft.type === 'expedition' && _importedData?.meta?.title) {
-      return _importedData.meta.title;
-    }
-    const river = _rivers.length ? _rivers[0].name : '';
     const d = new Date(_draft.startDate);
     const months = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+    if (_draft.type === 'expedition') {
+      if (_importedData?.meta?.title) return _importedData.meta.title;
+      const er = _quizRivers.length ? _quizRivers[0].name : '';
+      return er
+        ? `${er}, ${d.getDate()} ${months[d.getMonth()]}`
+        : `Экспедиция ${d.getDate()} ${months[d.getMonth()]}`;
+    }
+    const river = _rivers.length ? _rivers[0].name : '';
     return river
       ? `${river}, ${d.getDate()} ${months[d.getMonth()]}`
       : `Рыбалка ${d.getDate()} ${months[d.getMonth()]}`;
