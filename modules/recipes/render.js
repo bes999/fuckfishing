@@ -353,10 +353,29 @@ const RecipesRender = (() => {
     }
   }
 
+  // Полная замена innerHTML на каждый снапшот (включая эхо своей же записи)
+  // убивала DOM-узел незасейвленного комментария, если человек как раз его
+  // печатал — сохраняем и восстанавливаем значение/фокус/курсор вокруг
+  // перерисовки, как и в modules/bar/render.js (тот же паттерн).
   function refresh() {
     if (!_el) return;
+    const active = document.activeElement;
+    let pending = null;
+    if (active && active.classList && active.classList.contains('rec-comment-input')) {
+      const card = active.closest('.rec-card');
+      if (card) pending = { id: card.dataset.id, value: active.value, start: active.selectionStart, end: active.selectionEnd };
+    }
     _el.querySelector('#rec-cards').innerHTML = _cards();
     _bindCardEvents();
+    if (pending) {
+      const card  = _el.querySelector(`.rec-card[data-id="${pending.id}"]`);
+      const input = card && card.querySelector('.rec-comment-input');
+      if (input) {
+        input.value = pending.value;
+        input.focus();
+        try { input.setSelectionRange(pending.start, pending.end); } catch (e) {}
+      }
+    }
   }
 
   return { render, refresh };

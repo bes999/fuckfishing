@@ -113,6 +113,24 @@ const ShoppingRender = (() => {
     ShoppingFirebase.save(_tripId, ShoppingState.getCategories(_tripId));
   }
 
+  // Общие blur/keydown для редактируемого тега количества — вынесены из
+  // edit-qty-обработчика, чтобы refresh() могла навесить их заново на
+  // подменённый узел (см. ниже) без дублирования логики сохранения.
+  function _bindQtyEditHandlers(tag, catId, itemId) {
+    const _save = () => {
+      tag.contentEditable = 'false';
+      tag.classList.remove('editing');
+      const newQty = tag.textContent.trim();
+      ShoppingState.updateQty(_tripId, catId, itemId, newQty);
+      _sync();
+    };
+    tag.addEventListener('blur', _save, { once: true });
+    tag.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); tag.blur(); }
+      if (e.key === 'Escape') { tag.contentEditable = 'false'; tag.classList.remove('editing'); }
+    }, { once: true });
+  }
+
   function _rebuildBody() {
     const bodyEl = _el ? _el.querySelector('#sh-body') : null;
     if (!bodyEl) return;
@@ -181,18 +199,7 @@ _bodyHandler = e => {
     const sel = window.getSelection();
     sel?.removeAllRanges();
     sel?.addRange(range);
-    const _save = () => {
-      tag.contentEditable = 'false';
-      tag.classList.remove('editing');
-      const newQty = tag.textContent.trim();
-      ShoppingState.updateQty(_tripId, catId, itemId, newQty);
-      _sync();
-    };
-    tag.addEventListener('blur', _save, { once: true });
-    tag.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); tag.blur(); }
-      if (e.key === 'Escape') { tag.contentEditable = 'false'; tag.classList.remove('editing'); }
-    }, { once: true });
+    _bindQtyEditHandlers(tag, catId, itemId);
     return;
   }
   if (action === 'del-item') {
@@ -302,8 +309,36 @@ body.addEventListener('click', _bodyHandler, true);
     });
   }
 
+  // Полная замена innerHTML на каждый снапшот (включая эхо своей же записи,
+  // например когда кто-то отмечает другую позицию) убивала contenteditable-
+  // узел количества, если человек как раз его редактировал — не только
+  // терялся ввод, но и blur/keydown никогда не долетали до _save(), так что
+  // даже уже введённое значение не сохранялось. Сохраняем и восстанавливаем
+  // редактирование вокруг перерисовки, тем же паттерном, что и в Баре/
+  // Рецептах (см. modules/bar/render.js, modules/recipes/render.js).
   function refresh() {
+    const active = document.activeElement;
+    let pending = null;
+    if (active && active.classList && active.classList.contains('sh-qty-tag') && active.contentEditable === 'true') {
+      pending = { cat: active.dataset.cat, item: active.dataset.item, text: active.textContent };
+    }
     _rebuildBody();
+    if (pending) {
+      const tag = _el?.querySelector(`.sh-qty-tag[data-cat="${pending.cat}"][data-item="${pending.item}"]`);
+      if (tag) {
+        tag.contentEditable = 'true';
+        tag.classList.add('editing');
+        tag.textContent = pending.text;
+        tag.focus();
+        const range = document.createRange();
+        range.selectNodeContents(tag);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        _bindQtyEditHandlers(tag, pending.cat, pending.item);
+      }
+    }
   }
 
   return { render, refresh };

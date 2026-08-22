@@ -273,9 +273,19 @@ const BarRender = (() => {
     }
   }
 
-  // Вызывается из BarFirebase при обновлении данных
+  // Вызывается из BarFirebase при обновлении данных — включая эхо СВОЕЙ же
+  // записи (рейтинг/комментарий другой карточки), не только чужой правки.
+  // Полная замена innerHTML убивала DOM-узел незасейвленного комментария,
+  // если человек как раз печатал его в этот момент — сохраняем и
+  // восстанавливаем фокус/значение/позицию курсора вокруг перерисовки.
   function refresh() {
     if (!_el) return;
+    const active = document.activeElement;
+    let pending = null;
+    if (active && active.classList && active.classList.contains('bar-comment-input')) {
+      const card = active.closest('.bar-card');
+      if (card) pending = { id: card.dataset.id, value: active.value, start: active.selectionStart, end: active.selectionEnd };
+    }
     _el.querySelector('#bar-cards').innerHTML = _cards();
     // Карточки, которые были раскрыты, регенерируются с новой разметкой
     // тела (рейтинг/комментарии), но без обработчиков — перепривязываем их.
@@ -283,6 +293,15 @@ const BarRender = (() => {
       const card = _el.querySelector(`.bar-card[data-id="${id}"]`);
       if (card) _bindBodyEvents(card);
     });
+    if (pending) {
+      const card  = _el.querySelector(`.bar-card[data-id="${pending.id}"]`);
+      const input = card && card.querySelector('.bar-comment-input');
+      if (input) {
+        input.value = pending.value;
+        input.focus();
+        try { input.setSelectionRange(pending.start, pending.end); } catch (e) {}
+      }
+    }
   }
 
   return { render, refresh };

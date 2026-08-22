@@ -119,20 +119,23 @@ var RiversRender = (function () {
 
     /* ── парковка ── */
     if (r.parkNote || r.parkLat) {
-      var parkUrl = _navUrl(r.parkLat || r.lat, r.parkLon || r.lon, 'Парковка ' + r.name);
+      // Кнопка-ссылка на навигатор — только если реально есть куда вести
+      // (парковочные координаты либо координаты самой реки как запасной
+      // вариант). Без них раньше собиралась ссылка на "undefined,undefined".
+      var parkLat = r.parkLat || r.lat, parkLon = r.parkLon || r.lon;
+      var hasCoords = parkLat != null && parkLon != null;
       h += '<div class="rv-sec">';
       h += '  <div class="rv-sec-title">Парковка и подъезд</div>';
       h += '  <div class="rv-sec-text">' + (r.parkNote || r.access || '') + '</div>';
-      h += '  <div class="rv-park-btn" data-rv-nav="' + parkUrl + '">';
-      h += '    <div class="rv-park-pin"></div>';
-      h += '    <div class="rv-park-txt">';
-      if (r.parkLat) {
-        h += r.parkLat + ', ' + r.parkLon;
-      } else {
-        h += r.parkNote || 'Открыть навигатор';
+      if (hasCoords) {
+        var parkUrl = _navUrl(parkLat, parkLon, 'Парковка ' + r.name);
+        h += '  <div class="rv-park-btn" data-rv-nav="' + parkUrl + '">';
+        h += '    <div class="rv-park-pin"></div>';
+        h += '    <div class="rv-park-txt">';
+        h += r.parkLat ? (r.parkLat + ', ' + r.parkLon) : 'Открыть навигатор';
+        h += ' → Навигатор</div>';
+        h += '  </div>';
       }
-      h += ' → Навигатор</div>';
-      h += '  </div>';
       h += '</div>';
     }
 

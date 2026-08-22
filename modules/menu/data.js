@@ -83,6 +83,22 @@ const MenuData = (() => {
     return meals;
   }
 
+  // Блюда встроенного каталога категории + свои рецепты пользователей
+  // (recipes_custom, добавленные через "+" в Рецептах) — раньше сюда
+  // попадал только встроенный каталог, свои рецепты в меню выбрать было
+  // нельзя, хотя в самих Рецептах они прекрасно отображались.
+  function _recipeItemsForCat(catId) {
+    const items = [];
+    const cat = RecipesData.getCategories().find(c => c.id === catId);
+    if (cat) items.push(...cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes' })));
+    if (typeof RecipesState !== 'undefined') {
+      RecipesState.getCustomRecipes(catId).forEach(r => {
+        items.push({ id: r.id, name: r.name, hint: r.sub, source: 'recipes_custom' });
+      });
+    }
+    return items;
+  }
+
   // Получить блюда для типа слота (из RecipesData + BarData + Proteins)
   function getItemsForSlot(slotType) {
     const result = [];
@@ -101,15 +117,8 @@ const MenuData = (() => {
       }
       // Напитки из Рецептов
       if (typeof RecipesData !== 'undefined') {
-        const drinksCat = RecipesData.getCategories().find(c => c.id === 'drinks');
-        if (drinksCat) {
-          result.push({
-            section: 'Напитки',
-            items: drinksCat.cocktails.map(r => ({
-              id: r.id, name: r.name, hint: r.sub, source: 'recipes'
-            }))
-          });
-        }
+        const items = _recipeItemsForCat('drinks');
+        if (items.length) result.push({ section: 'Напитки', items });
       }
       return result;
     }
@@ -124,38 +133,26 @@ const MenuData = (() => {
 
     if (slotType === 'side') {
       if (typeof RecipesData !== 'undefined') {
-        const cat = RecipesData.getCategories().find(c => c.id === 'sides');
-        if (cat) result.push({
-          section: 'Гарниры',
-          items: cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes' }))
-        });
+        const items = _recipeItemsForCat('sides');
+        if (items.length) result.push({ section: 'Гарниры', items });
       }
       return result;
     }
 
     if (slotType === 'snack') {
       if (typeof RecipesData !== 'undefined') {
-        const cat = RecipesData.getCategories().find(c => c.id === 'snacks');
-        if (cat) result.push({
-          section: 'Закуски',
-          items: cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes' }))
-        });
-        const fishCat = RecipesData.getCategories().find(c => c.id === 'fish');
-        if (fishCat) result.push({
-          section: 'Из рыбы',
-          items: fishCat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes' }))
-        });
+        const items = _recipeItemsForCat('snacks');
+        if (items.length) result.push({ section: 'Закуски', items });
+        const fishItems = _recipeItemsForCat('fish');
+        if (fishItems.length) result.push({ section: 'Из рыбы', items: fishItems });
       }
       return result;
     }
 
     if (slotType === 'dessert') {
       if (typeof RecipesData !== 'undefined') {
-        const cat = RecipesData.getCategories().find(c => c.id === 'desserts');
-        if (cat) result.push({
-          section: 'Десерты',
-          items: cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes' }))
-        });
+        const items = _recipeItemsForCat('desserts');
+        if (items.length) result.push({ section: 'Десерты', items });
       }
       return result;
     }
@@ -165,10 +162,8 @@ const MenuData = (() => {
       const mainCats = ['fish', 'delicacies', 'breakfast', 'soups', 'main'];
       mainCats.forEach(catId => {
         const cat = RecipesData.getCategories().find(c => c.id === catId);
-        if (cat) result.push({
-          section: cat.label,
-          items: cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes' }))
-        });
+        const items = _recipeItemsForCat(catId);
+        if (items.length) result.push({ section: cat ? cat.label : catId, items });
       });
     }
     return result;
