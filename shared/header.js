@@ -60,7 +60,7 @@ const AppHeader = (() => {
 
     _el.innerHTML = `
       <div class="ah-identity" data-action="ah-profile">
-        <div class="ah-avatar">${avatar || initials}</div>
+        <div class="ah-avatar">${UIUtils.avatarHtml(avatar, initials)}</div>
         <div class="ah-name">${_esc(name)}</div>
       </div>
       <div class="ah-actions">
@@ -137,7 +137,7 @@ const AppHeader = (() => {
     drawer.id = 'ah-drawer';
     drawer.innerHTML = `
       <div class="ah-drawer-head" data-action="ah-drawer-profile">
-        <div class="ah-drawer-avatar">${avatar || initials}</div>
+        <div class="ah-drawer-avatar">${UIUtils.avatarHtml(avatar, initials)}</div>
         <div>
           <div class="ah-drawer-name">${_esc(name)}</div>
           <div class="ah-drawer-sub">${_esc(_statsSub())}</div>

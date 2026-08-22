@@ -1,5 +1,5 @@
 'use strict';
-/* globals db, MembersFirebase, MembersRender, AuthActions */
+/* globals db, storage, MembersFirebase, MembersRender, AuthActions, UIUtils */
 
 // FIX: var вместо const — иначе TDZ при обращении к MembersModule внутри IIFE
 var MembersModule = (() => {
@@ -103,7 +103,7 @@ var MembersModule = (() => {
     return `
       <p class="ob-lbl" style="margin-top:0">Аватар</p>
       <div class="ob-avatar-preview" data-action="edit-avatar-open">
-        <div class="ob-avatar-circle" id="edit-avatar-circle">${_esc(p.avatar || '🎣')}</div>
+        <div class="ob-avatar-circle" id="edit-avatar-circle">${UIUtils.avatarHtml(p.avatar, '🎣')}</div>
         <div class="ob-avatar-change">Изменить ›</div>
       </div>
       <p class="ob-lbl">Имя</p>
@@ -157,17 +157,63 @@ var MembersModule = (() => {
     ).join('');
     return `
       <div class="ob-overlay" id="avatar-pick-overlay">
-        <div class="ob-sheet" style="max-height:60vh">
+        <div class="ob-sheet" style="max-height:70vh">
           <div class="ob-grab"></div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 12px;flex-shrink:0">
             <span style="font-size:17px;font-weight:700;color:var(--label)">Выбери аватар</span>
             <button class="modal-close" data-action="edit-avatar-close" style="font-size:18px">×</button>
           </div>
           <div class="ob-scroll">
+            <button class="ob-avatar-upload-btn" data-action="edit-avatar-upload">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              Загрузить своё фото
+            </button>
+            <input type="file" id="avatar-file-input" accept="image/*" style="display:none">
+            <div class="ob-avatar-upload-status" id="avatar-upload-status"></div>
             <div class="ob-avatar-grid">${avBtns}</div>
           </div>
         </div>
       </div>`;
+  }
+
+  // Сжимает фото в браузере до разумного размера перед загрузкой (профильная
+  // картинка не нуждается в оригинальном разрешении телефонной камеры —
+  // без сжатия это были бы мегабайты на ровном месте).
+  function _compressImage(file, maxSize, quality) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let { width, height } = img;
+        if (width > height) { if (width > maxSize) { height = Math.round(height * maxSize / width); width = maxSize; } }
+        else { if (height > maxSize) { width = Math.round(width * maxSize / height); height = maxSize; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('toBlob failed')), 'image/jpeg', quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')); };
+      img.src = url;
+    });
+  }
+
+  async function _uploadAvatarPhoto(file) {
+    const status = document.getElementById('avatar-upload-status');
+    if (status) status.textContent = 'Загружаю…';
+    try {
+      const blob = await _compressImage(file, 480, 0.82);
+      const ref = storage.ref('avatars/' + _editUid);
+      await ref.put(blob, { contentType: 'image/jpeg' });
+      const url = await ref.getDownloadURL();
+      if (_draftProfile) _draftProfile.avatar = url;
+      const circle = document.getElementById('edit-avatar-circle');
+      if (circle) circle.innerHTML = UIUtils.avatarHtml(url);
+      document.getElementById('avatar-pick-overlay')?.remove();
+    } catch (err) {
+      console.error('MembersModule._uploadAvatarPhoto:', err);
+      if (status) status.textContent = 'Не удалось загрузить — проверь соединение и попробуй ещё раз';
+    }
   }
 
   function _switchEditTab(tab) {
@@ -367,6 +413,14 @@ var MembersModule = (() => {
         const div = document.createElement('div');
         div.innerHTML = _sheetPickAvatar(_draftProfile?.avatar);
         document.body.appendChild(div.firstElementChild);
+        document.getElementById('avatar-file-input')?.addEventListener('change', e => {
+          const file = e.target.files[0];
+          if (file) _uploadAvatarPhoto(file);
+        });
+      }
+
+      if (action === 'edit-avatar-upload') {
+        document.getElementById('avatar-file-input')?.click();
       }
 
       if (action === 'edit-avatar-close') {
@@ -376,7 +430,7 @@ var MembersModule = (() => {
       if (action === 'edit-av-pick') {
         if (_draftProfile) _draftProfile.avatar = t.dataset.av;
         const circle = document.getElementById('edit-avatar-circle');
-        if (circle) circle.textContent = t.dataset.av;
+        if (circle) circle.innerHTML = UIUtils.avatarHtml(t.dataset.av);
         document.getElementById('avatar-pick-overlay')?.remove();
       }
 

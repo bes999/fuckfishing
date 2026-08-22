@@ -79,5 +79,18 @@ const UIUtils = (() => {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   }
 
-  return { withBusyButton, confirmSheet };
+  // avatarHtml(avatar, fallback) — аватар бывает либо emoji-строкой (как
+  // раньше), либо ссылкой на загруженное фото (Firebase Storage download
+  // URL, начинается с http). Разница видна только тут — во всех местах,
+  // где рисуется аватар (шапка, карточка участника, профиль, форма
+  // редактирования), контейнер уже circle + overflow:hidden в CSS, просто
+  // подставляем <img> вместо текста-эмодзи.
+  function avatarHtml(avatar, fallback) {
+    if (avatar && /^https?:\/\//.test(avatar)) {
+      return `<img src="${_esc(avatar)}" alt="">`;
+    }
+    return _esc(avatar || fallback || '');
+  }
+
+  return { withBusyButton, confirmSheet, avatarHtml };
 })();

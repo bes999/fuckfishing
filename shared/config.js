@@ -11,8 +11,9 @@ const FIREBASE_CONFIG = {
 const TRIP_ID = 'sakhalin2026';
 
 firebase.initializeApp(FIREBASE_CONFIG);
-const db   = firebase.firestore();
-const auth = firebase.auth();
+const db      = firebase.firestore();
+const auth    = firebase.auth();
+const storage = firebase.storage();
 
 // Оффлайн-персистентность
 db.settings({ cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED });
