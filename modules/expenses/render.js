@@ -395,9 +395,19 @@ const ExpensesRender = (() => {
         if (!desc) { overlay.querySelector('#exp-desc').focus(); return; }
         if (!amt)  { overlay.querySelector('#exp-amt').focus();  return; }
         if (!paidBy) { overlay.querySelector('#exp-who').focus(); return; }
+        // Без участников сумма при расчёте молча размажется на всех, кто
+        // хоть раз упоминался в этой поездке (см. ExpensesState.computeSummary
+        // fallback) — а не на тех, кого реально сняли/оставили сейчас.
+        if (!participants.length) { alert('Отметь хотя бы одного участника расхода'); return; }
 
+        // При редактировании обязательно сохраняем исходные createdAt/
+        // createdBy — иначе normalizeExpense подставит новые (createdBy:
+        // null), а от них зависит и право удаления своей записи (сравнение
+        // с myUid), и порядок в списке (сортировка/orderBy по createdAt).
         const entry = ExpensesData.normalizeExpense(
-          { desc, amount: amt, category: cat, paidBy, participants, date },
+          { desc, amount: amt, category: cat, paidBy, participants, date,
+            createdAt: editing ? editing.createdAt : undefined,
+            createdBy: editing ? editing.createdBy : undefined },
           expenseId || ('tmp_' + Date.now())
         );
 

@@ -321,7 +321,15 @@ var RiversIndex = (function () {
     if (form) form.className = 'rv-pt-form';
     if (btn)  btn.style.display = 'inline-block';
     _clearPtForm();
+    _editingPt = null;
   }
+
+  // Индекс редактируемой точки (и река, к которой она относится) — точка
+  // больше НЕ удаляется из списка сразу по клику "Ред." (см. _editPoint):
+  // раньше она спличивалась и сохранялась немедленно, до того как человек
+  // решил "Сохранить" или "Отмена" — нажатие "Отмена" тогда навсегда
+  // теряло точку, никакого отката не было.
+  var _editingPt = null;
   function _clearPtForm() {
     ['rv-pt-name','rv-pt-coord','rv-pt-note'].forEach(function (id) {
       var el = document.getElementById(id);
@@ -350,7 +358,11 @@ var RiversIndex = (function () {
 
     var pts = _getPoints();
     if (!pts[rid]) pts[rid] = [];
-    pts[rid].push(pt);
+    if (_editingPt && _editingPt.rid === rid) {
+      pts[rid][_editingPt.idx] = pt;
+    } else {
+      pts[rid].push(pt);
+    }
     _savePoints(pts);
 
     var listEl = document.getElementById('rv-pts-list');
@@ -371,12 +383,9 @@ var RiversIndex = (function () {
     if (coordEl) coordEl.value = pt.coordStr || '';
     if (noteEl)  noteEl.value  = pt.note  || '';
 
-    /* remove old */
-    pts[rid].splice(idx, 1);
-    _savePoints(pts);
-    var listEl = document.getElementById('rv-pts-list');
-    if (listEl) listEl.innerHTML = RiversRender.pointsList(pts[rid], rid);
-
+    // Точку не трогаем в хранилище, пока не нажмут "Сохранить" — просто
+    // запоминаем, какую позицию перезаписать при сохранении.
+    _editingPt = { rid: rid, idx: idx };
     _showPtForm();
   }
 
