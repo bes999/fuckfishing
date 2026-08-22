@@ -436,6 +436,7 @@ function rMedkitStack(memberId) {
   }));
   for (var i = 0; i < allItems.length; i++) {
     var item = allItems[i];
+    if (isItemHidden('personal', memberId, item.id)) continue;
     var itemState = getMedkitItem('personal', memberId, item.id);
     var slotName = itemState.slot_time || 'Утро';
     if (!slots[slotName]) slots[slotName] = [];

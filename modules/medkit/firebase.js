@@ -29,9 +29,25 @@ function loadLocal() {
 }
 
 // --- Firebase сохранение ---
+// _lastSavedUpdatedAt — метка последней записи, сделанной ЭТОЙ вкладкой.
+// Раньше здесь была защита skipNext, которая выставлялась и проверялась в
+// РАЗНЫХ функциях (переменная объявлена внутри subscribeMedkit, а писать в
+// неё должен был saveMedkitToFirebase — до неё оттуда просто не дотянуться,
+// это две разные замыкающие области). В итоге эхо собственной подтверждённой
+// записи всегда проходило как настоящее обновление с сервера и вызывало
+// полный rMedkit() — если в этот момент кто-то печатал в другое поле (своё
+// или на другом устройстве), ввод стирался без предупреждения. Метка
+// updatedAt в самом payload даёт способ узнать "это подтверждение МОЕЙ
+// записи" надёжнее, чем булев флаг, — работает независимо от того, сколько
+// промежуточных снапшотов (локальный pending, потом подтверждённый) успеет
+// прилететь между записью и подпиской.
+var _lastSavedUpdatedAt = null;
+
 function saveMedkitToFirebase() {
   if (typeof medkitRef === 'undefined') return;
-  medkitRef.set(buildMedkitPayload(), { merge: true })
+  var payload = buildMedkitPayload();
+  _lastSavedUpdatedAt = payload.updatedAt;
+  medkitRef.set(payload, { merge: true })
     .catch(function(e) { console.log('medkit save error:', e); });
 }
 
@@ -54,13 +70,12 @@ function loadMedkitFromFirebase() {
 // --- Подписка на изменения ---
 function subscribeMedkit() {
   if (typeof medkitRef === 'undefined') return;
-  var skipNext = false;
   medkitRef.onSnapshot(function(doc) {
-    if (skipNext) { skipNext = false; return; }
-    if (doc.exists && !doc.metadata.hasPendingWrites) {
-      applyMedkitPayload(doc.data());
-      rMedkit();
-    }
+    if (!doc.exists || doc.metadata.hasPendingWrites) return;
+    var data = doc.data();
+    if (_lastSavedUpdatedAt && data.updatedAt === _lastSavedUpdatedAt) return; // эхо своей же записи
+    applyMedkitPayload(data);
+    rMedkit();
   }, function(e) {
     console.log('medkit subscribe error:', e);
   });
