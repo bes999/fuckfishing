@@ -199,20 +199,31 @@ var MembersModule = (() => {
   }
 
   async function _uploadAvatarPhoto(file) {
+    // Снимаем "билет" на текущую сессию редактирования (сам объект-черновик,
+    // не uid — тот же человек, открытый заново, тоже получает новый объект
+    // в _showEditSheet). Если к моменту завершения загрузки открыта уже
+    // другая сессия (эту отменили и открыли другой профиль / этот же
+    // профиль заново), результат применять нельзя — иначе чужая или
+    // просроченная фотка молча прилипает не в тот черновик.
+    const sessionUid   = _editUid;
+    const sessionDraft = _draftProfile;
     const status = document.getElementById('avatar-upload-status');
     if (status) status.textContent = 'Загружаю…';
     try {
       const blob = await _compressImage(file, 480, 0.82);
-      const ref = storage.ref('avatars/' + _editUid);
+      const ref = storage.ref('avatars/' + sessionUid);
       await ref.put(blob, { contentType: 'image/jpeg' });
       const url = await ref.getDownloadURL();
-      if (_draftProfile) _draftProfile.avatar = url;
+      if (_draftProfile !== sessionDraft) return; // сессия сменилась, пока грузили — молча выходим
+      _draftProfile.avatar = url;
       const circle = document.getElementById('edit-avatar-circle');
       if (circle) circle.innerHTML = UIUtils.avatarHtml(url);
       document.getElementById('avatar-pick-overlay')?.remove();
     } catch (err) {
       console.error('MembersModule._uploadAvatarPhoto:', err);
-      if (status) status.textContent = 'Не удалось загрузить — проверь соединение и попробуй ещё раз';
+      if (_draftProfile === sessionDraft && status) {
+        status.textContent = 'Не удалось загрузить — проверь соединение и попробуй ещё раз';
+      }
     }
   }
 

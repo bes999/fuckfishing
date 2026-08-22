@@ -1,9 +1,12 @@
 'use strict';
 
 // Погода по координатам и датам поездки — Open-Meteo (бесплатно, без ключа).
-// Прошлое/текущее берём из архива (реальные данные), будущее — из прогноза
-// (доступен примерно на 16 дней вперёд). Всё это обёрнуто в один вызов,
-// вызывающий код не должен думать, какой из двух API использовать.
+// Прошлое берём из архива (реальные данные), будущее — из прогноза (доступен
+// примерно на 16 дней вперёд). Поездка, которая идёт прямо сейчас (начало в
+// прошлом, конец в будущем/сегодня) тянет ОБА диапазона и объединяет дни —
+// раньше такая поездка целиком уходила в прогноз с start_date в прошлом,
+// который forecast-эндпоинт Open-Meteo не отдаёт, и погода для активных
+// поездок (когда она нужнее всего) молча никогда не показывалась.
 const WeatherService = (() => {
   const ARCHIVE_URL  = 'https://archive-api.open-meteo.com/v1/archive';
   const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
@@ -14,47 +17,73 @@ const WeatherService = (() => {
     return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
   }
 
-  // Возвращает {tMin,tMax,precip,pressure,wind,source,fetchedAt} или null,
-  // если координат нет или дата слишком далеко в будущем для прогноза.
-  async function fetchForTrip(lat, lon, startDate, endDate) {
-    if (lat == null || lon == null) return null;
+  function _addDays(dateStr, n) {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
+  }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const isPast = endDate < today;
-
-    if (!isPast) {
-      const maxForecast = new Date();
-      maxForecast.setDate(maxForecast.getDate() + 16);
-      if (startDate > maxForecast.toISOString().slice(0, 10)) return null;
-    }
-
-    const url = isPast ? ARCHIVE_URL : FORECAST_URL;
+  async function _fetchDaily(url, lat, lon, startDate, endDate) {
     const params = new URLSearchParams({
       latitude: lat, longitude: lon,
       start_date: startDate, end_date: endDate,
       daily: DAILY, timezone: 'auto'
     });
-
     const res = await fetch(url + '?' + params.toString());
     if (!res.ok) throw new Error('weather http ' + res.status);
     const data = await res.json();
-    const d = data.daily;
-    if (!d || !d.time || !d.time.length) return null;
+    return data.daily || null;
+  }
 
+  function _summarize(d, source) {
+    if (!d || !d.time || !d.time.length) return null;
     const tMaxVals = d.temperature_2m_max.filter(v => v != null);
     const tMinVals = d.temperature_2m_min.filter(v => v != null);
     const windVals = d.wind_speed_10m_max.filter(v => v != null);
     if (!tMaxVals.length || !tMinVals.length) return null;
-
     return {
       tMax:     Math.round(Math.max(...tMaxVals)),
       tMin:     Math.round(Math.min(...tMinVals)),
       precip:   Math.round((_avg(d.precipitation_sum) || 0) * 10) / 10,
       pressure: Math.round(_avg(d.surface_pressure_mean) || 0),
       wind:     windVals.length ? Math.round(Math.max(...windVals)) : null,
-      source:   isPast ? 'archive' : 'forecast',
+      source,
       fetchedAt: Date.now()
     };
+  }
+
+  function _mergeDaily(a, b) {
+    if (!a) return b;
+    if (!b) return a;
+    const merged = {};
+    Object.keys(a).forEach(key => { merged[key] = a[key].concat(b[key] || []); });
+    return merged;
+  }
+
+  // Возвращает {tMin,tMax,precip,pressure,wind,source,fetchedAt} или null,
+  // если координат нет или дата слишком далеко в будущем для прогноза.
+  // source — 'archive' | 'forecast' | 'mixed' (поездка идёт прямо сейчас).
+  async function fetchForTrip(lat, lon, startDate, endDate) {
+    if (lat == null || lon == null) return null;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const maxForecastStr = _addDays(today, 16);
+
+    if (endDate < today) {
+      return _summarize(await _fetchDaily(ARCHIVE_URL, lat, lon, startDate, endDate), 'archive');
+    }
+    if (startDate > maxForecastStr) return null; // слишком далеко в будущем
+
+    if (startDate >= today) {
+      return _summarize(await _fetchDaily(FORECAST_URL, lat, lon, startDate, endDate), 'forecast');
+    }
+
+    // Активная поездка — часть дат уже прошла, часть ещё впереди.
+    const [past, future] = await Promise.all([
+      _fetchDaily(ARCHIVE_URL, lat, lon, startDate, _addDays(today, -1)),
+      _fetchDaily(FORECAST_URL, lat, lon, today, endDate)
+    ]);
+    return _summarize(_mergeDaily(past, future), 'mixed');
   }
 
   return { fetchForTrip };

@@ -65,7 +65,7 @@ const TripCoverIndex = (() => {
 
     const w = trip.weather;
     const STALE_MS = 6 * 3600 * 1000;
-    const isStale = !w || (w.source === 'forecast' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
+    const isStale = !w || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
     if (!isStale) return;
 
     WeatherService.fetchForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate)
@@ -82,7 +82,7 @@ const TripCoverIndex = (() => {
   function _weatherSection(t) {
     const w = t.weather;
     if (!w) return '<div id="cover-weather-block"></div>';
-    const title = w.source === 'archive' ? 'Погода в поездке' : 'Прогноз погоды';
+    const title = w.source === 'forecast' ? 'Прогноз погоды' : 'Погода в поездке';
     return `
       <div class="cover-section" id="cover-weather-block">
         <div class="cover-section-head"><div class="cover-section-title">${title}</div></div>
