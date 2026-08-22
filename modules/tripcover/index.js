@@ -34,11 +34,82 @@ const TripCoverIndex = (() => {
         ExpensesState.setExpenses(tripId, expenseData.expenses);
         ExpensesState.setSettlements(tripId, expenseData.settlements);
         _renderCover(trip);
+        _maybeRefreshWeather(trip);
       });
       return;
     }
 
     _renderCover(trip);
+    _maybeRefreshWeather(trip);
+  }
+
+  // ── Погода по координатам поездки (см. shared/weather.js) — берём первую
+  // реку с координатами: у AI-импорта они почти всегда есть, у вручную
+  // заведённых "Рыбалок" — только если река выбрана живым поиском по OSM
+  // (modules/trips/index.js), а не одним из старых статичных чипов без
+  // координат. Результат кэшируем в trip.weather в Firestore, чтобы не
+  // дёргать API на каждый показ обложки; прогноз (в отличие от факта)
+  // считаем протухшим через 6 часов и обновляем заново.
+  function _tripCoords(trip) {
+    const impHit = (trip.importData?.rivers || []).find(r => r.lat != null && r.lon != null);
+    if (impHit) return { lat: impHit.lat, lon: impHit.lon };
+    const plainHit = (trip.rivers || []).find(r => r.lat != null && r.lon != null);
+    if (plainHit) return { lat: plainHit.lat, lon: plainHit.lon };
+    return null;
+  }
+
+  function _maybeRefreshWeather(trip) {
+    if (typeof WeatherService === 'undefined') return;
+    const coords = _tripCoords(trip);
+    if (!coords) return;
+
+    const w = trip.weather;
+    const STALE_MS = 6 * 3600 * 1000;
+    const isStale = !w || (w.source === 'forecast' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
+    if (!isStale) return;
+
+    WeatherService.fetchForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate)
+      .then(weather => {
+        if (!weather) return;
+        trip.weather = weather;
+        if (typeof TripsData !== 'undefined') TripsData.updateTrip(trip.id, { weather });
+        const block = document.getElementById('cover-weather-block');
+        if (block && _tripId === trip.id) block.outerHTML = _weatherSection(trip);
+      })
+      .catch(() => {});
+  }
+
+  function _weatherSection(t) {
+    const w = t.weather;
+    if (!w) return '<div id="cover-weather-block"></div>';
+    const title = w.source === 'archive' ? 'Погода в поездке' : 'Прогноз погоды';
+    return `
+      <div class="cover-section" id="cover-weather-block">
+        <div class="cover-section-head"><div class="cover-section-title">${title}</div></div>
+        <div class="cover-conds">
+          <div class="cover-cond">
+            <div class="cover-cond-icon">🌡</div>
+            <div class="cover-cond-val">${w.tMin}…${w.tMax}°</div>
+            <div class="cover-cond-label">темп.</div>
+          </div>
+          <div class="cover-cond">
+            <div class="cover-cond-icon">🌧</div>
+            <div class="cover-cond-val">${w.precip} мм</div>
+            <div class="cover-cond-label">осадки</div>
+          </div>
+          <div class="cover-cond">
+            <div class="cover-cond-icon">🧭</div>
+            <div class="cover-cond-val">${w.pressure}</div>
+            <div class="cover-cond-label">гПа</div>
+          </div>
+          ${w.wind != null ? `
+          <div class="cover-cond">
+            <div class="cover-cond-icon">💨</div>
+            <div class="cover-cond-val">${w.wind}</div>
+            <div class="cover-cond-label">км/ч</div>
+          </div>` : ''}
+        </div>
+      </div>`;
   }
 
   function _renderCover(trip) {
@@ -94,6 +165,7 @@ const TripCoverIndex = (() => {
         ${_hero(t, emoji, dates, location)}
         ${t.status === 'upcoming' || t.status === 'active' ? _countdown(t) : ''}
         ${t.status === 'upcoming' && t.readiness ? _readiness(t) : ''}
+        ${_weatherSection(t)}
         ${t.status === 'done' ? _doneContent(t) : ''}
         ${t.status === 'upcoming' ? _targetFish(t) : ''}
         <div style="height:16px"></div>
@@ -264,19 +336,6 @@ const TripCoverIndex = (() => {
               ${money.transfers.map(tr => `
                 <div class="cover-money-transfer">${_esc(tr.from)} → ${_esc(tr.to)} · ${_rub(tr.amount)}</div>`).join('')}
             </div>` : ''}
-        </div>`;
-    }
-
-    // Conditions
-    const c = t.conditions || {};
-    if (c.temp || c.wind || c.weather) {
-      h += `
-        <div class="cover-section">
-          <div class="cover-conds">
-            ${c.temp    ? `<div class="cover-cond"><div class="cover-cond-icon">🌡</div><div class="cover-cond-val">${_esc(c.temp)}</div><div class="cover-cond-label">воздух</div></div>` : ''}
-            ${c.wind    ? `<div class="cover-cond"><div class="cover-cond-icon">💨</div><div class="cover-cond-val">${_esc(c.wind)}</div><div class="cover-cond-label">ветер</div></div>` : ''}
-            ${c.weather ? `<div class="cover-cond"><div class="cover-cond-icon">🌤</div><div class="cover-cond-val">${_esc(c.weather)}</div><div class="cover-cond-label">погода</div></div>` : ''}
-          </div>
         </div>`;
     }
 

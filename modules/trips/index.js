@@ -295,12 +295,10 @@ const TripsIndex = (() => {
         <div class="rivers-list" id="riversList">
           ${riversHtml}
           <div id="riverSearch">
-            <input class="field-input" id="f-river" type="text" placeholder="Поиск реки или водоёма...">
-            <div class="osm-hint">🗺 OpenStreetMap — регион подтянется автоматически</div>
+            <input class="field-input" id="f-river" type="text" placeholder="Поиск реки или водоёма..." autocomplete="off">
+            <div class="osm-hint">🗺 OpenStreetMap — координаты подтянутся автоматически</div>
             <div class="suggest-wrap" id="riverSuggestions">
-              <div class="suggest-chip" data-suggest="р. Ока|Московская обл.">р. Ока</div>
-              <div class="suggest-chip" data-suggest="р. Нара|Московская обл.">р. Нара</div>
-              <div class="suggest-chip" data-suggest="р. Угра|Калужская обл.">р. Угра</div>
+              ${_defaultRiverChips()}
             </div>
           </div>
           <div class="river-add-row" id="addRiverBtn" style="${_rivers.length ? '' : 'display:none'}">
@@ -530,13 +528,8 @@ const TripsIndex = (() => {
 
     // ── Рыбалка: реки ───────────────────────────────────────────────────
 
-    overlay.querySelectorAll('[data-suggest]').forEach(chip => {
-      chip.addEventListener('click', () => {
-        const [name, region] = chip.dataset.suggest.split('|');
-        _addRiver(name.trim(), region.trim());
-        _refreshCreate();
-      });
-    });
+    _bindStaticRiverChips();
+    document.getElementById('f-river')?.addEventListener('input', _onRiverSearchInput);
 
     overlay.querySelectorAll('[data-river-idx]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -613,10 +606,77 @@ const TripsIndex = (() => {
 
   // ─── Вспомогательные ─────────────────────────────────────────────────────
 
-  function _addRiver(name, region) {
+  function _addRiver(name, region, lat, lon) {
     if (!_rivers.find(r => r.name === name)) {
-      _rivers.push({ name, region });
+      _rivers.push({ name, region, lat: lat != null ? lat : null, lon: lon != null ? lon : null });
     }
+  }
+
+  function _defaultRiverChips() {
+    return `
+      <div class="suggest-chip" data-suggest="р. Ока|Московская обл.">р. Ока</div>
+      <div class="suggest-chip" data-suggest="р. Нара|Московская обл.">р. Нара</div>
+      <div class="suggest-chip" data-suggest="р. Угра|Калужская обл.">р. Угра</div>`;
+  }
+
+  // ─── Живой поиск реки/водоёма по OpenStreetMap (Nominatim) ────────────────
+  // Даёт реальные координаты — без них не построить погоду по месту поездки
+  // (см. shared/weather.js). Раньше это поле было декоративным: работали
+  // только 3 захардкоженных чипа без координат, свой текст никуда не уходил.
+  let _riverSearchTimer = null;
+  let _riverSearchSeq = 0;
+
+  function _onRiverSearchInput(e) {
+    const q = e.target.value.trim();
+    clearTimeout(_riverSearchTimer);
+    if (q.length < 3) {
+      const wrap = document.getElementById('riverSuggestions');
+      if (wrap) { wrap.innerHTML = _defaultRiverChips(); _bindStaticRiverChips(); }
+      return;
+    }
+    _riverSearchTimer = setTimeout(() => _searchRivers(q), 400);
+  }
+
+  async function _searchRivers(q) {
+    const seq = ++_riverSearchSeq;
+    const wrap = document.getElementById('riverSuggestions');
+    if (wrap) wrap.innerHTML = '<div class="suggest-status">Ищу…</div>';
+    try {
+      const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ru&q=' + encodeURIComponent(q);
+      const res = await fetch(url);
+      const results = await res.json();
+      if (seq !== _riverSearchSeq || !wrap) return; // пришёл устаревший ответ — новый поиск уже в процессе
+      if (!results.length) { wrap.innerHTML = '<div class="suggest-status">Ничего не нашлось</div>'; return; }
+      wrap.innerHTML = results.map(r => {
+        const parts  = r.display_name.split(',').map(s => s.trim());
+        const name   = parts[0];
+        const region = parts.slice(1, 3).join(', ');
+        return `<div class="suggest-chip" data-river-name="${_esc(name)}" data-river-region="${_esc(region)}" data-river-lat="${r.lat}" data-river-lon="${r.lon}">${_esc(name)}</div>`;
+      }).join('');
+      _bindLiveRiverChips();
+    } catch (err) {
+      if (seq === _riverSearchSeq && wrap) wrap.innerHTML = '<div class="suggest-status">Не нашёл — проверь соединение</div>';
+    }
+  }
+
+  function _bindStaticRiverChips() {
+    document.querySelectorAll('#riverSuggestions [data-suggest]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const [name, region] = chip.dataset.suggest.split('|');
+        _addRiver(name.trim(), region.trim());
+        _refreshCreate();
+      });
+    });
+  }
+
+  function _bindLiveRiverChips() {
+    document.querySelectorAll('#riverSuggestions [data-river-name]').forEach(chip => {
+      chip.addEventListener('click', () => {
+        _addRiver(chip.dataset.riverName, chip.dataset.riverRegion,
+          parseFloat(chip.dataset.riverLat), parseFloat(chip.dataset.riverLon));
+        _refreshCreate();
+      });
+    });
   }
 
   // Разбирает текст маршрута квиза на дни: строка с двоеточием на конце —
