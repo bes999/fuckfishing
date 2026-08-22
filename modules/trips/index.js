@@ -606,9 +606,18 @@ const TripsIndex = (() => {
 
   // ─── Вспомогательные ─────────────────────────────────────────────────────
 
+  // id обязателен — Реки открывают карточку по data-rv-open="r.id"
+  // (modules/rivers/render.js:56 / index.js:_openDetail). Без него тап по
+  // реке молча ничего не делал для КАЖДОЙ вручную заведённой поездки —
+  // и статичные чипы, и живой OSM-поиск шли через эту же функцию.
   function _addRiver(name, region, lat, lon) {
     if (!_rivers.find(r => r.name === name)) {
-      _rivers.push({ name, region, lat: lat != null ? lat : null, lon: lon != null ? lon : null });
+      _rivers.push({
+        id: 'river_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        name, region,
+        lat: lat != null ? lat : null,
+        lon: lon != null ? lon : null
+      });
     }
   }
 
@@ -705,15 +714,27 @@ const TripsIndex = (() => {
 
   // Собирает importData из полей квиза (та же форма, что у AI JSON) — так
   // весь остальной код (Гид, Реки, сводка на шаге 3, сохранение) работает
-  // одинаково независимо от источника данных.
+  // одинаково независимо от источника данных. Возвращает null, если в
+  // квизе реально ничего не введено — ВАЖНО не путать это с "стереть то,
+  // что уже было": раньше null отсюда напрямую летел в _importedData и
+  // затирал в Firestore весь уже импортированный маршрут/меню/рейсы,
+  // стоило только заглянуть на вкладку «Квиз» и нажать «Далее», ничего
+  // не заполняя — см. _saveCurrentFields ниже, где это и остановлено.
+  // Меню/рейсы/приливы квиз не собирает (это его осознанное ограничение),
+  // поэтому при редактировании уже импортированной поездки они бережно
+  // переносятся из старых данных, а не пропадают.
   function _buildQuizImportData() {
     const days = _parseRouteText(_quizRouteText);
     if (!_quizRivers.length && !days.length) return null;
+    const prior = _editMode ? (TripsData.getById(_editTripId)?.importData || null) : null;
     return {
       meta:   { title: _draft.name || '' },
       // id обязателен — Реки открывают карточку по data-rv-open="r.id"
       rivers: _quizRivers.map((r, i) => ({ id: 'quiz_river_' + i, name: r.name, type: r.region })),
-      route:  days
+      route:  days,
+      menu:    prior?.menu,
+      flights: prior?.flights,
+      suntide: prior?.suntide
     };
   }
 
@@ -729,7 +750,11 @@ const TripsIndex = (() => {
         _draft.rivers  = _rivers;
       } else if (_expMode === 'quiz') {
         _quizRouteText = document.getElementById('f-quiz-route')?.value || '';
-        _importedData = _buildQuizImportData();
+        // Только если квиз реально что-то собрал — не даём пустому
+        // просмотру вкладки затереть уже существующий импорт (файл или
+        // более ранний квиз) значением null.
+        const built = _buildQuizImportData();
+        if (built) _importedData = built;
       }
       // Участники — общие для обоих типов
       const partVal = document.getElementById('f-participant')?.value.trim();
