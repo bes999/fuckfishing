@@ -24,7 +24,7 @@ const MembersRender = (() => {
         <div class="m-card" data-action="member-open" data-uid="${m.uid}">
           ${isMe ? '<span class="m-me-badge">Я</span>' : ''}
           <div class="m-ava">${_esc(m.avatar||'🎣')}</div>
-          <div class="m-name">${_esc(m.displayName)}</div>
+          <div class="m-name">${_esc(m.displayName)}${m.nickname ? ` <span class="p-nickname">«${_esc(m.nickname)}»</span>` : ''}</div>
           <div class="m-role${m.role==='organizer'?' org':''}">
             ${m.role==='organizer'?'⭐ Организатор':'👤 Участник'}
           </div>
@@ -105,7 +105,7 @@ const MembersRender = (() => {
       <div class="p-header">
         <div class="p-ava-circle">${_esc(p.avatar||'🎣')}</div>
         <div>
-          <div class="p-name">${_esc(p.displayName)}</div>
+          <div class="p-name">${_esc(p.displayName)}${p.nickname ? ` <span class="p-nickname">«${_esc(p.nickname)}»</span>` : ''}</div>
           ${p.email ? `<div class="p-meta">${_esc(p.email)}</div>` : ''}
           ${p.phone ? `<div class="p-meta">${_esc(p.phone)}</div>` : ''}
           <span class="p-badge ${p.role}">${roleLabel}</span>
@@ -121,8 +121,9 @@ const MembersRender = (() => {
   }
 
   function _tabProfile(p, isMe) {
+    const bloodRu = p.bloodType ? (BLOOD_TYPES.find(b => b.id === p.bloodType) || {}).ru : '';
     const bloodHtml = p.bloodType
-      ? `<div class="blood-circle">${_esc(p.bloodType)}</div>`
+      ? `<span class="p-row-val" style="margin-right:8px">${_esc(bloodRu || '')}</span><div class="blood-circle">${_esc(p.bloodType)}</div>`
       : `<span class="p-row-val muted">Не указана</span>`;
 
     // Возраст из ДР

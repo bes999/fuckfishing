@@ -61,10 +61,17 @@ var MembersModule = (() => {
   ══════════════════════════════════════════════ */
   let _editUid = null;
   let _editTab = 'personal';
+  // Черновик редактируемого профиля — живёт в памяти всё время, пока шит
+  // открыт. Раньше его не было: каждое переключение вкладки заново дёргало
+  // MembersFirebase.getProfile(), что отбрасывало все ещё не сохранённые
+  // правки с других вкладок (не только с той, что открывали последней —
+  // вообще все, накопленные за сессию редактирования).
+  let _draftProfile = null;
 
   function _showEditSheet(uid, profile) {
     _editUid = uid;
     _editTab = 'personal';
+    _draftProfile = Object.assign({}, profile);
     document.getElementById('edit-overlay')?.remove();
 
     const overlay = document.createElement('div');
@@ -84,7 +91,7 @@ var MembersModule = (() => {
           <button class="p-stab" data-action="edit-tab" data-tab="medical">Медданные</button>
         </div>
         <div class="ob-scroll" id="edit-body" style="padding-top:14px">
-          ${_editTabPersonal(profile)}
+          ${_editTabPersonal(_draftProfile)}
         </div>
       </div>`;
 
@@ -93,15 +100,18 @@ var MembersModule = (() => {
   }
 
   function _editTabPersonal(p) {
-    const avBtns = AVATARS.map(a =>
-      `<button class="ob-av-btn${p.avatar===a?' sel':''}" data-action="edit-av" data-av="${a}">${a}</button>`
-    ).join('');
     return `
       <p class="ob-lbl" style="margin-top:0">Аватар</p>
-      <div class="ob-avatar-grid">${avBtns}</div>
+      <div class="ob-avatar-preview" data-action="edit-avatar-open">
+        <div class="ob-avatar-circle" id="edit-avatar-circle">${_esc(p.avatar || '🎣')}</div>
+        <div class="ob-avatar-change">Изменить ›</div>
+      </div>
       <p class="ob-lbl">Имя</p>
       <input class="auth-input" id="edit-name" type="text"
-             placeholder="Имя или никнейм" value="${_esc(p.displayName||'')}">
+             placeholder="Имя" value="${_esc(p.displayName||'')}">
+      <p class="ob-lbl">Никнейм</p>
+      <input class="auth-input" id="edit-nickname" type="text"
+             placeholder="Необязательно" value="${_esc(p.nickname||'')}">
       <p class="ob-lbl">Дата рождения</p>
       <input class="auth-input" id="edit-birthday" type="text"
              placeholder="ДД.ММ.ГГГГ" inputmode="numeric" value="${_esc(p.birthday||'')}">
@@ -137,26 +147,57 @@ var MembersModule = (() => {
              placeholder="Необязательно" value="${_esc(p.conditions||'')}">`;
   }
 
+  // Пикер аватара — раньше вся сетка эмодзи всегда торчала на весь экран
+  // внутри самой формы; теперь как в современных профилях (Telegram/iOS):
+  // большой кружок с текущим выбором + отдельный шит поверх, открывается
+  // по тапу.
+  function _sheetPickAvatar(current) {
+    const avBtns = AVATARS.map(a =>
+      `<button class="ob-av-btn${current===a?' sel':''}" data-action="edit-av-pick" data-av="${a}">${a}</button>`
+    ).join('');
+    return `
+      <div class="ob-overlay" id="avatar-pick-overlay">
+        <div class="ob-sheet" style="max-height:60vh">
+          <div class="ob-grab"></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 12px;flex-shrink:0">
+            <span style="font-size:17px;font-weight:700;color:var(--label)">Выбери аватар</span>
+            <button class="modal-close" data-action="edit-avatar-close" style="font-size:18px">×</button>
+          </div>
+          <div class="ob-scroll">
+            <div class="ob-avatar-grid">${avBtns}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
   function _switchEditTab(tab) {
+    if (!_draftProfile) return;
+    // Собрать данные нужно с ВКЛАДКИ, КОТОРАЯ ЕЩЁ НА ЭКРАНЕ (prevTab) — не
+    // с той, куда переключаемся, и обязательно в _draftProfile, а не в
+    // заново запрошенный из Firestore объект: раньше здесь дёргался
+    // MembersFirebase.getProfile() при каждом переключении, из-за чего
+    // терялись все несохранённые правки, накопленные за сессию
+    // редактирования (не только с последней открытой вкладки).
+    const prevTab = _editTab;
     _editTab = tab;
     document.querySelectorAll('#edit-overlay .p-stab').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === tab));
-    MembersFirebase.getProfile(_editUid).then(profile => {
-      if (!profile) return;
-      const body = document.getElementById('edit-body');
-      if (!body) return;
-      _collectCurrentEditData(profile);
-      body.innerHTML = tab === 'personal' ? _editTabPersonal(profile) : _editTabMedical(profile);
-      if (tab === 'personal') _bindEditMasks();
-    });
+    _collectCurrentEditData(_draftProfile, prevTab);
+    const body = document.getElementById('edit-body');
+    if (!body) return;
+    body.innerHTML = tab === 'personal' ? _editTabPersonal(_draftProfile) : _editTabMedical(_draftProfile);
+    if (tab === 'personal') _bindEditMasks();
   }
 
-  function _collectCurrentEditData(profile) {
-    if (_editTab === 'personal') {
-      const selAv = document.querySelector('#edit-overlay .ob-av-btn.sel');
-      if (selAv) profile.avatar = selAv.dataset.av;
+  function _collectCurrentEditData(profile, tab) {
+    if ((tab || _editTab) === 'personal') {
+      // Аватар в _draftProfile.avatar уже актуален — пишется сразу при
+      // выборе в _sheetPickAvatar (см. action "edit-av-pick"), т.к. сама
+      // сетка теперь живёт в отдельном шите и закрывается сразу после
+      // клика, читать её из DOM здесь уже нечего.
       const name = document.getElementById('edit-name')?.value.trim();
       if (name) profile.displayName = name;
+      profile.nickname = document.getElementById('edit-nickname')?.value.trim() ?? profile.nickname;
       profile.birthday = document.getElementById('edit-birthday')?.value.trim() || profile.birthday;
       const ph = document.getElementById('edit-phone')?.value.trim();
       profile.phone = (ph === '+7 (' || ph === '+7') ? '' : (ph || profile.phone);
@@ -171,7 +212,7 @@ var MembersModule = (() => {
   }
 
   async function _saveEdit(uid) {
-    const profile = await MembersFirebase.getProfile(uid);
+    const profile = _draftProfile;
     if (!profile) return;
 
     _collectCurrentEditData(profile);
@@ -183,6 +224,7 @@ var MembersModule = (() => {
 
     const changes = {
       displayName: profile.displayName,
+      nickname:    profile.nickname  || '',
       avatar:      profile.avatar,
       birthday:    profile.birthday  || '',
       phone:       profile.phone     || '',
@@ -203,6 +245,7 @@ var MembersModule = (() => {
       if (typeof AppHeader !== 'undefined') AppHeader.render();
     }
 
+    _draftProfile = null;
     document.getElementById('edit-overlay')?.remove();
     document.getElementById('profile-overlay')?.remove();
     MembersRender.showProfile(uid, window.APP?.profile?.uid);
@@ -311,6 +354,7 @@ var MembersModule = (() => {
       }
 
       if (action === 'edit-cancel') {
+        _draftProfile = null;
         document.getElementById('edit-overlay')?.remove();
       }
 
@@ -318,9 +362,22 @@ var MembersModule = (() => {
         _switchEditTab(t.dataset.tab);
       }
 
-      if (action === 'edit-av') {
-        document.querySelectorAll('#edit-overlay .ob-av-btn').forEach(b => b.classList.remove('sel'));
-        t.classList.add('sel');
+      if (action === 'edit-avatar-open') {
+        document.getElementById('avatar-pick-overlay')?.remove();
+        const div = document.createElement('div');
+        div.innerHTML = _sheetPickAvatar(_draftProfile?.avatar);
+        document.body.appendChild(div.firstElementChild);
+      }
+
+      if (action === 'edit-avatar-close') {
+        document.getElementById('avatar-pick-overlay')?.remove();
+      }
+
+      if (action === 'edit-av-pick') {
+        if (_draftProfile) _draftProfile.avatar = t.dataset.av;
+        const circle = document.getElementById('edit-avatar-circle');
+        if (circle) circle.textContent = t.dataset.av;
+        document.getElementById('avatar-pick-overlay')?.remove();
       }
 
       if (action === 'edit-blood') {

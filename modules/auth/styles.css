@@ -119,7 +119,21 @@
   text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 8px;
 }
 
-/* Avatar grid */
+/* Превью аватара в форме — кружок + "Изменить", открывает пикер отдельным
+   шитом поверх (см. .ob-avatar-grid ниже, теперь живёт только там) */
+.ob-avatar-preview {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 14px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.ob-avatar-circle {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--bg3); font-size: 30px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; border: 2px solid var(--sep2);
+}
+.ob-avatar-change { font-size: 14px; font-weight: 600; color: var(--accent); }
+
+/* Avatar grid — внутри отдельного пикер-шита */
 .ob-avatar-grid {
   display: grid; grid-template-columns: repeat(6,1fr); gap: 6px; margin-bottom: 14px;
 }
