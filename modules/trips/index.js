@@ -38,13 +38,16 @@ const TripsIndex = (() => {
     _quizRivers = [];
     _quizRouteText = '';
     _dateTouched = !!prefillDate;
+    // Создатель поездки — сразу в участниках, чтобы не вписывать себя
+    // вручную каждый раз; можно убрать кликом по чипу, как любого другого.
+    const myName = window.APP?.profile?.displayName || '';
     _draft = {
       type: 'fishing',
       name: '',
       startDate: prefillDate || _today(),
       endDate:   prefillDate || _today(),
       rivers: [],
-      participants: [],
+      participants: myName ? [myName] : [],
       comment: ''
     };
     _rivers = [];
