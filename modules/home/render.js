@@ -123,16 +123,36 @@ const HomeRender = (() => {
   }
 
   // ── Upcoming banner ──
+  // Чек-лист готовности (снаряга/меню/аптечка/билеты/маршрут) — только у
+  // экспедиций (trip.readiness ставится в null для рыбалок в modules/trips/
+  // index.js:_save — рыбалке эта церемония не нужна, раньше карточка на
+  // главной этого не учитывала и рисовала пустой чек-лист всем подряд).
   function _upcomingBanner(trip) {
     const days = Math.ceil((new Date(trip.startDate) - new Date()) / 86400000);
     const daysStr = days > 0 ? days : '🎣';
-    const r = trip.readiness || {};
-    const done  = Object.values(r).filter(Boolean).length;
-    const total = READINESS_ITEMS.length;
-    const pct   = total ? Math.round(done / total * 100) : 0;
-
     const dates = _formatDateRange(trip.startDate, trip.endDate);
     const parts = (trip.participants || []).join(' · ');
+
+    let readinessHtml = '';
+    if (trip.readiness) {
+      const r = trip.readiness;
+      const done  = Object.values(r).filter(Boolean).length;
+      const total = READINESS_ITEMS.length;
+      const pct   = total ? Math.round(done / total * 100) : 0;
+      readinessHtml = `
+        <div class="readiness-block">
+          <div class="readiness-top">
+            <div class="readiness-title">Готовность к поездке</div>
+            <div class="readiness-pct" id="readinessPct">${pct}%</div>
+          </div>
+          <div class="readiness-track">
+            <div class="readiness-fill" id="readinessFill" style="width:${pct}%"></div>
+          </div>
+          <div class="readiness-list" id="readinessList">
+            ${READINESS_ITEMS.map(item => _readinessRow(item, r[item.key], trip.id)).join('')}
+          </div>
+        </div>`;
+    }
 
     return `
       <div class="upcoming-banner">
@@ -147,18 +167,7 @@ const HomeRender = (() => {
           </div>
           <button class="upcoming-arrow-btn" data-trip-id="${trip.id}">›</button>
         </div>
-        <div class="readiness-block">
-          <div class="readiness-top">
-            <div class="readiness-title">Готовность к поездке</div>
-            <div class="readiness-pct" id="readinessPct">${pct}%</div>
-          </div>
-          <div class="readiness-track">
-            <div class="readiness-fill" id="readinessFill" style="width:${pct}%"></div>
-          </div>
-          <div class="readiness-list" id="readinessList">
-            ${READINESS_ITEMS.map(item => _readinessRow(item, r[item.key], trip.id)).join('')}
-          </div>
-        </div>
+        ${readinessHtml}
       </div>`;
   }
 
