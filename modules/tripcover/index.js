@@ -51,6 +51,10 @@ const TripCoverIndex = (() => {
   // дёргать API на каждый показ обложки; прогноз (в отличие от факта)
   // считаем протухшим через 6 часов и обновляем заново.
   function _tripCoords(trip) {
+    // Точка, вручную поставленная кнопкой "Моё местоположение" — приоритет
+    // выше импортированных рек: это явное действие человека прямо на месте,
+    // надёжнее любой реки "по умолчанию" (тем более если их несколько).
+    if (trip.weatherCoords && trip.weatherCoords.lat != null) return trip.weatherCoords;
     const impHit = (trip.importData?.rivers || []).find(r => r.lat != null && r.lon != null);
     if (impHit) return { lat: impHit.lat, lon: impHit.lon };
     const plainHit = (trip.rivers || []).find(r => r.lat != null && r.lon != null);
@@ -58,14 +62,14 @@ const TripCoverIndex = (() => {
     return null;
   }
 
-  function _maybeRefreshWeather(trip) {
+  function _maybeRefreshWeather(trip, force) {
     if (typeof WeatherService === 'undefined') return;
     const coords = _tripCoords(trip);
     if (!coords) return;
 
     const w = trip.weather;
     const STALE_MS = 6 * 3600 * 1000;
-    const isStale = !w || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
+    const isStale = force || !w || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
     if (!isStale) return;
 
     Promise.all([
@@ -83,6 +87,38 @@ const TripCoverIndex = (() => {
         _patchGuideWeather(trip);
       })
       .catch(() => {});
+  }
+
+  // Кнопка "Моё местоположение" в блоках погоды — полезна, когда у поездки
+  // вообще нет координат (обычная "Рыбалка" без импорта/OSM-поиска рек), или
+  // когда человек уже реально на месте и хочет погоду именно отсюда, а не
+  // от той точки, что подтянулась при заведении поездки. Once поставлена —
+  // становится приоритетным источником координат для этой поездки
+  // (см. _tripCoords) и остаётся, пока не переставят заново.
+  function _useMyLocation(tripId, btn) {
+    if (!navigator.geolocation) { alert('Геолокация не поддерживается этим браузером'); return; }
+    if (btn) { btn.textContent = 'Определяю…'; btn.disabled = true; }
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const trip = TripsData.getById(tripId);
+        if (!trip) return;
+        const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        trip.weatherCoords = coords;
+        trip.weather = null;
+        trip.weatherDaily = null;
+        await TripsData.updateTrip(tripId, { weatherCoords: coords, weather: null, weatherDaily: null });
+        const block = document.getElementById('cover-weather-block');
+        if (block && _tripId === tripId) block.outerHTML = _weatherSection(trip);
+        const todayEl = document.getElementById('g-today-weather');
+        if (todayEl) todayEl.innerHTML = _todayWeatherBlock(trip);
+        _maybeRefreshWeather(trip, true);
+      },
+      err => {
+        if (btn) { btn.textContent = '📍 Моё местоположение'; btn.disabled = false; }
+        alert('Не удалось определить местоположение: ' + (err.message || 'проверь разрешение геолокации в браузере'));
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   }
 
   // Проставляет мини-бейджи погоды в уже отрисованный Гид (если он открыт
@@ -125,15 +161,19 @@ const TripCoverIndex = (() => {
         <div class="g-wx-hd">
           <span class="g-wx-badge">Погода сегодня</span>
           <span class="g-wx-date">${_esc(dateLabel)}</span>
+          <button class="g-wx-geo" data-action="geo-weather" title="Обновить по моей геопозиции">📍</button>
         </div>
         <div class="g-wx-temp">${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°</div>
         <div class="g-wx-grid">
           <div class="g-wx-item"><div class="g-wx-ic">🌧</div><div class="g-wx-val">${entry.precip ? (Math.round(entry.precip*10)/10 + ' мм') : '0 мм'}</div><div class="g-wx-lbl">осадки</div></div>
           <div class="g-wx-item"><div class="g-wx-ic">💨</div><div class="g-wx-val">${entry.wind != null ? Math.round(entry.wind) : '—'}</div><div class="g-wx-lbl">км/ч</div></div>
           <div class="g-wx-item"><div class="g-wx-ic">🧭</div><div class="g-wx-val">${entry.pressure != null ? Math.round(entry.pressure) : '—'}</div><div class="g-wx-lbl">гПа</div></div>
-          <div class="g-wx-item"><div class="g-wx-ic">🌅</div><div class="g-wx-val">${entry.sunrise || '—'}</div><div class="g-wx-lbl">восход</div></div>
         </div>
-        ${entry.sunset ? `<div style="text-align:center;margin-top:8px;font-size:11px;color:var(--label3)">🌇 закат ${entry.sunset}</div>` : ''}
+        ${(entry.sunrise || entry.sunset) ? `
+        <div class="g-wx-sun">
+          <div class="g-wx-sun-item"><span class="g-wx-ic">🌅</span><span class="g-wx-val">${entry.sunrise || '—'}</span><span class="g-wx-lbl">восход</span></div>
+          <div class="g-wx-sun-item"><span class="g-wx-ic">🌇</span><span class="g-wx-val">${entry.sunset || '—'}</span><span class="g-wx-lbl">закат</span></div>
+        </div>` : ''}
       </div>`;
   }
 
@@ -145,11 +185,24 @@ const TripCoverIndex = (() => {
 
   function _weatherSection(t) {
     const w = t.weather;
-    if (!w) return '<div id="cover-weather-block"></div>';
+    if (!w) {
+      if (_tripCoords(t)) return '<div id="cover-weather-block"></div>';
+      return `
+        <div class="cover-section" id="cover-weather-block">
+          <div class="cover-section-head"><div class="cover-section-title">Погода</div></div>
+          <div style="padding:14px 16px 16px;text-align:center">
+            <div style="font-size:13px;color:var(--label3);margin-bottom:10px">Координаты не определены</div>
+            <button class="cover-edit-btn" data-action="geo-weather" style="background:rgba(10,132,255,.1);border-radius:10px;padding:8px 14px">📍 Моё местоположение</button>
+          </div>
+        </div>`;
+    }
     const title = w.source === 'forecast' ? 'Прогноз погоды' : 'Погода в поездке';
     return `
       <div class="cover-section" id="cover-weather-block">
-        <div class="cover-section-head"><div class="cover-section-title">${title}</div></div>
+        <div class="cover-section-head">
+          <div class="cover-section-title">${title}</div>
+          <button class="cover-edit-btn" data-action="geo-weather" title="Обновить по моей геопозиции">📍</button>
+        </div>
         <div class="cover-conds">
           <div class="cover-cond">
             <div class="cover-cond-icon">🌡</div>
@@ -517,6 +570,13 @@ const TripCoverIndex = (() => {
       hide();
       enterTrip(_tripId);
     });
+
+    // Моё местоположение — ставит координаты вручную и перетягивает погоду
+    el.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="geo-weather"]');
+      if (!btn) return;
+      _useMyLocation(trip.id, btn);
+    });
   }
 
   // Полный вход в поездку — переключает нижнюю вкладку/роутер на Гид,
@@ -552,6 +612,8 @@ const TripCoverIndex = (() => {
       // Привязываем аккордеоны
       if (_guideHandler) guideEl.removeEventListener('click', _guideHandler);
       _guideHandler = e => {
+        const geoBtn = e.target.closest('[data-action="geo-weather"]');
+        if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
         const hd = e.target.closest('[data-target]');
         if (!hd) return;
         const body = document.getElementById(hd.dataset.target);
@@ -799,11 +861,19 @@ const TripCoverIndex = (() => {
         .g-wx-badge{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
         .g-wx-date{font-size:12px;color:var(--label3)}
         .g-wx-temp{font-size:30px;font-weight:800;color:var(--label);letter-spacing:-.5px;margin-bottom:10px}
-        .g-wx-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+        .g-wx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
         .g-wx-item{text-align:center}
         .g-wx-ic{font-size:16px;margin-bottom:2px}
         .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
         .g-wx-lbl{font-size:10px;color:var(--label3);margin-top:1px}
+        .g-wx-geo{margin-left:auto;background:rgba(10,132,255,.12);border:none;border-radius:8px;width:26px;height:26px;font-size:13px;line-height:1;cursor:pointer;flex-shrink:0}
+        .g-wx-geo:active{opacity:.7}
+        .g-wx-geo:disabled{opacity:.5}
+        .g-wx-sun{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;padding-top:10px;border-top:.5px solid rgba(10,132,255,.15)}
+        .g-wx-sun-item{display:flex;align-items:center;justify-content:center;gap:6px}
+        .g-wx-sun-item .g-wx-ic{margin-bottom:0;font-size:14px}
+        .g-wx-sun-item .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
+        .g-wx-sun-item .g-wx-lbl{font-size:10px;color:var(--label3)}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 14px;position:sticky;top:0;z-index:10;margin-bottom:4px">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
