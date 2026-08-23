@@ -34,6 +34,33 @@
 .mn-topbar__title { color: #fff; font-size: 17px; font-weight: 500; }
 .mn-topbar__sub { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 2px; }
 
+/* "Меню на сегодня" — глазами, не пальцем; редактирование остаётся в
+   списке дней ниже, клик по карточке просто открывает и скроллит к
+   соответствующему дню в этом списке. */
+.mn-today-card {
+  margin: 10px 12px 0;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, rgba(10,132,255,.10), rgba(10,132,255,.02));
+  border: 0.5px solid rgba(10,132,255,.25);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mn-today-card:active { opacity: 0.85; }
+.mn-today-hd { display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.mn-today-badge {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--accent);
+}
+.mn-today-date { font-size: 12px; color: var(--label3); }
+.mn-today-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  font-size: 13px; padding: 3px 0;
+}
+.mn-today-meal { color: var(--label3); flex-shrink: 0; }
+.mn-today-items { color: var(--label); text-align: right; }
+.mn-today-empty { font-size: 13px; color: var(--label3); }
+
 /* Days list */
 .mn-days {
   padding: 10px 12px 32px;

@@ -15,9 +15,39 @@ const MenuRender = (() => {
     el.innerHTML = `
       <div class="mn-wrap">
         ${_topbar()}
+        <div id="mn-today">${_todayBlock()}</div>
         <div class="mn-days" id="mn-days">${_renderDays()}</div>
       </div>`;
     _bindEvents();
+  }
+
+  // Карточка "Меню на сегодня" — без неё, чтобы посмотреть, что готовить
+  // сегодня, приходилось скроллить весь список дней поездки сверху вниз.
+  // Только для чтения (глазами, а не пальцем) — редактирование остаётся в
+  // самом списке дней ниже, там уже есть вся логика пикеров/слотов, дублировать
+  // её здесь с теми же data-day/data-meal id было бы riskier (два DOM-узла на
+  // один и тот же id путают _rerenderDay при точечном обновлении).
+  function _todayBlock() {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const day = _days.find(d => d.date === todayISO);
+    if (!day) return '';
+
+    const rows = MenuData.getMeals().map(m => {
+      const slots  = (day.meals[m.id] && day.meals[m.id].slots) || [];
+      const filled = slots.filter(s => s.item);
+      if (!filled.length) return '';
+      const items = filled.map(s => s.item.name).join(', ');
+      return `<div class="mn-today-row"><span class="mn-today-meal">${m.label}</span><span class="mn-today-items">${items}</span></div>`;
+    }).join('');
+
+    return `
+      <div class="mn-today-card" data-action="jump-today" data-day="${day.id}">
+        <div class="mn-today-hd">
+          <span class="mn-today-badge">Сегодня</span>
+          <span class="mn-today-date">${day.label}</span>
+        </div>
+        ${rows || '<div class="mn-today-empty">Меню на сегодня ещё не заполнено</div>'}
+      </div>`;
   }
 
   function _topbar() {
@@ -304,6 +334,17 @@ const MenuRender = (() => {
         return;
       }
 
+      // Клик по карточке "Сегодня" — открыть этот же день в списке ниже
+      // (там и правится) и проскроллить к нему, не заставляя искать глазами.
+      if (action === 'jump-today') {
+        const dayId = target.dataset.day;
+        _openDays.add(dayId);
+        _rerenderDay(dayId);
+        const card = _el.querySelector(`.mn-day-card[data-day-id="${dayId}"]`);
+        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return;
+      }
+
       if (action === 'toggle-edit') {
         e.stopPropagation();
         const key = `${target.dataset.day}_${target.dataset.meal}`;
@@ -345,6 +386,8 @@ const MenuRender = (() => {
     if (!day) return;
     const container = _el ? _el.querySelector('#mn-days') : null;
     if (container) container.innerHTML = _renderDays();
+    const todayEl = _el ? _el.querySelector('#mn-today') : null;
+    if (todayEl) todayEl.innerHTML = _todayBlock();
   }
 
   function _syncFirebase() {
@@ -361,6 +404,8 @@ const MenuRender = (() => {
     if (days) { _days = days; }
     const container = _el?.querySelector('#mn-days');
     if (container) container.innerHTML = _renderDays();
+    const todayEl = _el?.querySelector('#mn-today');
+    if (todayEl) todayEl.innerHTML = _todayBlock();
   }
 
   return { render, setDays, refresh };
