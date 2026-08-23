@@ -610,15 +610,31 @@ const TripsIndex = (() => {
   // (modules/rivers/render.js:56 / index.js:_openDetail). Без него тап по
   // реке молча ничего не делал для КАЖДОЙ вручную заведённой поездки —
   // и статичные чипы, и живой OSM-поиск шли через эту же функцию.
-  function _addRiver(name, region, lat, lon) {
+  function _addRiver(name, region, lat, lon, type) {
     if (!_rivers.find(r => r.name === name)) {
       _rivers.push({
         id: 'river_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
         name, region,
         lat: lat != null ? lat : null,
-        lon: lon != null ? lon : null
+        lon: lon != null ? lon : null,
+        type: type || ''
       });
     }
+  }
+
+  // OSM (Nominatim) отдаёт свой класс объекта (waterway=river/stream,
+  // natural=water и т.д.) — переводим в понятный русский ярлык. Показываем
+  // его прямо в чипе результата поиска (см. _searchRivers), чтобы было
+  // видно, что нашлась именно река, а не одноимённый посёлок/озеро — и
+  // сохраняем в карточку реки как поле "Тип" (modules/rivers/render.js),
+  // которое для вручную заведённых рек раньше всегда было пустым.
+  const _OSM_TYPE_LABELS = {
+    river: 'река', stream: 'ручей', riverbank: 'река', canal: 'канал',
+    water: 'озеро', lake: 'озеро', reservoir: 'водохранилище',
+    village: 'посёлок', town: 'город', city: 'город', hamlet: 'деревня'
+  };
+  function _osmTypeLabel(result) {
+    return _OSM_TYPE_LABELS[result.type] || (result.class === 'waterway' ? 'водоём' : '');
   }
 
   function _defaultRiverChips() {
@@ -660,7 +676,8 @@ const TripsIndex = (() => {
         const parts  = r.display_name.split(',').map(s => s.trim());
         const name   = parts[0];
         const region = parts.slice(1, 3).join(', ');
-        return `<div class="suggest-chip" data-river-name="${_esc(name)}" data-river-region="${_esc(region)}" data-river-lat="${r.lat}" data-river-lon="${r.lon}">${_esc(name)}</div>`;
+        const type   = _osmTypeLabel(r);
+        return `<div class="suggest-chip" data-river-name="${_esc(name)}" data-river-region="${_esc(region)}" data-river-lat="${r.lat}" data-river-lon="${r.lon}" data-river-type="${_esc(type)}">${_esc(name)}${type ? ` <span class="suggest-chip-type">· ${_esc(type)}</span>` : ''}</div>`;
       }).join('');
       _bindLiveRiverChips();
     } catch (err) {
@@ -682,7 +699,7 @@ const TripsIndex = (() => {
     document.querySelectorAll('#riverSuggestions [data-river-name]').forEach(chip => {
       chip.addEventListener('click', () => {
         _addRiver(chip.dataset.riverName, chip.dataset.riverRegion,
-          parseFloat(chip.dataset.riverLat), parseFloat(chip.dataset.riverLon));
+          parseFloat(chip.dataset.riverLat), parseFloat(chip.dataset.riverLon), chip.dataset.riverType);
         _refreshCreate();
       });
     });
