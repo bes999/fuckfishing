@@ -17,6 +17,22 @@ const TripCoverIndex = (() => {
   let _tripId = null;
   let _guideHandler = null;
 
+  // Табы внутри Гида — Инфо (маршрут/погода/Windy) плюс разделы поездки,
+  // которые раньше были достижимы только через выезжающее меню. Реки/
+  // Меню/Бар/Улов/Расходы/Закупка рендерят свои уже готовые show()/init()
+  // прямо в #g-tab-panel — их модули не меняются, просто зовём их с другим
+  // контейнером вместо отдельной полноэкранной страницы.
+  const _GUIDE_TABS = [
+    { id: 'info',     label: 'Инфо' },
+    { id: 'rivers',   label: 'Реки' },
+    { id: 'menu',     label: 'Меню' },
+    { id: 'bar',      label: 'Бар' },
+    { id: 'catches',  label: 'Улов' },
+    { id: 'expenses', label: 'Расходы' },
+    { id: 'shopping', label: 'Закупка' },
+  ];
+  let _activeGuideTab = 'info';
+
   function show(tripId) {
     _tripId = tripId;
     const trip = TripsData.getById(tripId);
@@ -638,42 +654,163 @@ const TripCoverIndex = (() => {
 
     const guideEl = document.getElementById('p-guide');
     if (!guideEl) return;
+    if (!trip) { guideEl.innerHTML = ''; return; }
 
-    // Если у экспедиции есть импортированные данные — рендерим маршрут
-    if (trip?.importData?.route?.length) {
-      guideEl.innerHTML = _renderGuide(trip);
-      // Привязываем аккордеоны
-      if (_guideHandler) guideEl.removeEventListener('click', _guideHandler);
-      _guideHandler = e => {
-        const geoBtn = e.target.closest('[data-action="geo-weather"]');
-        if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
-        const hd = e.target.closest('[data-target]');
-        if (!hd) return;
-        const body = document.getElementById(hd.dataset.target);
-        if (!body) return;
-        const chev = hd.querySelector('.g-acc-chev');
-        const open = body.classList.toggle('show');
-        if (chev) chev.classList.toggle('open', open);
-        if (open) {
-          const frame = body.querySelector('iframe[data-src]');
-          if (frame) { frame.src = frame.dataset.src; frame.removeAttribute('data-src'); }
-        }
-      };
-      guideEl.addEventListener('click', _guideHandler);
-      // Гид можно открыть и напрямую (быстрый выбор поездки), минуя
-      // обложку — там же обычно и подтягивается/кэшируется погода,
-      // так что дублируем вызов здесь, а не только в show().
-      _maybeRefreshWeather(trip);
-    } else {
-      // Заглушка (рыбалки или экспедиции без импорта)
-      guideEl.innerHTML = `
-        <div style="padding:14px 16px 16px;background:var(--topbar-bg);color:#fff;font-size:18px;font-weight:700">
-          ${trip ? _esc(trip.name) : 'Поездка'}
-        </div>
-        <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:40px">
-          🚧 Маршрут не добавлен.<br><br>
-          Загрузи JSON-файл от AI в настройках поездки.
-        </div>`;
+    _activeGuideTab = 'info';
+    guideEl.innerHTML = _renderGuideShell(trip);
+
+    if (_guideHandler) guideEl.removeEventListener('click', _guideHandler);
+    _guideHandler = e => {
+      const tabBtn = e.target.closest('[data-gtab]');
+      if (tabBtn) { _mountGuideTab(trip, tabBtn.dataset.gtab); return; }
+      const geoBtn = e.target.closest('[data-action="geo-weather"]');
+      if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
+      const hd = e.target.closest('[data-target]');
+      if (!hd) return;
+      const body = document.getElementById(hd.dataset.target);
+      if (!body) return;
+      const chev = hd.querySelector('.g-acc-chev');
+      const open = body.classList.toggle('show');
+      if (chev) chev.classList.toggle('open', open);
+      if (open) {
+        const frame = body.querySelector('iframe[data-src]');
+        if (frame) { frame.src = frame.dataset.src; frame.removeAttribute('data-src'); }
+      }
+    };
+    guideEl.addEventListener('click', _guideHandler);
+
+    _mountGuideTab(trip, 'info');
+  }
+
+  function _renderTabStrip() {
+    return `<div class="g-tabstrip" id="g-tabstrip">${_GUIDE_TABS.map(t =>
+      `<div class="g-tab ${t.id === _activeGuideTab ? 'active' : ''}" data-gtab="${t.id}">${_esc(t.label)}</div>`
+    ).join('')}</div>`;
+  }
+
+  // Липкий заголовок + полоска табов рисуются один раз на весь вход в
+  // поездку — переключение табов дальше меняет только #g-tab-panel, не
+  // трогая это (иначе терялась бы прокрутка/состояние соседних вкладок).
+  function _renderGuideShell(trip) {
+    const meta = trip.importData?.meta || {};
+    return `
+      <style>
+        .g-tabstrip{display:flex;gap:6px;padding:10px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:var(--topbar-bg);position:sticky;top:0;z-index:9}
+        .g-tabstrip::-webkit-scrollbar{display:none}
+        .g-tab{flex:0 0 auto;padding:7px 14px;border-radius:16px;font-size:13px;font-weight:600;color:rgba(255,255,255,.65);background:rgba(255,255,255,.08);cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+        .g-tab.active{background:#fff;color:var(--topbar-bg)}
+        #g-tab-panel .mn-topbar, #g-tab-panel .sh-topbar,
+        #g-tab-panel .exp-topbar, #g-tab-panel .ct-topbar,
+        #g-tab-panel .bar-topbar { display:none }
+        /* .sh-stats и .bar-tabs залипают на top:80px, рассчитывая на высоту
+           своего топбара — тот скрыт строкой выше. top:0 столкнул бы их с
+           уже залипающей полоской табов (#g-tabstrip тоже sticky top:0),
+           поэтому здесь им проще просто не залипать и скроллиться с контентом. */
+        #g-tab-panel .sh-stats, #g-tab-panel .bar-tabs { position:static }
+        .g-acc{background:var(--bg2);border-radius:var(--radius-md);margin:0 12px 10px;overflow:hidden}
+        .g-acc-hd{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+        .g-acc-hd:active{background:var(--bg3)}
+        .g-acc-title{font-size:15px;font-weight:700;color:var(--label)}
+        .g-acc-chev{font-size:18px;color:var(--label4);transition:transform 0.22s;line-height:1;flex-shrink:0}
+        .g-acc-chev.open{transform:rotate(180deg)}
+        .g-acc-body{display:none;border-top:0.5px solid var(--sep2)}
+        .g-acc-body.show{display:block}
+        .g-flight{display:flex;justify-content:space-between;align-items:center;padding:10px 15px;border-bottom:0.5px solid var(--sep2)}
+        .g-flight:last-child{border-bottom:none}
+        .g-flight-l{}
+        .g-flight-route{font-size:14px;font-weight:600;color:var(--label)}
+        .g-flight-num{font-size:12px;color:var(--label3);margin-top:2px}
+        .g-flight-r{text-align:right}
+        .g-flight-dep{font-size:13px;color:var(--accent);font-weight:500}
+        .g-flight-arr{font-size:11px;color:var(--label3);margin-top:2px}
+        .g-tide{display:grid;grid-template-columns:100px 1fr;gap:2px 10px;padding:9px 15px;border-bottom:0.5px solid var(--sep2);align-items:start}
+        .g-tide:last-child{border-bottom:none}
+        .g-tide-date{font-size:13px;font-weight:600;color:var(--label)}
+        .g-tide-sun{font-size:11px;color:var(--label3);margin-top:1px}
+        .g-tide-info{font-size:12px;color:var(--accent);line-height:1.5}
+        .g-day-hd{display:flex;align-items:center;gap:10px;padding:11px 15px;cursor:pointer;border-top:0.5px solid var(--sep2);-webkit-tap-highlight-color:transparent}
+        .g-day-hd:first-child{border-top:none}
+        .g-day-hd:active{background:var(--bg3)}
+        .g-day-title{font-size:13px;font-weight:700;color:var(--label);flex:1}
+        .g-day-wx{font-size:11px;color:var(--label3);white-space:nowrap;flex-shrink:0}
+        .g-day-body{display:none;border-top:0.5px solid var(--sep2)}
+        .g-day-body.show{display:block}
+        .g-row{display:flex;gap:12px;padding:8px 15px;border-bottom:0.5px solid var(--sep2)}
+        .g-row:last-child{border-bottom:none}
+        .g-row-time{font-size:11px;color:var(--label3);min-width:80px;flex-shrink:0;padding-top:2px;font-weight:500}
+        .g-row-act{font-size:13px;color:var(--label);line-height:1.45}
+        .g-wx-card{margin:0 12px 10px;padding:14px;background:linear-gradient(135deg,rgba(10,132,255,.10),rgba(10,132,255,.02));border:0.5px solid rgba(10,132,255,.25);border-radius:var(--radius-md)}
+        .g-wx-hd{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+        .g-wx-badge{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+        .g-wx-date{font-size:12px;color:var(--label3)}
+        .g-wx-temp{font-size:30px;font-weight:800;color:var(--label);letter-spacing:-.5px;margin-bottom:10px}
+        .g-wx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+        .g-wx-item{text-align:center}
+        .g-wx-ic{font-size:16px;margin-bottom:2px}
+        .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
+        .g-wx-lbl{font-size:10px;color:var(--label3);margin-top:1px}
+        .g-wx-geo{margin-left:auto;background:rgba(10,132,255,.12);border:none;border-radius:8px;width:26px;height:26px;font-size:13px;line-height:1;cursor:pointer;flex-shrink:0}
+        .g-wx-geo:active{opacity:.7}
+        .g-wx-geo:disabled{opacity:.5}
+        .g-wx-sun{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;padding-top:10px;border-top:.5px solid rgba(10,132,255,.15)}
+        .g-wx-sun-item{display:flex;align-items:center;justify-content:center;gap:6px}
+        .g-wx-sun-item .g-wx-ic{margin-bottom:0;font-size:14px}
+        .g-wx-sun-item .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
+        .g-wx-sun-item .g-wx-lbl{font-size:10px;color:var(--label3)}
+        .g-wx-hint{margin-top:8px;font-size:11px;line-height:1.4;color:var(--label3)}
+        .g-wx-hint-good{color:#34c759}
+        .g-wx-hint-bad{color:#ff9f0a}
+        .g-windy-wrap{height:320px}
+        .g-windy-frame{width:100%;height:100%;border:none;display:block}
+      </style>
+      <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10">
+        <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
+        <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
+      </div>
+      ${_renderTabStrip()}
+      <div id="g-tab-panel"></div>`;
+  }
+
+  // Переключение таба — меняет только #g-tab-panel, заголовок и полоска
+  // табов остаются на месте (не теряем прокрутку/состояние соседних вкладок).
+  function _mountGuideTab(trip, tabId) {
+    _activeGuideTab = tabId;
+    document.querySelectorAll('#g-tabstrip .g-tab').forEach(el => {
+      el.classList.toggle('active', el.dataset.gtab === tabId);
+    });
+
+    const panel = document.getElementById('g-tab-panel');
+    if (!panel) return;
+    const guideEl = document.getElementById('p-guide');
+    if (guideEl) guideEl.scrollTop = 0;
+    window.scrollTo(0, 0);
+
+    const tripId = trip.id;
+    if (tabId === 'info') {
+      if (trip?.importData?.route?.length) {
+        panel.innerHTML = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderGuideInfo(trip);
+        _maybeRefreshWeather(trip);
+      } else {
+        panel.innerHTML = `
+          <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:24px">
+            🚧 Маршрут не добавлен.<br><br>
+            Загрузи JSON-файл от AI в настройках поездки.
+          </div>`;
+      }
+    } else if (tabId === 'rivers') {
+      if (typeof RiversIndex !== 'undefined') RiversIndex.init(panel, window.APP?.currentTripData, tripId);
+    } else if (tabId === 'menu') {
+      if (typeof MenuIndex !== 'undefined') MenuIndex.show(panel, tripId);
+    } else if (tabId === 'bar') {
+      // Бар не привязан к поездке — та же общая карта, что и в шторке;
+      // вкладка здесь чисто навигационное удобство, данные не меняются.
+      if (typeof BarIndex !== 'undefined') BarIndex.show(panel);
+    } else if (tabId === 'catches') {
+      if (typeof CatchesIndex !== 'undefined') CatchesIndex.show(panel, tripId);
+    } else if (tabId === 'expenses') {
+      if (typeof ExpensesIndex !== 'undefined') ExpensesIndex.show(panel, tripId);
+    } else if (tabId === 'shopping') {
+      if (typeof ShoppingIndex !== 'undefined') ShoppingIndex.show(panel, tripId);
     }
   }
 
@@ -837,9 +974,12 @@ const TripCoverIndex = (() => {
 
   // ─── Рендер страницы Гид из importData ───────────────────────────────────
 
-  function _renderGuide(trip) {
-    const d    = trip.importData;
-    const meta = d.meta || {};
+  // Содержимое таба "Инфо" — та же последовательность аккордеонов, что
+  // раньше была всем Гидом целиком; вызывается только когда у поездки уже
+  // есть импортированный маршрут (см. проверку в _mountGuideTab), поэтому
+  // явно на это не перепроверяет.
+  function _renderGuideInfo(trip) {
+    const d = trip.importData || {};
 
     // Стрипаем эмодзи из строки (для рядов расписания)
     function _stripEmoji(s) {
@@ -859,69 +999,7 @@ const TripCoverIndex = (() => {
         </div>`;
     }
 
-    let h = `
-      <style>
-        .g-acc{background:var(--bg2);border-radius:var(--radius-md);margin:0 12px 10px;overflow:hidden}
-        .g-acc-hd{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;cursor:pointer;-webkit-tap-highlight-color:transparent}
-        .g-acc-hd:active{background:var(--bg3)}
-        .g-acc-title{font-size:15px;font-weight:700;color:var(--label)}
-        .g-acc-chev{font-size:18px;color:var(--label4);transition:transform 0.22s;line-height:1;flex-shrink:0}
-        .g-acc-chev.open{transform:rotate(180deg)}
-        .g-acc-body{display:none;border-top:0.5px solid var(--sep2)}
-        .g-acc-body.show{display:block}
-        .g-flight{display:flex;justify-content:space-between;align-items:center;padding:10px 15px;border-bottom:0.5px solid var(--sep2)}
-        .g-flight:last-child{border-bottom:none}
-        .g-flight-l{}
-        .g-flight-route{font-size:14px;font-weight:600;color:var(--label)}
-        .g-flight-num{font-size:12px;color:var(--label3);margin-top:2px}
-        .g-flight-r{text-align:right}
-        .g-flight-dep{font-size:13px;color:var(--accent);font-weight:500}
-        .g-flight-arr{font-size:11px;color:var(--label3);margin-top:2px}
-        .g-tide{display:grid;grid-template-columns:100px 1fr;gap:2px 10px;padding:9px 15px;border-bottom:0.5px solid var(--sep2);align-items:start}
-        .g-tide:last-child{border-bottom:none}
-        .g-tide-date{font-size:13px;font-weight:600;color:var(--label)}
-        .g-tide-sun{font-size:11px;color:var(--label3);margin-top:1px}
-        .g-tide-info{font-size:12px;color:var(--accent);line-height:1.5}
-        .g-day-hd{display:flex;align-items:center;gap:10px;padding:11px 15px;cursor:pointer;border-top:0.5px solid var(--sep2);-webkit-tap-highlight-color:transparent}
-        .g-day-hd:first-child{border-top:none}
-        .g-day-hd:active{background:var(--bg3)}
-        .g-day-title{font-size:13px;font-weight:700;color:var(--label);flex:1}
-        .g-day-wx{font-size:11px;color:var(--label3);white-space:nowrap;flex-shrink:0}
-        .g-day-body{display:none;border-top:0.5px solid var(--sep2)}
-        .g-day-body.show{display:block}
-        .g-row{display:flex;gap:12px;padding:8px 15px;border-bottom:0.5px solid var(--sep2)}
-        .g-row:last-child{border-bottom:none}
-        .g-row-time{font-size:11px;color:var(--label3);min-width:80px;flex-shrink:0;padding-top:2px;font-weight:500}
-        .g-row-act{font-size:13px;color:var(--label);line-height:1.45}
-        .g-wx-card{margin:0 12px 10px;padding:14px;background:linear-gradient(135deg,rgba(10,132,255,.10),rgba(10,132,255,.02));border:0.5px solid rgba(10,132,255,.25);border-radius:var(--radius-md)}
-        .g-wx-hd{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
-        .g-wx-badge{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
-        .g-wx-date{font-size:12px;color:var(--label3)}
-        .g-wx-temp{font-size:30px;font-weight:800;color:var(--label);letter-spacing:-.5px;margin-bottom:10px}
-        .g-wx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-        .g-wx-item{text-align:center}
-        .g-wx-ic{font-size:16px;margin-bottom:2px}
-        .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
-        .g-wx-lbl{font-size:10px;color:var(--label3);margin-top:1px}
-        .g-wx-geo{margin-left:auto;background:rgba(10,132,255,.12);border:none;border-radius:8px;width:26px;height:26px;font-size:13px;line-height:1;cursor:pointer;flex-shrink:0}
-        .g-wx-geo:active{opacity:.7}
-        .g-wx-geo:disabled{opacity:.5}
-        .g-wx-sun{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;padding-top:10px;border-top:.5px solid rgba(10,132,255,.15)}
-        .g-wx-sun-item{display:flex;align-items:center;justify-content:center;gap:6px}
-        .g-wx-sun-item .g-wx-ic{margin-bottom:0;font-size:14px}
-        .g-wx-sun-item .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
-        .g-wx-sun-item .g-wx-lbl{font-size:10px;color:var(--label3)}
-        .g-wx-hint{margin-top:8px;font-size:11px;line-height:1.4;color:var(--label3)}
-        .g-wx-hint-good{color:#34c759}
-        .g-wx-hint-bad{color:#ff9f0a}
-        .g-windy-wrap{height:320px}
-        .g-windy-frame{width:100%;height:100%;border:none;display:block}
-      </style>
-      <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 14px;position:sticky;top:0;z-index:10;margin-bottom:4px">
-        <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
-        <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
-      </div>
-      <div id="g-today-weather">${_todayWeatherBlock(trip)}</div>`;
+    let h = '';
 
     // ── Карта ветра (Windy) ─────────────────────────────────────────────
     // Свой анимированный ветровой рендер — не наш масштаб (у Windy на это
