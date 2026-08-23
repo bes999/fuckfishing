@@ -97,12 +97,44 @@ const TripCoverIndex = (() => {
       const entry = byDate[el.dataset.gwxDate];
       if (entry) el.innerHTML = _dayWeatherBadge(entry);
     });
+    const todayEl = document.getElementById('g-today-weather');
+    if (todayEl) todayEl.innerHTML = _todayWeatherBlock(trip);
   }
 
   function _dayWeatherBadge(entry) {
     if (!entry || entry.tMax == null || entry.tMin == null) return '';
     const precip = entry.precip ? ` · 🌧${Math.round(entry.precip * 10) / 10}мм` : '';
     return `🌡${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°${precip}`;
+  }
+
+  // Подробная карточка "Погода на сегодня" вверху Гида — та же дневная
+  // выборка (trip.weatherDaily), что и мини-бейджи в "Маршрут по дням",
+  // просто отфильтрованная на день с реальной сегодняшней датой и
+  // развёрнутая в полный набор показателей вместо одной строки.
+  function _todayWeatherBlock(trip) {
+    if (!trip.weatherDaily || !trip.weatherDaily.length) return '';
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const entry = trip.weatherDaily.find(w => w.date === todayISO);
+    if (!entry || entry.tMax == null) return '';
+
+    const d = new Date(todayISO);
+    const dateLabel = d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
+
+    return `
+      <div class="g-wx-card">
+        <div class="g-wx-hd">
+          <span class="g-wx-badge">Погода сегодня</span>
+          <span class="g-wx-date">${_esc(dateLabel)}</span>
+        </div>
+        <div class="g-wx-temp">${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°</div>
+        <div class="g-wx-grid">
+          <div class="g-wx-item"><div class="g-wx-ic">🌧</div><div class="g-wx-val">${entry.precip ? (Math.round(entry.precip*10)/10 + ' мм') : '0 мм'}</div><div class="g-wx-lbl">осадки</div></div>
+          <div class="g-wx-item"><div class="g-wx-ic">💨</div><div class="g-wx-val">${entry.wind != null ? Math.round(entry.wind) : '—'}</div><div class="g-wx-lbl">км/ч</div></div>
+          <div class="g-wx-item"><div class="g-wx-ic">🧭</div><div class="g-wx-val">${entry.pressure != null ? Math.round(entry.pressure) : '—'}</div><div class="g-wx-lbl">гПа</div></div>
+          <div class="g-wx-item"><div class="g-wx-ic">🌅</div><div class="g-wx-val">${entry.sunrise || '—'}</div><div class="g-wx-lbl">восход</div></div>
+        </div>
+        ${entry.sunset ? `<div style="text-align:center;margin-top:8px;font-size:11px;color:var(--label3)">🌇 закат ${entry.sunset}</div>` : ''}
+      </div>`;
   }
 
   function _addDaysStr(dateStr, n) {
@@ -762,11 +794,22 @@ const TripCoverIndex = (() => {
         .g-row:last-child{border-bottom:none}
         .g-row-time{font-size:11px;color:var(--label3);min-width:80px;flex-shrink:0;padding-top:2px;font-weight:500}
         .g-row-act{font-size:13px;color:var(--label);line-height:1.45}
+        .g-wx-card{margin:0 12px 10px;padding:14px;background:linear-gradient(135deg,rgba(10,132,255,.10),rgba(10,132,255,.02));border:0.5px solid rgba(10,132,255,.25);border-radius:var(--radius-md)}
+        .g-wx-hd{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
+        .g-wx-badge{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
+        .g-wx-date{font-size:12px;color:var(--label3)}
+        .g-wx-temp{font-size:30px;font-weight:800;color:var(--label);letter-spacing:-.5px;margin-bottom:10px}
+        .g-wx-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+        .g-wx-item{text-align:center}
+        .g-wx-ic{font-size:16px;margin-bottom:2px}
+        .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
+        .g-wx-lbl{font-size:10px;color:var(--label3);margin-top:1px}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 14px;position:sticky;top:0;z-index:10;margin-bottom:4px">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
         <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
-      </div>`;
+      </div>
+      <div id="g-today-weather">${_todayWeatherBlock(trip)}</div>`;
 
     // ── Авиабилеты ──────────────────────────────────────────────────────
     if (d.flights && d.flights.length) {

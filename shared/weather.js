@@ -10,7 +10,7 @@
 const WeatherService = (() => {
   const ARCHIVE_URL  = 'https://archive-api.open-meteo.com/v1/archive';
   const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
-  const DAILY = 'temperature_2m_max,temperature_2m_min,precipitation_sum,surface_pressure_mean,wind_speed_10m_max';
+  const DAILY = 'temperature_2m_max,temperature_2m_min,precipitation_sum,surface_pressure_mean,wind_speed_10m_max,sunrise,sunset';
 
   function _avg(arr) {
     const vals = arr.filter(v => v != null);
@@ -60,14 +60,23 @@ const WeatherService = (() => {
     return merged;
   }
 
+  // Извлекает "HH:MM" из ISO-таймстампа Open-Meteo (2026-06-15T04:56 — уже
+  // в местном времени точки, т.к. запрос идёт с timezone:'auto').
+  function _hm(iso) {
+    return iso ? iso.slice(11, 16) : null;
+  }
+
   function _toDailyArray(d) {
     if (!d || !d.time) return [];
     return d.time.map((date, i) => ({
       date,
-      tMax:   d.temperature_2m_max[i],
-      tMin:   d.temperature_2m_min[i],
-      precip: d.precipitation_sum[i],
-      wind:   d.wind_speed_10m_max[i]
+      tMax:    d.temperature_2m_max[i],
+      tMin:    d.temperature_2m_min[i],
+      precip:  d.precipitation_sum[i],
+      pressure: d.surface_pressure_mean ? d.surface_pressure_mean[i] : null,
+      wind:    d.wind_speed_10m_max[i],
+      sunrise: d.sunrise ? _hm(d.sunrise[i]) : null,
+      sunset:  d.sunset  ? _hm(d.sunset[i])  : null
     }));
   }
 
