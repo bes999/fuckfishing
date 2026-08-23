@@ -242,6 +242,7 @@
 .badge-soon   { background: rgba(255,159,10,.15); color: var(--orange); border: .5px solid rgba(255,159,10,.35); }
 .badge-active { background: rgba(48,209,88,.15);  color: var(--green);  border: .5px solid rgba(48,209,88,.35); }
 .badge-done   { background: var(--bg3); color: var(--label3); border: .5px solid var(--sep); }
+.exp-days-left { font-size: 11px; color: var(--label3); margin-right: 2px; }
 
 /* ===== DESKTOP LAYOUT (Home page only) ===== */
 @media (min-width: 880px) {

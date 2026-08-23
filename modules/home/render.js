@@ -271,6 +271,7 @@ const HomeRender = (() => {
     const statusCls = { upcoming:'status-soon', active:'status-active', done:'status-done' }[t.status] || 'status-done';
     const dates = _formatDateRange(t.startDate, t.endDate);
     const location = t.rivers && t.rivers.length ? t.rivers.map(r => r.region).filter((v,i,a) => a.indexOf(v) === i).join(', ') : '';
+    const daysLeft = Math.ceil((new Date(t.startDate) - new Date()) / 86400000);
 
     let bottom = '';
     if (t.status === 'done' && t.rating) {
@@ -300,7 +301,10 @@ const HomeRender = (() => {
               <div class="exp-type">🎯 Экспедиция</div>
               <div class="exp-name">${_esc(t.name)}</div>
             </div>
-            <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+              <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
+              ${t.status === 'upcoming' && daysLeft > 0 ? `<div class="exp-days-left">через ${daysLeft} дн.</div>` : ''}
+            </div>
           </div>
           <div class="exp-meta">
             <span>📅 ${dates}</span>
