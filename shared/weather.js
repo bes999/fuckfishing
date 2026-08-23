@@ -60,6 +60,39 @@ const WeatherService = (() => {
     return merged;
   }
 
+  function _toDailyArray(d) {
+    if (!d || !d.time) return [];
+    return d.time.map((date, i) => ({
+      date,
+      tMax:   d.temperature_2m_max[i],
+      tMin:   d.temperature_2m_min[i],
+      precip: d.precipitation_sum[i],
+      wind:   d.wind_speed_10m_max[i]
+    }));
+  }
+
+  // Погода по каждому отдельному дню поездки (для Гида — маршрут по дням) —
+  // та же архив/прогноз/mixed-логика, что и в fetchForTrip, но без свёртки
+  // в одну сводную цифру на всю поездку.
+  async function fetchDailyForTrip(lat, lon, startDate, endDate) {
+    if (lat == null || lon == null) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    const maxForecastStr = _addDays(today, 16);
+
+    if (endDate < today) {
+      return _toDailyArray(await _fetchDaily(ARCHIVE_URL, lat, lon, startDate, endDate));
+    }
+    if (startDate > maxForecastStr) return null;
+    if (startDate >= today) {
+      return _toDailyArray(await _fetchDaily(FORECAST_URL, lat, lon, startDate, endDate));
+    }
+    const [past, future] = await Promise.all([
+      _fetchDaily(ARCHIVE_URL, lat, lon, startDate, _addDays(today, -1)),
+      _fetchDaily(FORECAST_URL, lat, lon, today, endDate)
+    ]);
+    return _toDailyArray(_mergeDaily(past, future));
+  }
+
   // Возвращает {tMin,tMax,precip,pressure,wind,source,fetchedAt} или null,
   // если координат нет или дата слишком далеко в будущем для прогноза.
   // source — 'archive' | 'forecast' | 'mixed' (поездка идёт прямо сейчас).
@@ -86,5 +119,5 @@ const WeatherService = (() => {
     return _summarize(_mergeDaily(past, future), 'mixed');
   }
 
-  return { fetchForTrip };
+  return { fetchForTrip, fetchDailyForTrip };
 })();

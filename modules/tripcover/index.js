@@ -68,15 +68,47 @@ const TripCoverIndex = (() => {
     const isStale = !w || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
     if (!isStale) return;
 
-    WeatherService.fetchForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate)
-      .then(weather => {
+    Promise.all([
+      WeatherService.fetchForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate),
+      WeatherService.fetchDailyForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate)
+    ]).then(([weather, weatherDaily]) => {
         if (!weather) return;
         trip.weather = weather;
-        if (typeof TripsData !== 'undefined') TripsData.updateTrip(trip.id, { weather });
+        trip.weatherDaily = weatherDaily || null;
+        if (typeof TripsData !== 'undefined') {
+          TripsData.updateTrip(trip.id, { weather, weatherDaily: weatherDaily || null });
+        }
         const block = document.getElementById('cover-weather-block');
         if (block && _tripId === trip.id) block.outerHTML = _weatherSection(trip);
+        _patchGuideWeather(trip);
       })
       .catch(() => {});
+  }
+
+  // Проставляет мини-бейджи погоды в уже отрисованный Гид (если он открыт
+  // прямо сейчас) — плейсхолдеры для них рендерятся в _renderGuide сразу
+  // (пустыми), а заполняются здесь, когда придут данные, без пересборки
+  // всей страницы Гида.
+  function _patchGuideWeather(trip) {
+    if (!trip.weatherDaily || !trip.weatherDaily.length) return;
+    const byDate = {};
+    trip.weatherDaily.forEach(d => { byDate[d.date] = d; });
+    document.querySelectorAll('[data-gwx-date]').forEach(el => {
+      const entry = byDate[el.dataset.gwxDate];
+      if (entry) el.innerHTML = _dayWeatherBadge(entry);
+    });
+  }
+
+  function _dayWeatherBadge(entry) {
+    if (!entry || entry.tMax == null || entry.tMin == null) return '';
+    const precip = entry.precip ? ` · 🌧${Math.round(entry.precip * 10) / 10}мм` : '';
+    return `🌡${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°${precip}`;
+  }
+
+  function _addDaysStr(dateStr, n) {
+    const d = new Date(dateStr + 'T00:00:00');
+    d.setDate(d.getDate() + n);
+    return d.toISOString().slice(0, 10);
   }
 
   function _weatherSection(t) {
@@ -497,6 +529,10 @@ const TripCoverIndex = (() => {
         if (chev) chev.classList.toggle('open', open);
       };
       guideEl.addEventListener('click', _guideHandler);
+      // Гид можно открыть и напрямую (быстрый выбор поездки), минуя
+      // обложку — там же обычно и подтягивается/кэшируется погода,
+      // так что дублируем вызов здесь, а не только в show().
+      _maybeRefreshWeather(trip);
     } else {
       // Заглушка (рыбалки или экспедиции без импорта)
       guideEl.innerHTML = `
@@ -715,10 +751,11 @@ const TripCoverIndex = (() => {
         .g-tide-date{font-size:13px;font-weight:600;color:var(--label)}
         .g-tide-sun{font-size:11px;color:var(--label3);margin-top:1px}
         .g-tide-info{font-size:12px;color:var(--accent);line-height:1.5}
-        .g-day-hd{display:flex;justify-content:space-between;align-items:center;padding:11px 15px;cursor:pointer;border-top:0.5px solid var(--sep2);-webkit-tap-highlight-color:transparent}
+        .g-day-hd{display:flex;align-items:center;gap:10px;padding:11px 15px;cursor:pointer;border-top:0.5px solid var(--sep2);-webkit-tap-highlight-color:transparent}
         .g-day-hd:first-child{border-top:none}
         .g-day-hd:active{background:var(--bg3)}
-        .g-day-title{font-size:13px;font-weight:700;color:var(--label)}
+        .g-day-title{font-size:13px;font-weight:700;color:var(--label);flex:1}
+        .g-day-wx{font-size:11px;color:var(--label3);white-space:nowrap;flex-shrink:0}
         .g-day-body{display:none;border-top:0.5px solid var(--sep2)}
         .g-day-body.show{display:block}
         .g-row{display:flex;gap:12px;padding:8px 15px;border-bottom:0.5px solid var(--sep2)}
@@ -766,12 +803,20 @@ const TripCoverIndex = (() => {
 
     // ── Маршрут по дням ─────────────────────────────────────────────────
     if (d.route && d.route.length) {
+      // Даты у дней маршрута — не отдельное поле (это заголовок-текст типа
+      // "День 1 — прилёт"), а последовательные дни от trip.startDate; на
+      // этом допущении и матчим погоду по дате, ключ той же формы кладём в
+      // data-gwx-date для _patchGuideWeather (данные почти всегда приходят
+      // позже первого рендера — сетевой запрос).
       let rb = '';
       d.route.forEach((day, idx) => {
         const dayId = 'gday_' + idx;
         const isFirst = idx === 0;
+        const wxDate = trip.startDate ? _addDaysStr(trip.startDate, idx) : '';
+        const wxEntry = wxDate && trip.weatherDaily ? trip.weatherDaily.find(w => w.date === wxDate) : null;
         rb += `<div class="g-day-hd" data-target="${dayId}">
           <span class="g-day-title">${_esc(day.t)}</span>
+          ${wxDate ? `<span class="g-day-wx" data-gwx-date="${wxDate}">${_dayWeatherBadge(wxEntry)}</span>` : ''}
           <span class="g-acc-chev ${isFirst ? 'open' : ''}">⌄</span>
         </div>
         <div class="g-day-body ${isFirst ? 'show' : ''}" id="${dayId}">`;
