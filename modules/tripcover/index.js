@@ -143,6 +143,35 @@ const TripCoverIndex = (() => {
     return `🌡${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°${precip}`;
   }
 
+  // Подсказка по клёву на основе народных примет (не научный прогноз!):
+  // стабильное давление — хорошо, резкий скачок в любую сторону — плохо,
+  // сильный ветер — рыба уходит на глубину, лёгкий дождь — часто оживляет
+  // клёв. prevEntry — сосед по тому же trip.weatherDaily (день перед),
+  // берём бесплатно из уже загруженного массива, без отдельного запроса.
+  function _fishingHint(entry, prevEntry) {
+    if (entry.pressure == null) return null;
+    let mood = 'ok';
+    const parts = [];
+
+    if (prevEntry && prevEntry.pressure != null) {
+      const delta = entry.pressure - prevEntry.pressure;
+      if (Math.abs(delta) < 1)      { parts.push('давление стабильно — неплохое время для рыбалки'); mood = 'good'; }
+      else if (Math.abs(delta) >= 3) { parts.push('давление резко меняется — клёв, вероятно, слабее обычного'); mood = 'bad'; }
+      else                            parts.push('давление немного ' + (delta > 0 ? 'растёт' : 'падает') + ' — клёв может быть неровным');
+    }
+
+    if (entry.wind != null && entry.wind >= 30) {
+      parts.push('сильный ветер — рыба может уйти на глубину');
+      mood = 'bad';
+    }
+    if (entry.precip != null && entry.precip > 0 && entry.precip <= 3 && mood !== 'bad') {
+      parts.push('небольшой дождь часто оживляет клёв');
+    }
+
+    if (!parts.length) return null;
+    return { mood, text: parts.join('; ') };
+  }
+
   // Подробная карточка "Погода на сегодня" вверху Гида — та же дневная
   // выборка (trip.weatherDaily), что и мини-бейджи в "Маршрут по дням",
   // просто отфильтрованная на день с реальной сегодняшней датой и
@@ -150,8 +179,11 @@ const TripCoverIndex = (() => {
   function _todayWeatherBlock(trip) {
     if (!trip.weatherDaily || !trip.weatherDaily.length) return '';
     const todayISO = new Date().toISOString().slice(0, 10);
-    const entry = trip.weatherDaily.find(w => w.date === todayISO);
+    const idx = trip.weatherDaily.findIndex(w => w.date === todayISO);
+    const entry = idx >= 0 ? trip.weatherDaily[idx] : null;
     if (!entry || entry.tMax == null) return '';
+    const prevEntry = idx > 0 ? trip.weatherDaily[idx - 1] : null;
+    const hint = _fishingHint(entry, prevEntry);
 
     const d = new Date(todayISO);
     const dateLabel = d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
@@ -174,6 +206,7 @@ const TripCoverIndex = (() => {
           <div class="g-wx-sun-item"><span class="g-wx-ic">🌅</span><span class="g-wx-val">${entry.sunrise || '—'}</span><span class="g-wx-lbl">восход</span></div>
           <div class="g-wx-sun-item"><span class="g-wx-ic">🌇</span><span class="g-wx-val">${entry.sunset || '—'}</span><span class="g-wx-lbl">закат</span></div>
         </div>` : ''}
+        ${hint ? `<div class="g-wx-hint g-wx-hint-${hint.mood}">🎣 ${_esc(hint.text)}</div>` : ''}
       </div>`;
   }
 
@@ -874,6 +907,9 @@ const TripCoverIndex = (() => {
         .g-wx-sun-item .g-wx-ic{margin-bottom:0;font-size:14px}
         .g-wx-sun-item .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
         .g-wx-sun-item .g-wx-lbl{font-size:10px;color:var(--label3)}
+        .g-wx-hint{margin-top:8px;font-size:11px;line-height:1.4;color:var(--label3)}
+        .g-wx-hint-good{color:#34c759}
+        .g-wx-hint-bad{color:#ff9f0a}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 14px;position:sticky;top:0;z-index:10;margin-bottom:4px">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
