@@ -112,6 +112,7 @@ const TripsRender = (() => {
     const dates = _dateRange(t.startDate, t.endDate);
     const parts = t.participants ? t.participants.join(' · ') : '';
     const fish  = (t.fish || []).map(f => `${f.species} ×${f.count}`).join(', ');
+    const daysLeft = Math.ceil((new Date(t.startDate) - new Date()) / 86400000);
 
     return `
       <div class="trip-card type-${t.type} status-${t.status}" data-trip-id="${t.id}">
@@ -123,6 +124,7 @@ const TripsRender = (() => {
           </div>
           <div class="tc-right">
             <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
+            ${t.status === 'upcoming' && daysLeft > 0 ? `<div class="exp-days-left">через ${daysLeft} дн.</div>` : ''}
           </div>
         </div>
         <div class="tc-footer">
