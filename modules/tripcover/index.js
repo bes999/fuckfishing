@@ -654,6 +654,10 @@ const TripCoverIndex = (() => {
         const chev = hd.querySelector('.g-acc-chev');
         const open = body.classList.toggle('show');
         if (chev) chev.classList.toggle('open', open);
+        if (open) {
+          const frame = body.querySelector('iframe[data-src]');
+          if (frame) { frame.src = frame.dataset.src; frame.removeAttribute('data-src'); }
+        }
       };
       guideEl.addEventListener('click', _guideHandler);
       // Гид можно открыть и напрямую (быстрый выбор поездки), минуя
@@ -910,12 +914,27 @@ const TripCoverIndex = (() => {
         .g-wx-hint{margin-top:8px;font-size:11px;line-height:1.4;color:var(--label3)}
         .g-wx-hint-good{color:#34c759}
         .g-wx-hint-bad{color:#ff9f0a}
+        .g-windy-wrap{height:320px}
+        .g-windy-frame{width:100%;height:100%;border:none;display:block}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 14px;position:sticky;top:0;z-index:10;margin-bottom:4px">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
         <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
       </div>
       <div id="g-today-weather">${_todayWeatherBlock(trip)}</div>`;
+
+    // ── Карта ветра (Windy) ─────────────────────────────────────────────
+    // Свой анимированный ветровой рендер — не наш масштаб (у Windy на это
+    // WebGL-команда и лицензии на метеомодели). Вместо велосипеда — их же
+    // бесплатный embed-виджет на координаты поездки. Аккордеон закрыт по
+    // умолчанию и iframe без src, пока не откроют (data-src → src ставит
+    // _guideHandler при разворачивании) — тяжёлая штука, незачем грузить
+    // сразу всем, кто просто открыл Гид.
+    const windyCoords = _tripCoords(trip);
+    if (windyCoords) {
+      const windySrc = `https://embed.windy.com/embed2.html?lat=${windyCoords.lat}&lon=${windyCoords.lon}&detailLat=${windyCoords.lat}&detailLon=${windyCoords.lon}&width=650&height=450&zoom=8&level=surface&overlay=wind&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
+      h += _acc('🌬 Карта ветра (Windy)', `<div class="g-windy-wrap"><iframe class="g-windy-frame" data-src="${_esc(windySrc)}" loading="lazy" frameborder="0"></iframe></div>`, false);
+    }
 
     // ── Авиабилеты ──────────────────────────────────────────────────────
     if (d.flights && d.flights.length) {
