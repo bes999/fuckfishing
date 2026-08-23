@@ -17,21 +17,33 @@ const TripCoverIndex = (() => {
   let _tripId = null;
   let _guideHandler = null;
 
-  // Табы внутри Гида — Инфо (маршрут/погода/Windy) плюс разделы поездки,
-  // которые раньше были достижимы только через выезжающее меню. Реки/
-  // Меню/Бар/Улов/Расходы/Закупка рендерят свои уже готовые show()/init()
-  // прямо в #g-tab-panel — их модули не меняются, просто зовём их с другим
-  // контейнером вместо отдельной полноэкранной страницы.
-  const _GUIDE_TABS = [
-    { id: 'info',     label: 'Инфо' },
-    { id: 'rivers',   label: 'Реки' },
-    { id: 'menu',     label: 'Меню' },
-    { id: 'bar',      label: 'Бар' },
-    { id: 'catches',  label: 'Улов' },
-    { id: 'expenses', label: 'Расходы' },
-    { id: 'shopping', label: 'Закупка' },
-  ];
+  // Табы внутри Гида — Инфо (маршрут/погода/Windy, всегда первым, не
+  // настраивается) плюс разделы поездки, которые раньше были достижимы
+  // только через выезжающее меню. Каждый рендерит свой уже готовый
+  // show()/init() прямо в #g-tab-panel — их модули не меняются, просто
+  // зовём их с другим контейнером вместо отдельной полноэкранной страницы.
+  // Набор/порядок настраиваемые (⚙ в полоске табов) и хранятся per-поездку
+  // в trip.guideTabs — по умолчанию (поле не задано) видно всё.
+  const _ALL_TAB_DEFS = {
+    rivers:   { label: 'Реки' },
+    menu:     { label: 'Меню' },
+    bar:      { label: 'Бар' },
+    catches:  { label: 'Улов' },
+    expenses: { label: 'Расходы' },
+    shopping: { label: 'Закупка' },
+    safety:   { label: 'Безопасность' },
+    recipes:  { label: 'Рецепты' },
+  };
+  const _DEFAULT_TAB_ORDER = ['rivers', 'menu', 'bar', 'catches', 'expenses', 'shopping', 'safety', 'recipes'];
   let _activeGuideTab = 'info';
+
+  // Видимые табы этой поездки в нужном порядке, всегда с 'info' первым.
+  // Фильтруем по _ALL_TAB_DEFS на случай устаревших/опечатанных id в старых
+  // сохранённых trip.guideTabs.
+  function _guideTabIds(trip) {
+    const saved = (trip.guideTabs || []).filter(id => _ALL_TAB_DEFS[id]);
+    return ['info', ...(saved.length ? saved : _DEFAULT_TAB_ORDER)];
+  }
 
   function show(tripId) {
     _tripId = tripId;
@@ -663,6 +675,8 @@ const TripCoverIndex = (() => {
     _guideHandler = e => {
       const tabBtn = e.target.closest('[data-gtab]');
       if (tabBtn) { _mountGuideTab(trip, tabBtn.dataset.gtab); return; }
+      const settingsBtn = e.target.closest('[data-action="guide-tabs-settings"]');
+      if (settingsBtn) { _showGuideTabsSettings(trip); return; }
       const geoBtn = e.target.closest('[data-action="geo-weather"]');
       if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
       const hd = e.target.closest('[data-target]');
@@ -682,10 +696,13 @@ const TripCoverIndex = (() => {
     _mountGuideTab(trip, 'info');
   }
 
-  function _renderTabStrip() {
-    return `<div class="g-tabstrip" id="g-tabstrip">${_GUIDE_TABS.map(t =>
-      `<div class="g-tab ${t.id === _activeGuideTab ? 'active' : ''}" data-gtab="${t.id}">${_esc(t.label)}</div>`
-    ).join('')}</div>`;
+  function _renderTabStrip(trip) {
+    const ids = _guideTabIds(trip);
+    const pills = ids.map(id => {
+      const label = id === 'info' ? 'Инфо' : _ALL_TAB_DEFS[id].label;
+      return `<div class="g-tab ${id === _activeGuideTab ? 'active' : ''}" data-gtab="${id}">${_esc(label)}</div>`;
+    }).join('');
+    return `<div class="g-tabstrip" id="g-tabstrip">${pills}<button class="g-tab-settings" data-action="guide-tabs-settings" title="Настроить вкладки">⚙</button></div>`;
   }
 
   // Липкий заголовок + полоска табов рисуются один раз на весь вход в
@@ -699,14 +716,25 @@ const TripCoverIndex = (() => {
         .g-tabstrip::-webkit-scrollbar{display:none}
         .g-tab{flex:0 0 auto;padding:7px 14px;border-radius:16px;font-size:13px;font-weight:600;color:rgba(255,255,255,.65);background:rgba(255,255,255,.08);cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
         .g-tab.active{background:#fff;color:var(--topbar-bg)}
+        .g-tab-settings{flex:0 0 auto;margin-left:2px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+        .g-tab-settings:active{background:rgba(255,255,255,.16)}
         #g-tab-panel .mn-topbar, #g-tab-panel .sh-topbar,
         #g-tab-panel .exp-topbar, #g-tab-panel .ct-topbar,
-        #g-tab-panel .bar-topbar { display:none }
-        /* .sh-stats и .bar-tabs залипают на top:80px, рассчитывая на высоту
-           своего топбара — тот скрыт строкой выше. top:0 столкнул бы их с
-           уже залипающей полоской табов (#g-tabstrip тоже sticky top:0),
+        #g-tab-panel .bar-topbar, #g-tab-panel .sf-topbar,
+        #g-tab-panel .rec-topbar { display:none }
+        /* .sh-stats/.bar-tabs/.rec-tabs залипают на top:80px, рассчитывая на
+           высоту своего топбара — тот скрыт строкой выше. top:0 столкнул бы
+           их с уже залипающей полоской табов (#g-tabstrip тоже sticky top:0),
            поэтому здесь им проще просто не залипать и скроллиться с контентом. */
-        #g-tab-panel .sh-stats, #g-tab-panel .bar-tabs { position:static }
+        #g-tab-panel .sh-stats, #g-tab-panel .bar-tabs, #g-tab-panel .rec-tabs { position:static }
+        .gts-row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:0.5px solid var(--sep2)}
+        .gts-row:last-child{border-bottom:none}
+        .gts-check{width:20px;height:20px;flex-shrink:0;accent-color:var(--accent)}
+        .gts-label{flex:1;font-size:15px;color:var(--label)}
+        .gts-arrows{display:flex;gap:4px;flex-shrink:0}
+        .gts-arrow{width:30px;height:30px;border-radius:8px;border:none;background:var(--bg3);color:var(--label2);font-size:14px;cursor:pointer}
+        .gts-arrow:disabled{opacity:.3;cursor:default}
+        .gts-save{width:100%;background:var(--accent);border:none;border-radius:var(--radius-md);padding:13px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-top:12px}
         .g-acc{background:var(--bg2);border-radius:var(--radius-md);margin:0 12px 10px;overflow:hidden}
         .g-acc-hd{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;cursor:pointer;-webkit-tap-highlight-color:transparent}
         .g-acc-hd:active{background:var(--bg3)}
@@ -767,7 +795,7 @@ const TripCoverIndex = (() => {
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
         <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
       </div>
-      ${_renderTabStrip()}
+      ${_renderTabStrip(trip)}
       <div id="g-tab-panel"></div>`;
   }
 
@@ -811,7 +839,87 @@ const TripCoverIndex = (() => {
       if (typeof ExpensesIndex !== 'undefined') ExpensesIndex.show(panel, tripId);
     } else if (tabId === 'shopping') {
       if (typeof ShoppingIndex !== 'undefined') ShoppingIndex.show(panel, tripId);
+    } else if (tabId === 'safety') {
+      // Справочная страница, не привязана к конкретной поездке — как Бар.
+      if (typeof SafetyIndex !== 'undefined') SafetyIndex.show(panel, () => {});
+    } else if (tabId === 'recipes') {
+      if (typeof RecipesIndex !== 'undefined') RecipesIndex.show(panel);
     }
+  }
+
+  // Настройка набора/порядка табов для этой поездки (⚙ в полоске табов) —
+  // чекбокс включает/выключает, стрелки переставляют. Инфо не показываем в
+  // списке — он всегда первый и обязательный. Сохраняем даже частично
+  // выключенный список ("Приобье" не нужен Бар) — не только галочки, но и
+  // порядок, раз уж по нему всё равно двигаем стрелками.
+  function _showGuideTabsSettings(trip) {
+    document.getElementById('gts-overlay')?.remove();
+
+    const visible = _guideTabIds(trip).filter(id => id !== 'info');
+    const hiddenIds = _DEFAULT_TAB_ORDER.filter(id => !visible.includes(id));
+    let order = [...visible, ...hiddenIds];
+    const checked = new Set(visible);
+
+    function renderRows() {
+      return order.map((id, i) => `
+        <div class="gts-row">
+          <input type="checkbox" class="gts-check" data-gts-check="${id}" ${checked.has(id) ? 'checked' : ''}>
+          <span class="gts-label">${_esc(_ALL_TAB_DEFS[id].label)}</span>
+          <div class="gts-arrows">
+            <button class="gts-arrow" data-gts-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button class="gts-arrow" data-gts-down="${id}" ${i === order.length - 1 ? 'disabled' : ''}>↓</button>
+          </div>
+        </div>`).join('');
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'gts-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Вкладки Гида</div>
+        <div class="tqp-list" id="gts-list">${renderRows()}</div>
+        <button class="gts-save" data-action="gts-save">Сохранить</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    const rerenderList = () => {
+      const listEl = document.getElementById('gts-list');
+      if (listEl) listEl.innerHTML = renderRows();
+    };
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const upId = e.target.closest('[data-gts-up]')?.dataset.gtsUp;
+      if (upId) {
+        const i = order.indexOf(upId);
+        if (i > 0) { [order[i - 1], order[i]] = [order[i], order[i - 1]]; rerenderList(); }
+        return;
+      }
+      const downId = e.target.closest('[data-gts-down]')?.dataset.gtsDown;
+      if (downId) {
+        const i = order.indexOf(downId);
+        if (i < order.length - 1) { [order[i + 1], order[i]] = [order[i], order[i + 1]]; rerenderList(); }
+        return;
+      }
+      if (e.target.closest('[data-action="gts-save"]')) {
+        const finalOrder = order.filter(id => checked.has(id));
+        trip.guideTabs = finalOrder;
+        TripsData.updateTrip(trip.id, { guideTabs: finalOrder });
+        overlay.remove();
+        const stripEl = document.getElementById('g-tabstrip');
+        if (stripEl) stripEl.outerHTML = _renderTabStrip(trip);
+        if (!_guideTabIds(trip).includes(_activeGuideTab)) _mountGuideTab(trip, 'info');
+      }
+    });
+
+    overlay.addEventListener('change', e => {
+      const id = e.target.dataset.gtsCheck;
+      if (!id) return;
+      if (e.target.checked) checked.add(id); else checked.delete(id);
+    });
   }
 
   // ── Быстрый выбор поездки — когда нажали нижнюю вкладку "Поездка", а
