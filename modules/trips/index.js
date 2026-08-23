@@ -14,6 +14,26 @@ const TripsIndex = (() => {
   let _editMode   = false;    // true = редактирование существующей поездки
   let _editTripId = null;     // id редактируемой поездки
 
+  // Табы Гида для этой поездки — какие видны и в каком порядке. Дублирует
+  // список из modules/tripcover/index.js (там он приватный, скрипт грузится
+  // позже, а этот файл ничего не рендерит по загрузке — только по клику
+  // пользователя, так что порядок скриптов тут не важен, дублировать проще,
+  // чем городить публичный геттер ради восьми строк). null = "показать всё"
+  // (тот же дефолт, что и когда trip.guideTabs вообще не задан).
+  const _GUIDE_TAB_DEFS = {
+    rivers:   'Реки',
+    menu:     'Меню',
+    bar:      'Бар',
+    catches:  'Улов',
+    expenses: 'Расходы',
+    shopping: 'Закупка',
+    safety:   'Безопасность',
+    recipes:  'Рецепты',
+  };
+  const _GUIDE_TAB_DEFAULT_ORDER = ['rivers', 'menu', 'bar', 'catches', 'expenses', 'shopping', 'safety', 'recipes'];
+  let _draftGuideTabOrder = [..._GUIDE_TAB_DEFAULT_ORDER]; // порядок всех 8 (видимых и скрытых)
+  let _draftGuideTabsChecked = new Set(_GUIDE_TAB_DEFAULT_ORDER); // какие видны
+
   function init(el) {
     _el = el;
     render();
@@ -37,6 +57,8 @@ const TripsIndex = (() => {
     _expMode = 'quiz';
     _quizRivers = [];
     _quizRouteText = '';
+    _draftGuideTabOrder = [..._GUIDE_TAB_DEFAULT_ORDER];
+    _draftGuideTabsChecked = new Set(_GUIDE_TAB_DEFAULT_ORDER);
     _dateTouched = !!prefillDate;
     // Создатель поездки — сразу в участниках, чтобы не вписывать себя
     // вручную каждый раз; можно убрать кликом по чипу, как любого другого.
@@ -65,6 +87,10 @@ const TripsIndex = (() => {
     _expMode = _importedData ? 'file' : 'quiz';
     _quizRivers = [];
     _quizRouteText = '';
+    const savedTabs = (trip.guideTabs || []).filter(id => _GUIDE_TAB_DEFS[id]);
+    const hiddenTabs = _GUIDE_TAB_DEFAULT_ORDER.filter(id => !savedTabs.includes(id));
+    _draftGuideTabOrder = savedTabs.length ? [...savedTabs, ...hiddenTabs] : [..._GUIDE_TAB_DEFAULT_ORDER];
+    _draftGuideTabsChecked = new Set(savedTabs.length ? savedTabs : _GUIDE_TAB_DEFAULT_ORDER);
     _dateTouched = true;
 
     _draft = {
@@ -393,10 +419,35 @@ const TripsIndex = (() => {
           </div>` : ''}
         </div>
       </div>
+      ${_guideTabsSection()}
       <div class="success-hint">
         ${isExp
           ? '✓ Маршрут, реки и меню откроются внутри поездки'
           : '✓ После создания сможешь заполнить отчёт — улов, приманки, погода'}
+      </div>`;
+  }
+
+  // Какие вкладки Гида нужны этой поездке — чекбоксы видимости + стрелки
+  // порядка, сохраняется в trip.guideTabs при создании/сохранении. Прямо
+  // тут, а не только потом через ⚙ в самом Гиде — на Приобье, например,
+  // Бар не нужен с самого начала, незачем сперва создавать со всем подряд
+  // и только потом идти прятать лишнее.
+  function _guideTabsSection() {
+    const rows = _draftGuideTabOrder.map((id, i) => `
+      <div class="qtb-row">
+        <input type="checkbox" class="qtb-check" data-qtb-check="${id}" ${_draftGuideTabsChecked.has(id) ? 'checked' : ''}>
+        <span class="qtb-label">${_esc(_GUIDE_TAB_DEFS[id])}</span>
+        <div class="qtb-arrows">
+          <button type="button" class="qtb-arrow" data-qtb-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" class="qtb-arrow" data-qtb-down="${id}" ${i === _draftGuideTabOrder.length - 1 ? 'disabled' : ''}>↓</button>
+        </div>
+      </div>`).join('');
+    return `
+      <div class="summary-card" style="margin-top:10px">
+        <div class="summary-head">
+          <div class="summary-type">📑 Вкладки в Гиде</div>
+        </div>
+        <div class="qtb-list">${rows}</div>
       </div>`;
   }
 
@@ -470,6 +521,34 @@ const TripsIndex = (() => {
     document.getElementById('createPrev')?.addEventListener('click', () => {
       _createStep--;
       _refreshCreate();
+    });
+
+    // Вкладки Гида — чекбоксы видимости + стрелки порядка (шаг сводки)
+    overlay.querySelectorAll('[data-qtb-check]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) _draftGuideTabsChecked.add(cb.dataset.qtbCheck);
+        else _draftGuideTabsChecked.delete(cb.dataset.qtbCheck);
+      });
+    });
+    overlay.querySelectorAll('[data-qtb-up]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.qtbUp;
+        const i = _draftGuideTabOrder.indexOf(id);
+        if (i > 0) {
+          [_draftGuideTabOrder[i - 1], _draftGuideTabOrder[i]] = [_draftGuideTabOrder[i], _draftGuideTabOrder[i - 1]];
+          _refreshCreate();
+        }
+      });
+    });
+    overlay.querySelectorAll('[data-qtb-down]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.qtbDown;
+        const i = _draftGuideTabOrder.indexOf(id);
+        if (i < _draftGuideTabOrder.length - 1) {
+          [_draftGuideTabOrder[i + 1], _draftGuideTabOrder[i]] = [_draftGuideTabOrder[i], _draftGuideTabOrder[i + 1]];
+          _refreshCreate();
+        }
+      });
     });
 
     // ── Импорт JSON (только для экспедиции, шаг 1) ──────────────────────
@@ -811,6 +890,7 @@ const TripsIndex = (() => {
 
     const participants = _draft.participants || [];
     const memberIds = await _matchMemberIds(participants);
+    const guideTabs = _draftGuideTabOrder.filter(id => _draftGuideTabsChecked.has(id));
 
     const trip = {
       type:      _draft.type,
@@ -830,6 +910,7 @@ const TripsIndex = (() => {
         : null,
       // Данные маршрута от AI (только для экспедиций)
       importData: isExp && _importedData ? _importedData : null,
+      guideTabs,
     };
 
     if (_editMode && _editTripId) {
@@ -845,6 +926,7 @@ const TripsIndex = (() => {
         comment:     trip.comment,
         status:      trip.status,
         importData:  trip.importData !== undefined ? trip.importData : (existing?.importData || null),
+        guideTabs:   trip.guideTabs,
       });
     } else {
       trip.ownerId = window.APP?.user?.uid || null;

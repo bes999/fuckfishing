@@ -265,6 +265,21 @@
 .summary-chips { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 .summary-chip  { background: var(--bg3); border-radius: 20px; padding: 3px 9px; font-size: 12px; }
 
+.qtb-list { padding: 4px 0; }
+.qtb-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; border-bottom: .5px solid var(--sep2);
+}
+.qtb-row:last-child { border-bottom: none; }
+.qtb-check { width: 19px; height: 19px; flex-shrink: 0; accent-color: var(--accent); }
+.qtb-label { flex: 1; font-size: 14px; color: var(--label); }
+.qtb-arrows { display: flex; gap: 4px; flex-shrink: 0; }
+.qtb-arrow {
+  width: 28px; height: 28px; border-radius: 8px; border: none;
+  background: var(--bg3); color: var(--label2); font-size: 13px; cursor: pointer;
+}
+.qtb-arrow:disabled { opacity: .3; cursor: default; }
+
 .success-hint {
   background: rgba(48,209,88,.1); border: .5px solid rgba(48,209,88,.25);
   border-radius: var(--radius-md); padding: 12px 14px;
