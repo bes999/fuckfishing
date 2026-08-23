@@ -204,7 +204,13 @@ const HomeRender = (() => {
   // ── Trips feed ──
   function _tripsFeed(byYear) {
     const years = Object.keys(byYear).sort((a,b) => b - a);
-    if (!years.length) return '<div style="padding:20px 16px;color:var(--label3);text-align:center;font-size:14px">Поездок пока нет</div>';
+    if (!years.length) return `
+      <div style="text-align:center;padding:40px 24px">
+        <div style="font-size:44px;margin-bottom:12px">🎣</div>
+        <div style="font-size:16px;font-weight:700;color:var(--label);margin-bottom:6px">Поездок пока нет</div>
+        <div style="font-size:14px;color:var(--label3);line-height:1.5;margin-bottom:18px">Заведи первую рыбалку или экспедицию — и здесь появится календарь и статистика</div>
+        <button data-action="create-trip" style="background:var(--accent);border:none;border-radius:var(--radius-md);padding:11px 20px;font-size:14px;font-weight:600;color:#fff;cursor:pointer">+ Создать поездку</button>
+      </div>`;
 
     const now = new Date().getFullYear();
     const inner = years.map((year, idx) => {
@@ -416,6 +422,16 @@ const HomeRender = (() => {
       const card = e.target.closest('[data-trip-id]');
       if (card && card.dataset.tripId) {
         HomeIndex.openTrip(card.dataset.tripId);
+        return;
+      }
+      // Пустое состояние — "Создать поездку"
+      if (e.target.closest('[data-action="create-trip"]')) {
+        if (typeof AppNav !== 'undefined') AppNav.setActive('trips');
+        if (typeof AppRouter !== 'undefined') AppRouter.show('trips');
+        if (typeof TripsIndex !== 'undefined') {
+          TripsIndex.render();
+          setTimeout(() => TripsIndex.showCreate(), 50);
+        }
       }
     };
     el.addEventListener('click', _tripCardsHandler);

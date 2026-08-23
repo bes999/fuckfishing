@@ -105,3 +105,21 @@ var MEDKIT_BASE = [
     ]
   }
 ];
+
+// Пользовательская категория поверх базового каталога — тот же паттерн,
+// что addCustomSlot в slots.js: живёт только в памяти (сбрасывается при
+// перезагрузке), без нового поля в Firestore. Предметы внутри неё добавляются
+// уже существующим addMedkitCustomItem (groupId ничем не валидируется).
+function addCustomGroup(label) {
+  if (!label || !label.trim()) return null;
+  var group = {
+    id: 'custom_group_' + Date.now(),
+    label: label.trim(),
+    icon: '📦',
+    availableIn: ['common', 'personal'],
+    items: [],
+    custom: true
+  };
+  MEDKIT_BASE.push(group);
+  return group;
+}

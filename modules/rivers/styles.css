@@ -7,6 +7,11 @@
   padding: 10px 16px 6px;
 }
 
+.rv-empty { text-align: center; padding: 48px 24px; }
+.rv-empty__icon  { font-size: 46px; margin-bottom: 12px; }
+.rv-empty__title { font-size: 16px; font-weight: 700; color: var(--label); margin-bottom: 6px; }
+.rv-empty__sub   { font-size: 14px; color: var(--label3); line-height: 1.5; }
+
 .rv-card {
   background: var(--bg2);
   border-radius: var(--radius-md);

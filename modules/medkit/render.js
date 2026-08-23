@@ -24,7 +24,6 @@ function rMedkit() {
   h += '<div class="tb-right">';
   h += '<span class="tb-sync" id="syncStatus"></span>';
   if (mode !== 'reference') h += '<button class="tb-btn" onclick="showMedkitImport()">⬇ Импорт</button>';
-  h += '<button class="tb-btn" onclick="showMedkitSettings()">···</button>';
   h += '</div></div>';
 
   h += '<div class="tabs">';
@@ -633,6 +632,13 @@ function updateEmergencyList() {
   if (el) el.innerHTML = rEmergencyList(filtered);
 }
 
-function showMedkitSettings() { alert('Настройки — будет реализован'); }
-function showAddMedkitGroup() { alert('Добавить категорию — будет реализован'); }
-function showAddMedkitSlot(mode) { alert('Добавить место — будет реализован'); }
+function showAddMedkitGroup() {
+  var label = prompt('Название категории (например, «Аллергия»):');
+  if (!addCustomGroup(label)) return;
+  rMedkit();
+}
+function showAddMedkitSlot(mode) {
+  var label = prompt('Название места хранения (например, «Гермомешок №2»):');
+  if (!addCustomSlot(mode, label)) return;
+  rMedkit();
+}

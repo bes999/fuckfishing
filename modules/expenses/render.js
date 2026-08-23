@@ -191,7 +191,7 @@ const ExpensesRender = (() => {
     return `
       <div class="exp-scroll">
         <div class="exp-sec-label">По участникам</div>
-        ${summary.rows.length === 0 ? `<div class="exp-empty">Нет данных</div>` : rowsHtml}
+        ${summary.rows.length === 0 ? `<div class="exp-empty">Расходов пока нет — добавь во вкладке «Расходы»</div>` : rowsHtml}
 
         <div class="exp-sec-label" style="margin-top:18px">Кто кому должен</div>
         ${transfersHtml}
@@ -248,7 +248,7 @@ const ExpensesRender = (() => {
 
         <div class="exp-sec-label">По категориям</div>
         <div class="exp-cat-bars">
-          ${catEntries.length === 0 ? `<div class="exp-empty">Нет данных</div>` : catsHtml}
+          ${catEntries.length === 0 ? `<div class="exp-empty">Расходов пока нет — добавь во вкладке «Расходы»</div>` : catsHtml}
         </div>
 
         <button class="exp-csv-btn" data-action="export-csv">

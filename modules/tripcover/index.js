@@ -790,6 +790,10 @@ const TripCoverIndex = (() => {
         .g-wx-hint-bad{color:#ff9f0a}
         .g-windy-wrap{height:320px}
         .g-windy-frame{width:100%;height:100%;border:none;display:block}
+        .g-empty{text-align:center;padding:56px 24px}
+        .g-empty__icon{font-size:48px;margin-bottom:14px}
+        .g-empty__title{font-size:17px;font-weight:700;color:var(--label);margin-bottom:8px}
+        .g-empty__sub{font-size:14px;color:var(--label3);line-height:1.5}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
@@ -820,9 +824,10 @@ const TripCoverIndex = (() => {
         _maybeRefreshWeather(trip);
       } else {
         panel.innerHTML = `
-          <div style="padding:24px 16px;color:var(--label3);font-size:15px;text-align:center;margin-top:24px">
-            🚧 Маршрут не добавлен.<br><br>
-            Загрузи JSON-файл от AI в настройках поездки.
+          <div class="g-empty">
+            <div class="g-empty__icon">🗺️</div>
+            <div class="g-empty__title">Маршрут ещё не добавлен</div>
+            <div class="g-empty__sub">Загрузи JSON-файл от AI в настройках поездки — появятся дни, рейсы и погода по маршруту</div>
           </div>`;
       }
     } else if (tabId === 'rivers') {

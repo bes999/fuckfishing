@@ -68,7 +68,12 @@ const MenuRender = (() => {
   }
 
   function _renderDays() {
-    if (!_days.length) return `<div class="mn-empty">Нет дней для отображения</div>`;
+    if (!_days.length) return `
+      <div class="mn-empty">
+        <div class="mn-empty__icon">🍽️</div>
+        <div class="mn-empty__title">Дней пока нет</div>
+        <div class="mn-empty__sub">Меню появится, когда у поездки будут известны даты</div>
+      </div>`;
     return _days.map(day => _renderDay(day)).join('');
   }
 

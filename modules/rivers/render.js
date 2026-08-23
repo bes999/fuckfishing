@@ -44,7 +44,11 @@ var RiversRender = (function () {
   ────────────────────────────────────────────────────── */
   function list(rivers) {
     if (!rivers || !rivers.length) {
-      return '<div class="rv-hint">Нет данных о реках. Загрузите JSON экспедиции.</div>';
+      return '<div class="rv-empty">' +
+        '<div class="rv-empty__icon">🌊</div>' +
+        '<div class="rv-empty__title">Рек пока нет</div>' +
+        '<div class="rv-empty__sub">Добавь их при создании поездки или загрузи JSON от AI в настройках</div>' +
+      '</div>';
     }
 
     var h = '<div class="rv-hint">Нажмите на реку — откроется карточка</div>';

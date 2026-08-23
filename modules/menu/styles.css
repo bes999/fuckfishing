@@ -70,11 +70,12 @@
 }
 
 .mn-empty {
-  padding: 40px 16px;
+  padding: 48px 24px;
   text-align: center;
-  color: var(--label3);
-  font-size: 15px;
 }
+.mn-empty__icon  { font-size: 44px; margin-bottom: 12px; }
+.mn-empty__title { font-size: 16px; font-weight: 700; color: var(--label); margin-bottom: 6px; }
+.mn-empty__sub   { font-size: 14px; color: var(--label3); line-height: 1.5; }
 
 /* Day card */
 .mn-day-card {
