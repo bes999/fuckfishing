@@ -75,6 +75,10 @@
   background: var(--bg2); border-radius: var(--radius-lg);
   overflow: hidden; box-shadow: var(--card-shadow);
 }
+/* Погода приходит асинхронно и подменяет собой пустой/старый блок — без
+   этого контент телепортируется, с этим он мягко проявляется. */
+#cover-weather-block { transition: opacity 200ms var(--ease); }
+@starting-style { #cover-weather-block { opacity: 0; } }
 .cover-section-head {
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 16px 12px; border-bottom: .5px solid var(--sep2);
@@ -198,7 +202,10 @@
   padding: 8px 16px calc(16px + env(safe-area-inset-bottom));
   max-height: 80vh;
   overflow-y: auto;
+  transform: translateY(100%);
+  transition: transform 300ms var(--spring);
 }
+.tqp-overlay.open .tqp-sheet { transform: translateY(0); }
 .tqp-handle {
   width: 36px; height: 4px;
   background: var(--sep);

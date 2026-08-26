@@ -714,8 +714,10 @@ const TripCoverIndex = (() => {
       <style>
         .g-tabstrip{display:flex;gap:6px;padding:10px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:var(--topbar-bg);position:sticky;top:0;z-index:9}
         .g-tabstrip::-webkit-scrollbar{display:none}
-        .g-tab{flex:0 0 auto;padding:7px 14px;border-radius:16px;font-size:13px;font-weight:600;color:rgba(255,255,255,.65);background:rgba(255,255,255,.08);cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent}
+        .g-tab{flex:0 0 auto;padding:7px 14px;border-radius:16px;font-size:13px;font-weight:600;color:rgba(255,255,255,.65);background:rgba(255,255,255,.08);cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:transform 120ms var(--ease)}
         .g-tab.active{background:#fff;color:var(--topbar-bg)}
+        .g-tab:active{transform:scale(0.96)}
+        #g-tab-panel{transition:opacity 120ms var(--ease)}
         .g-tab-settings{flex:0 0 auto;margin-left:2px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
         .g-tab-settings:active{background:rgba(255,255,255,.16)}
         #g-tab-panel .mn-topbar, #g-tab-panel .sh-topbar,
@@ -741,8 +743,9 @@ const TripCoverIndex = (() => {
         .g-acc-title{font-size:15px;font-weight:700;color:var(--label)}
         .g-acc-chev{font-size:18px;color:var(--label4);transition:transform 0.22s;line-height:1;flex-shrink:0}
         .g-acc-chev.open{transform:rotate(180deg)}
-        .g-acc-body{display:none;border-top:0.5px solid var(--sep2)}
-        .g-acc-body.show{display:block}
+        .g-acc-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows 250ms var(--ease)}
+        .g-acc-body.show{grid-template-rows:1fr}
+        .g-acc-body-inner{overflow:hidden;border-top:0.5px solid var(--sep2)}
         .g-flight{display:flex;justify-content:space-between;align-items:center;padding:10px 15px;border-bottom:0.5px solid var(--sep2)}
         .g-flight:last-child{border-bottom:none}
         .g-flight-l{}
@@ -761,13 +764,14 @@ const TripCoverIndex = (() => {
         .g-day-hd:active{background:var(--bg3)}
         .g-day-title{font-size:13px;font-weight:700;color:var(--label);flex:1}
         .g-day-wx{font-size:11px;color:var(--label3);white-space:nowrap;flex-shrink:0}
-        .g-day-body{display:none;border-top:0.5px solid var(--sep2)}
-        .g-day-body.show{display:block}
+        .g-day-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows 250ms var(--ease)}
+        .g-day-body.show{grid-template-rows:1fr}
         .g-row{display:flex;gap:12px;padding:8px 15px;border-bottom:0.5px solid var(--sep2)}
         .g-row:last-child{border-bottom:none}
         .g-row-time{font-size:11px;color:var(--label3);min-width:80px;flex-shrink:0;padding-top:2px;font-weight:500}
         .g-row-act{font-size:13px;color:var(--label);line-height:1.45}
-        .g-wx-card{margin:0 12px 10px;padding:14px;background:linear-gradient(135deg,rgba(10,132,255,.10),rgba(10,132,255,.02));border:0.5px solid rgba(10,132,255,.25);border-radius:var(--radius-md)}
+        .g-wx-card{margin:0 12px 10px;padding:14px;background:linear-gradient(135deg,rgba(10,132,255,.10),rgba(10,132,255,.02));border:0.5px solid rgba(10,132,255,.25);border-radius:var(--radius-md);transition:opacity 200ms var(--ease)}
+        @starting-style{ .g-wx-card{opacity:0} }
         .g-wx-hd{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
         .g-wx-badge{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
         .g-wx-date{font-size:12px;color:var(--label3)}
@@ -817,6 +821,12 @@ const TripCoverIndex = (() => {
     if (guideEl) guideEl.scrollTop = 0;
     window.scrollTo(0, 0);
 
+    // Мгновенная подмена контента при смене таба читалась как рывок —
+    // короткий кросс-фейд вместо направленного слайда, т.к. табы можно
+    // переставлять местами (см. _showGuideTabsSettings), направление
+    // слайда потеряло бы смысл.
+    panel.style.opacity = '0';
+
     const tripId = trip.id;
     if (tabId === 'info') {
       if (trip?.importData?.route?.length) {
@@ -850,6 +860,8 @@ const TripCoverIndex = (() => {
     } else if (tabId === 'recipes') {
       if (typeof RecipesIndex !== 'undefined') RecipesIndex.show(panel);
     }
+
+    requestAnimationFrame(() => { panel.style.opacity = '1'; });
   }
 
   // Настройка набора/порядка табов для этой поездки (⚙ в полоске табов) —
@@ -1108,7 +1120,7 @@ const TripCoverIndex = (() => {
             <span class="g-acc-title">${title}</span>
             <span class="g-acc-chev ${open ? 'open' : ''}">⌄</span>
           </div>
-          <div class="g-acc-body ${open ? 'show' : ''}" id="${id}">${bodyHtml}</div>
+          <div class="g-acc-body ${open ? 'show' : ''}" id="${id}"><div class="g-acc-body-inner">${bodyHtml}</div></div>
         </div>`;
     }
 
@@ -1178,14 +1190,14 @@ const TripCoverIndex = (() => {
           ${wxDate ? `<span class="g-day-wx" data-gwx-date="${wxDate}">${_dayWeatherBadge(wxEntry)}</span>` : ''}
           <span class="g-acc-chev ${isFirst ? 'open' : ''}">⌄</span>
         </div>
-        <div class="g-day-body ${isFirst ? 'show' : ''}" id="${dayId}">`;
+        <div class="g-day-body ${isFirst ? 'show' : ''}" id="${dayId}"><div class="g-acc-body-inner">`;
         (day.rows || []).forEach(row => {
           rb += `<div class="g-row">
             <span class="g-row-time">${_esc(row[0])}</span>
             <span class="g-row-act">${_esc(_stripEmoji(row[1]))}</span>
           </div>`;
         });
-        rb += `</div>`;
+        rb += `</div></div>`;
       });
       h += _acc('Маршрут по дням', rb, true);
     }
@@ -1200,14 +1212,14 @@ const TripCoverIndex = (() => {
           <span class="g-day-title">${_esc(day.day)}${day.date ? ' — ' + _esc(day.date) : ''}${day.special ? ' ★' : ''}</span>
           <span class="g-acc-chev">⌄</span>
         </div>
-        <div class="g-day-body" id="${dayId}">`;
+        <div class="g-day-body" id="${dayId}"><div class="g-acc-body-inner">`;
         (day.meals || []).forEach(meal => {
           mb += `<div class="g-row">
             <span class="g-row-time">${_esc(meal.type)}</span>
             <span class="g-row-act">${_esc(meal.text)}${meal.cocktail ? ' · 🍸 ' + _esc(meal.cocktail) : ''}</span>
           </div>`;
         });
-        mb += `</div>`;
+        mb += `</div></div>`;
       });
       h += _acc('🍽️ Меню', mb, false);
     }
