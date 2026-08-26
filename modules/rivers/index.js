@@ -50,6 +50,19 @@ var RiversIndex = (function () {
     try { return JSON.parse(localStorage.getItem(_LS_CATCHES)) || []; } catch(e) { return []; }
   }
 
+  // CatchesState — тот же кэш, что и реалтайм-подписка ниже уже держит
+  // актуальным; читаем оттуда всегда, когда он доступен, вместо
+  // localStorage (тот больше никем не пишется после переезда на Firestore,
+  // так что первым открытием карточки реки всегда показывал пустой лог на
+  // долю секунды, пока не придёт снапшот — теперь смотрим в уже тёплый кэш).
+  function _riverCatchesFor(riverName) {
+    var tripId = window.APP && window.APP.currentTripId;
+    var all = (tripId && typeof CatchesState !== 'undefined') ? CatchesState.getCatches(tripId) : _getCatches();
+    return (all || [])
+      .map(function (c, i) { return Object.assign({}, c, { _idx: i }); })
+      .filter(function (c) { return c.river === riverName; });
+  }
+
   function _saveCatches(arr) {
     try { localStorage.setItem(_LS_CATCHES, JSON.stringify(arr)); } catch(e) {}
   }
@@ -131,14 +144,8 @@ var RiversIndex = (function () {
     var state = {
       notes:   _getNotes(),
       points:  _getPoints(),
-      catches: _getCatches()
+      catches: _riverCatchesFor(r.name)
     };
-
-    /* помечаем уловы индексом для удаления */
-    var allCatches = _getCatches();
-    state.catches = allCatches
-      .map(function (c, i) { return Object.assign({}, c, { _idx: i }); })
-      .filter(function (c) { return c.river === r.name; });
 
     _el.style.overflowY = 'hidden';
     _el.style.flexDirection = 'column';
@@ -280,20 +287,8 @@ var RiversIndex = (function () {
   }
 
   function _refreshCatchLog(r) {
-    var allCatches;
- 
-    // [PATCH] Если CatchesState доступен — читаем оттуда
-    var tripId = window.APP && window.APP.currentTripId;
-    if (tripId && typeof CatchesState !== 'undefined') {
-      allCatches = CatchesState.getCatches(tripId);
-    } else {
-      allCatches = _getCatches();
-    }
- 
-    var riverCatches = allCatches
-      .map(function (c, i) { return Object.assign({}, c, { _idx: i }); })
-      .filter(function (c) { return c.river === r.name; });
- 
+    var riverCatches = _riverCatchesFor(r.name);
+
     var logEl = document.getElementById('rv-catch-log');
     if (!logEl) return;
     if (riverCatches.length === 0) {

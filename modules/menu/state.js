@@ -21,14 +21,32 @@ const MenuState = (() => {
     return _data[tripId]?.days || null;
   }
 
-  // Инициализировать дни из дат поездки
+  // Инициализировать дни из дат поездки — и пересобрать, если даты
+  // поездки поменялись задним числом (раньше initDays один раз строил
+  // список и больше никогда его не трогал, даже если даты правились в
+  // настройках поездки — старые дни оставались висеть вечно). id дня —
+  // это его дата (day_YYYY-MM-DD), так что при пересборке просто
+  // переносим meals у дней, чья дата осталась в новом диапазоне, а не
+  // теряем уже распланированное.
   function initDays(tripId, startDate, endDate) {
-    if (_data[tripId]?.days?.length) return _data[tripId].days;
-    const days = MenuData.generateDays(startDate, endDate);
-    if (!_data[tripId]) _data[tripId] = {};
-    _data[tripId].days = days;
+    const existing = _data[tripId];
+    if (existing?.days?.length && existing.startDate === startDate && existing.endDate === endDate) {
+      return existing.days;
+    }
+    const freshDays = MenuData.generateDays(startDate, endDate);
+    if (existing?.days?.length) {
+      const oldById = {};
+      existing.days.forEach(d => { oldById[d.id] = d; });
+      freshDays.forEach(d => { if (oldById[d.id]) d.meals = oldById[d.id].meals; });
+      // Пушим пересобранный список сразу, а не ждём следующего edit'а —
+      // иначе до тех пор локальная правка живёт только в localStorage и
+      // первый же снапшот из Firestore (с других вкладок/устройств) молча
+      // вернёт назад старые дни.
+      if (typeof MenuFirebase !== 'undefined') MenuFirebase.saveDays(tripId, freshDays);
+    }
+    _data[tripId] = { days: freshDays, startDate, endDate };
     _save();
-    return days;
+    return freshDays;
   }
 
   // Обновить слот

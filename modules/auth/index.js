@@ -94,8 +94,19 @@ const AuthActions = (() => {
       await auth.signInWithEmailAndPassword(email, pass);
     } catch (e) {
       if (['auth/user-not-found','auth/invalid-credential'].includes(e.code)) {
+        // 'invalid-credential' покрывает и "такого юзера нет", и "пароль
+        // неверный" — Firebase намеренно их не различает (защита от
+        // перебора почт). Пробуем зарегистрировать; если Firebase в ответ
+        // говорит "email уже занят" — значит юзер как раз существовал,
+        // и дело было в опечатке в пароле, а не в отсутствии аккаунта.
         try { await auth.createUserWithEmailAndPassword(email, pass); }
-        catch (e2) { AuthRender.showError(e2.message); }
+        catch (e2) {
+          if (e2.code === 'auth/email-already-in-use') {
+            AuthRender.showError('Неверный пароль');
+          } else {
+            AuthRender.showError(e2.message);
+          }
+        }
       } else { AuthRender.showError(e.message); }
     }
   }
