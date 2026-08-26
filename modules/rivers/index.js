@@ -12,7 +12,7 @@ var RiversIndex = (function () {
 
   var _el     = null;   // div#p-rivers
   var _trip   = null;   // объект экспедиции из JSON
-  var _tripId = '';     // id экспедиции (для ключей localStorage)
+  var _tripId = '';     // id экспедиции
   var _kept   = true;   // улов: взяли / отпустили
   var _currentRiverId = null; // открытая карточка
   var _catchesUnsub = null; // отписка от CatchesFirebase.listen (карточка реки)
@@ -21,23 +21,16 @@ var RiversIndex = (function () {
   var _ptHandler = null;       // хэндлер редактирования/удаления точки (карточка реки)
 
   /* ──────────────────────────────────────────────────────
-     localStorage helpers
+     Точки и заметки — теперь в Firestore (RiversFirebase), а не в
+     localStorage: раньше точка, добавленная с телефона, была не
+     видна на компьютере и другим участникам. _pointsCache/_notesCache
+     держим синхронными с realtime-подпиской, включённой в init().
   ────────────────────────────────────────────────────── */
-  function _lsKey(suffix) {
-    return 'rv_' + _tripId + '_' + suffix;
-  }
-  function _lsGet(key) {
-    try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; }
-  }
-  function _lsSet(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
-  }
+  var _pointsCache = {}; // { riverId: [ {_id, name, note, coordStr, lat, lon}, ... ] }
+  var _notesCache  = {}; // { riverId: text }
 
-  function _getNotes()  { return _lsGet(_lsKey('notes'))  || {}; }
-  function _getPoints() { return _lsGet(_lsKey('points')) || {}; }
-
-  function _saveNotes(obj)  { _lsSet(_lsKey('notes'),  obj); }
-  function _savePoints(obj) { _lsSet(_lsKey('points'), obj); }
+  function _getNotes()  { return _notesCache; }
+  function _getPoints() { return _pointsCache; }
 
   /* Уловы — источник истины CatchesFirebase/CatchesState (Firestore).
      localStorage тут — только запасной путь на случай, если сама
@@ -207,9 +200,9 @@ var RiversIndex = (function () {
     if (_ptHandler) _el.removeEventListener('click', _ptHandler);
     _ptHandler = function (e) {
       var editBtn = e.target.closest('[data-pt-edit]');
-      if (editBtn) { _editPoint(r.id, parseInt(editBtn.getAttribute('data-pt-edit'), 10)); return; }
+      if (editBtn) { _editPoint(r.id, editBtn.getAttribute('data-pt-edit')); return; }
       var delBtn = e.target.closest('[data-pt-del]');
-      if (delBtn)  { _deletePoint(r.id, parseInt(delBtn.getAttribute('data-pt-del'), 10)); }
+      if (delBtn)  { _deletePoint(r.id, delBtn.getAttribute('data-pt-del')); }
     };
     _el.addEventListener('click', _ptHandler);
 
@@ -344,6 +337,7 @@ var RiversIndex = (function () {
     if (m) { lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
 
     var pt = {
+      riverId: rid,
       name: name.trim(),
       note: note.trim(),
       coordStr: coord.trim(),
@@ -351,23 +345,19 @@ var RiversIndex = (function () {
       lon: lon
     };
 
-    var pts = _getPoints();
-    if (!pts[rid]) pts[rid] = [];
     if (_editingPt && _editingPt.rid === rid) {
-      pts[rid][_editingPt.idx] = pt;
+      RiversFirebase.updatePoint(_tripId, _editingPt.id, pt);
     } else {
-      pts[rid].push(pt);
+      RiversFirebase.addPoint(_tripId, pt);
     }
-    _savePoints(pts);
-
-    var listEl = document.getElementById('rv-pts-list');
-    if (listEl) listEl.innerHTML = RiversRender.pointsList(pts[rid], rid);
+    // Список обновится сам через realtime-подписку (_onPointsUpdate) —
+    // не патчим локально, чтобы не разойтись с тем, что реально сохранилось.
     _hidePtForm();
   }
 
-  function _editPoint(rid, idx) {
+  function _editPoint(rid, id) {
     var pts = _getPoints();
-    var pt = (pts[rid] || [])[idx];
+    var pt = (pts[rid] || []).filter(function (p) { return p._id === id; })[0];
     if (!pt) return;
 
     /* fill form */
@@ -379,18 +369,13 @@ var RiversIndex = (function () {
     if (noteEl)  noteEl.value  = pt.note  || '';
 
     // Точку не трогаем в хранилище, пока не нажмут "Сохранить" — просто
-    // запоминаем, какую позицию перезаписать при сохранении.
-    _editingPt = { rid: rid, idx: idx };
+    // запоминаем, какой документ перезаписать при сохранении.
+    _editingPt = { rid: rid, id: id };
     _showPtForm();
   }
 
-  function _deletePoint(rid, idx) {
-    var pts = _getPoints();
-    if (!pts[rid]) return;
-    pts[rid].splice(idx, 1);
-    _savePoints(pts);
-    var listEl = document.getElementById('rv-pts-list');
-    if (listEl) listEl.innerHTML = RiversRender.pointsList(pts[rid], rid);
+  function _deletePoint(rid, id) {
+    RiversFirebase.deletePoint(_tripId, id);
   }
 
   /* ──────────────────────────────────────────────────────
@@ -412,13 +397,13 @@ var RiversIndex = (function () {
     var ta  = document.getElementById('rv-notes-ta');
     var val = ta ? ta.value.trim() : '';
 
-    var notes = _getNotes();
     if (val) {
-      notes[rid] = val;
+      _notesCache[rid] = val;
+      RiversFirebase.saveNote(_tripId, rid, val);
     } else {
-      delete notes[rid];
+      delete _notesCache[rid];
+      RiversFirebase.deleteNote(_tripId, rid);
     }
-    _saveNotes(notes);
 
     var saved = document.getElementById('rv-notes-saved');
     var acts  = document.getElementById('rv-notes-acts');
@@ -438,9 +423,8 @@ var RiversIndex = (function () {
   }
 
   function _deleteNote(rid) {
-    var notes = _getNotes();
-    delete notes[rid];
-    _saveNotes(notes);
+    delete _notesCache[rid];
+    RiversFirebase.deleteNote(_tripId, rid);
 
     var saved = document.getElementById('rv-notes-saved');
     var acts  = document.getElementById('rv-notes-acts');
@@ -456,10 +440,37 @@ var RiversIndex = (function () {
   /* ──────────────────────────────────────────────────────
      PUBLIC API
   ────────────────────────────────────────────────────── */
+  function _onPointsUpdate(arr) {
+    var byRiver = {};
+    arr.forEach(function (pt) {
+      if (!byRiver[pt.riverId]) byRiver[pt.riverId] = [];
+      byRiver[pt.riverId].push(pt);
+    });
+    _pointsCache = byRiver;
+    if (_currentRiverId) {
+      var listEl = document.getElementById('rv-pts-list');
+      if (listEl) listEl.innerHTML = RiversRender.pointsList(_pointsCache[_currentRiverId] || [], _currentRiverId);
+    }
+  }
+
+  // Заметку не патчим прямо в открытой карточке (пользователь может сейчас
+  // печатать) — только держим кэш тёплым для следующего открытия детали.
+  function _onNotesUpdate(notes) {
+    _notesCache = notes || {};
+  }
+
   function init(el, tripData, tripId) {
     _el     = el;
     _trip   = tripData;
     _tripId = tripId || 'default';
+
+    if (typeof RiversFirebase !== 'undefined' && _tripId && _tripId !== 'default') {
+      RiversFirebase.migrateFromLocalStorage(_tripId).then(function () {
+        RiversFirebase.listenPoints(_tripId, _onPointsUpdate);
+        RiversFirebase.listenNotes(_tripId, _onNotesUpdate);
+      });
+    }
+
     _renderList();
   }
 

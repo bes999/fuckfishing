@@ -243,17 +243,17 @@ var RiversRender = (function () {
   function _pointsList(pts, rid) {
     if (!pts || !pts.length) return '<div style="font-size:13px;color:var(--label3);padding:4px 0">Нет сохранённых точек</div>';
     var h = '';
-    pts.forEach(function (pt, i) {
+    pts.forEach(function (pt) {
       var navUrl = pt.lat ? _navUrl(pt.lat, pt.lon, pt.name) : null;
-      h += '<div class="rv-pt-item" data-pt-idx="' + i + '">';
+      h += '<div class="rv-pt-item" data-pt-idx="' + pt._id + '">';
       h += '  <div>';
       h += '    <div class="rv-pt-name">' + _esc(pt.name) + '</div>';
       if (pt.note)  h += '<div class="rv-pt-note">' + _esc(pt.note) + '</div>';
       if (navUrl)   h += '<div class="rv-pt-coord" data-rv-nav="' + navUrl + '">' + pt.coordStr + ' → Навигатор</div>';
       h += '  </div>';
       h += '  <div class="rv-pt-acts">';
-      h += '    <span class="rv-pt-edit" data-pt-edit="' + i + '">Ред.</span>';
-      h += '    <span class="rv-pt-del"  data-pt-del="'  + i + '">×</span>';
+      h += '    <span class="rv-pt-edit" data-pt-edit="' + pt._id + '">Ред.</span>';
+      h += '    <span class="rv-pt-del"  data-pt-del="'  + pt._id + '">×</span>';
       h += '  </div>';
       h += '</div>';
     });
