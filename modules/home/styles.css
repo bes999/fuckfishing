@@ -147,6 +147,7 @@
 .trips-feed { padding: 0 16px 16px; }
 
 .year-section { margin-bottom: 4px; }
+.year-section:has(.year-body:not(.hidden)) { margin-bottom: 14px; }
 .year-hd {
   display: flex; align-items: center; justify-content: space-between;
   padding: 12px 0 8px; cursor: pointer;
@@ -161,8 +162,12 @@
   transition: transform var(--ease) .22s;
 }
 .year-hd.open .year-chevron { transform: rotate(180deg); }
-.year-body { display: flex; flex-direction: column; gap: 10px; padding-bottom: 10px; }
-.year-body.hidden { display: none; }
+.year-body {
+  display: grid; grid-template-rows: 1fr;
+  transition: grid-template-rows 250ms var(--ease);
+}
+.year-body.hidden { grid-template-rows: 0fr; }
+.year-body-inner { overflow: hidden; display: flex; flex-direction: column; gap: 10px; }
 .year-month-sep {
   font-size: 12px; font-weight: 600; color: var(--label4);
   letter-spacing: .04em; text-transform: uppercase;

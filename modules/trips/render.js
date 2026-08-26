@@ -98,7 +98,9 @@ const TripsRender = (() => {
             </div>
           </div>
           <div class="year-body ${isOpen ? '' : 'hidden'}">
-            ${trips.sort((a,b) => new Date(b.startDate) - new Date(a.startDate)).map(_tripCard).join('')}
+            <div class="year-body-inner">
+              ${trips.sort((a,b) => new Date(b.startDate) - new Date(a.startDate)).map(_tripCard).join('')}
+            </div>
           </div>
         </div>`;
     });

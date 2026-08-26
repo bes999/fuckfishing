@@ -457,7 +457,7 @@
 
 /* ===== Desktop layout (>=880px) ===== */
 @media (min-width: 880px) {
-  #p-trips .year-body:not(.hidden) {
+  #p-trips .year-body-inner {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 12px;

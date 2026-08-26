@@ -237,7 +237,7 @@ const HomeRender = (() => {
             </div>
           </div>
           <div class="year-body ${isOpen ? '' : 'hidden'}">
-            ${_yearBody(trips)}
+            <div class="year-body-inner">${_yearBody(trips)}</div>
           </div>
         </div>`;
     }).join('');
