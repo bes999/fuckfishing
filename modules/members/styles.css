@@ -165,6 +165,29 @@
 .p-medkit-btn-sub   { font-size: 12px; color: var(--label3); margin-top: 2px; }
 .p-medkit-chevron   { font-size: 18px; color: var(--accent); opacity: .6; }
 
+/* Telegram-бот */
+.p-tg-unlink {
+  font-size: 12px; font-weight: 600; color: var(--red);
+  padding: 6px 10px; cursor: pointer; flex-shrink: 0;
+}
+.p-tg-code-card {
+  background: var(--accent-bg);
+  border: 1.5px solid rgba(0,122,255,.2);
+  border-radius: var(--radius-md);
+  padding: 14px; margin: 12px 0; text-align: center;
+}
+.p-tg-code {
+  font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+  font-size: 28px; font-weight: 700; letter-spacing: 6px;
+  color: var(--accent); margin-bottom: 8px;
+}
+.p-tg-code-hint { font-size: 12px; color: var(--label3); line-height: 1.5; }
+.p-tg-code-link { color: var(--accent); font-weight: 600; text-decoration: none; }
+.p-tg-cancel {
+  margin-top: 10px; font-size: 13px; font-weight: 600;
+  color: var(--label3); cursor: pointer;
+}
+
 /* Экстренные контакты */
 .p-emerg-title {
   font-size: 11px; font-weight: 700; color: var(--label4);

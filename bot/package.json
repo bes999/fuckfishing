@@ -1,0 +1,16 @@
+{
+  "name": "fuckfishing-plan-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Telegram-бот компаньон для FuckFishing Planner",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^12.6.0",
+    "grammy": "^1.30.0"
+  }
+}

@@ -1,5 +1,5 @@
 'use strict';
-/* globals MembersFirebase, AuthActions */
+/* globals MembersFirebase, AuthActions, TG_BOT_USERNAME */
 
 const MembersRender = (() => {
 
@@ -167,9 +167,56 @@ const MembersRender = (() => {
         <div class="p-medkit-chevron">›</div>
       </div>` : ''}
 
+      ${isMe ? _tabTelegram(p) : ''}
+
       <div class="p-emerg-title">Экстренные контакты</div>
       ${emergHtml}
       ${isMe ? `<div class="p-emerg-add" data-action="emerg-add">+ Добавить контакт</div>` : ''}`;
+  }
+
+  const TG_LINK_CODE_TTL_MS = 15 * 60 * 1000;
+
+  /* ══════════════════════════════════════════════
+     TELEGRAM-БОТ (привязка аккаунта)
+  ══════════════════════════════════════════════ */
+  function _tabTelegram(p) {
+    // Привязан
+    if (p.telegramId) {
+      return `
+      <div class="p-medkit-btn">
+        <div>
+          <div class="p-medkit-btn-title">✈️ Telegram-бот</div>
+          <div class="p-medkit-btn-sub">Привязан${p.telegramUsername ? ` — @${_esc(p.telegramUsername)}` : ''}</div>
+        </div>
+        <div class="p-tg-unlink" data-action="tg-unlink">Отвязать</div>
+      </div>`;
+    }
+
+    // Код сгенерирован и ещё не протух
+    const codeFresh = p.telegramLinkCode && p.telegramLinkCodeAt
+      && (Date.now() - new Date(p.telegramLinkCodeAt).getTime() < TG_LINK_CODE_TTL_MS);
+    if (codeFresh) {
+      return `
+      <div class="p-tg-code-card">
+        <div class="p-tg-code">${_esc(p.telegramLinkCode)}</div>
+        <div class="p-tg-code-hint">
+          Отправьте этот код боту
+          <a class="p-tg-code-link" href="https://t.me/${TG_BOT_USERNAME}" target="_blank" rel="noopener">@${TG_BOT_USERNAME}</a>
+          в течение 15 минут
+        </div>
+        <div class="p-tg-cancel" data-action="tg-cancel">Отменить</div>
+      </div>`;
+    }
+
+    // Не привязан, кода нет (или протух)
+    return `
+      <div class="p-medkit-btn" data-action="tg-link">
+        <div>
+          <div class="p-medkit-btn-title">✈️ Telegram-бот</div>
+          <div class="p-medkit-btn-sub">Привязать аккаунт</div>
+        </div>
+        <div class="p-medkit-chevron">›</div>
+      </div>`;
   }
 
   function _tabTrips(catchStat, balance) {

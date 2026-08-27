@@ -10,6 +10,9 @@ const FIREBASE_CONFIG = {
 
 const TRIP_ID = 'sakhalin2026';
 
+// Юзернейм Telegram-бота для привязки аккаунта (профиль → «Telegram-бот»).
+const TG_BOT_USERNAME = 'PlanFFbot';
+
 firebase.initializeApp(FIREBASE_CONFIG);
 const db      = firebase.firestore();
 const auth    = firebase.auth();

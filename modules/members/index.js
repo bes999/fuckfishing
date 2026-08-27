@@ -478,6 +478,54 @@ var MembersModule = (() => {
       if (action === 'gear-add' || action === 'gear-del') {
         return;
       }
+
+      if (action === 'tg-link') {
+        const profile = window.APP?.profile;
+        if (!profile) return;
+        const buf = new Uint32Array(1);
+        crypto.getRandomValues(buf);
+        const code = String(buf[0] % 1000000).padStart(6, '0');
+        try {
+          await MembersFirebase.updateProfile(profile.uid, {
+            telegramLinkCode: code,
+            telegramLinkCodeAt: new Date().toISOString(),
+          });
+          MembersRender.showProfile(profile.uid, profile.uid);
+        } catch (err) {
+          alert('Не получилось сгенерировать код. Попробуй ещё раз.');
+        }
+      }
+
+      if (action === 'tg-cancel') {
+        const profile = window.APP?.profile;
+        if (!profile) return;
+        try {
+          await MembersFirebase.updateProfile(profile.uid, {
+            telegramLinkCode: null,
+            telegramLinkCodeAt: null,
+          });
+          MembersRender.showProfile(profile.uid, profile.uid);
+        } catch (err) {
+          alert('Не получилось отменить привязку. Попробуй ещё раз.');
+        }
+      }
+
+      if (action === 'tg-unlink') {
+        const profile = window.APP?.profile;
+        if (!profile) return;
+        if (!confirm('Отвязать Telegram?')) return;
+        try {
+          await MembersFirebase.updateProfile(profile.uid, {
+            telegramId: null,
+            telegramUsername: null,
+            telegramLinkCode: null,
+            telegramLinkCodeAt: null,
+          });
+          MembersRender.showProfile(profile.uid, profile.uid);
+        } catch (err) {
+          alert('Не получилось отвязать Telegram. Попробуй ещё раз.');
+        }
+      }
     });
   }
 
