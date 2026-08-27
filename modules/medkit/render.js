@@ -635,10 +635,12 @@ function updateEmergencyList() {
 function showAddMedkitGroup() {
   var label = prompt('Название категории (например, «Аллергия»):');
   if (!addCustomGroup(label)) return;
+  saveMedkit();
   rMedkit();
 }
 function showAddMedkitSlot(mode) {
   var label = prompt('Название места хранения (например, «Гермомешок №2»):');
   if (!addCustomSlot(mode, label)) return;
+  saveMedkit();
   rMedkit();
 }

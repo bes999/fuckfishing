@@ -108,6 +108,18 @@ function getMedkitProgress(mode, memberId) {
 function applyMedkitPayload(data) {
   data = data || {};
 
+  // Кастомные категории/места хранения (добавленные через "+ Добавить
+  // категорию"/"+ Добавить место") раньше жили только в памяти вкладки —
+  // при перезагрузке страницы исчезали. Убираем те, что применили в
+  // прошлый раз (чтобы повторный applyMedkitPayload — например от эха
+  // снапшота — не задублировал их), и накатываем актуальный список.
+  MEDKIT_BASE = MEDKIT_BASE.filter(function(g) { return !g.custom; });
+  (data.customGroups || []).forEach(function(g) { MEDKIT_BASE.push(g); });
+  ['common', 'personal'].forEach(function(mode) {
+    MEDKIT_SLOTS[mode] = MEDKIT_SLOTS[mode].filter(function(s) { return !s.custom; });
+    ((data.customSlots || {})[mode] || []).forEach(function(s) { MEDKIT_SLOTS[mode].push(s); });
+  });
+
   medkitState.common = data.common || createEmptyMedkitState();
 
   var personalFromServer = data.personal || {};
@@ -141,6 +153,11 @@ function buildMedkitPayload() {
   return {
     common: medkitState.common,
     personal: personal,
+    customGroups: MEDKIT_BASE.filter(function(g) { return g.custom; }),
+    customSlots: {
+      common:   MEDKIT_SLOTS.common.filter(function(s) { return s.custom; }),
+      personal: MEDKIT_SLOTS.personal.filter(function(s) { return s.custom; })
+    },
     updatedAt: new Date().toISOString()
   };
 }
