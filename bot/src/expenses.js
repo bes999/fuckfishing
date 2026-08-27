@@ -47,6 +47,15 @@ export async function addExpense(tripId, { desc, amount, category, paidBy, parti
   return { id: ref.id, ...data };
 }
 
+/** Меняет категорию существующего расхода; возвращает обновлённый документ либо null. */
+export async function updateCategory(tripId, expenseId, category) {
+  const ref = db.collection('trips').doc(tripId).collection('expenses').doc(expenseId);
+  const doc = await ref.get();
+  if (!doc.exists) return null;
+  await ref.update({ category });
+  return { id: doc.id, ...doc.data(), category };
+}
+
 export async function listRecent(tripId, limit = 5) {
   const snap = await db.collection('trips').doc(tripId).collection('expenses')
     .orderBy('createdAt', 'desc')

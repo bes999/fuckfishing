@@ -23,6 +23,7 @@ const Catches = await import('./src/catches.js');
 const Shopping = await import('./src/shopping.js');
 const { parseDateFlexible } = await import('./src/dates.js');
 const { escapeHtml, formatMoney, formatDateRu, MAIN_MENU, MENU_LABELS } = await import('./src/ui.js');
+const AI = await import('./src/ai.js');
 
 const WEB_URL = process.env.WEB_URL || 'https://plan.fuckfishing.ru';
 
@@ -157,8 +158,7 @@ async function startExpenseFlow(ctx, user) {
     await ctx.reply('Сначала выберите активную поездку.');
     return showTrips(ctx);
   }
-  Wizards.start(ctx.chat.id, 'expense', { uid: user.uid, displayName: user.displayName, tripId: trip.id });
-  Wizards.update(ctx.chat.id, { step: 'amount_desc' });
+  Wizards.start(ctx.chat.id, 'expense', 'amount_desc', { uid: user.uid, displayName: user.displayName, tripId: trip.id });
   await ctx.reply('Сумма и описание одним сообщением, например: «1500 бензин»');
 }
 
@@ -173,6 +173,35 @@ async function handleExpenseText(ctx, w, text) {
     Wizards.update(chatId, { step: 'category', data: { amount: parsed.amount, desc: parsed.desc } });
 
     const categories = await Expenses.getCategories(w.data.tripId);
+
+    // Пробуем определить категорию ИИ по описанию — если уверенно, пишем сразу.
+    if (parsed.desc) {
+      try {
+        const aiCat = await AI.classifyCategory(parsed.desc, categories);
+        if (aiCat) {
+          const trip = await Trips.getTrip(w.data.tripId);
+          if (trip) {
+            const exp = await Expenses.addExpense(trip.id, {
+              desc: parsed.desc,
+              amount: parsed.amount,
+              category: aiCat,
+              paidBy: w.data.displayName,
+              participants: trip.participants || [],
+              uid: w.data.uid,
+            });
+            Wizards.cancel(chatId);
+            const kb = new InlineKeyboard().text('✏️ Изменить категорию', `exp:recat:${exp.id}`);
+            return ctx.reply(
+              `✅ Расход ${formatMoney(parsed.amount)} (${Expenses.categoryLabel(categories, aiCat)}): ${parsed.desc}`,
+              { reply_markup: kb }
+            );
+          }
+        }
+      } catch (e) {
+        console.error('AI-категоризация не удалась, откат на кнопки:', e?.message || e);
+      }
+    }
+
     const kb = new InlineKeyboard();
     categories.forEach((c, i) => {
       kb.text(c.title, `exp:cat:${c.id}`);
@@ -208,8 +237,7 @@ async function startCatchFlow(ctx, user) {
     await ctx.reply('Сначала выберите активную поездку.');
     return showTrips(ctx);
   }
-  Wizards.start(ctx.chat.id, 'catch', { uid: user.uid, displayName: user.displayName, tripId: trip.id });
-  Wizards.update(ctx.chat.id, { step: 'fish' });
+  Wizards.start(ctx.chat.id, 'catch', 'fish', { uid: user.uid, displayName: user.displayName, tripId: trip.id });
   await ctx.reply('Вид рыбы?', { reply_markup: fishKeyboard() });
 }
 
@@ -403,8 +431,7 @@ bot.callbackQuery('trip:newstart', async (ctx) => {
   const user = await requireUser(ctx);
   if (!user) return;
 
-  Wizards.start(ctx.chat.id, 'trip_new', { uid: user.uid, displayName: user.displayName });
-  Wizards.update(ctx.chat.id, { step: 'type' });
+  Wizards.start(ctx.chat.id, 'trip_new', 'type', { uid: user.uid, displayName: user.displayName });
   const kb = new InlineKeyboard().text('Экспедиция', 'trip:new:type:expedition').text('Рыбалка', 'trip:new:type:fishing');
   await ctx.reply('Тип поездки?', { reply_markup: kb });
 });
@@ -451,6 +478,57 @@ bot.callbackQuery(/^exp:cat:(.+)$/, async (ctx) => {
     await ctx.reply(`✅ Расход ${formatMoney(w.data.amount)} (${catLabel})${w.data.desc ? ': ' + w.data.desc : ''}`, {
       reply_markup: MAIN_MENU,
     });
+  } catch (e) {
+    console.error(e);
+    await ctx.reply('⚠️ Ошибка, попробуйте ещё раз.');
+  }
+});
+
+// Смена категории уже записанного расхода (после ИИ-категоризации).
+bot.callbackQuery(/^exp:recat:(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const user = await requireUser(ctx);
+  if (!user) return;
+
+  const trip = await Trips.getActiveTrip(ctx.chat.id);
+  if (!trip) return ctx.reply('Нет активной поездки.');
+
+  const expenseId = ctx.match[1];
+  const categories = await Expenses.getCategories(trip.id);
+  const kb = new InlineKeyboard();
+  categories.forEach((c, i) => {
+    kb.text(c.title, `exp:setcat:${expenseId}:${c.id}`);
+    if (i % 2 === 1) kb.row();
+  });
+  try {
+    await ctx.editMessageReplyMarkup({ reply_markup: kb });
+  } catch (_) {
+    await ctx.reply('Новая категория?', { reply_markup: kb });
+  }
+});
+
+bot.callbackQuery(/^exp:setcat:([^:]+):(.+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const user = await requireUser(ctx);
+  if (!user) return;
+
+  const trip = await Trips.getActiveTrip(ctx.chat.id);
+  if (!trip) return ctx.reply('Нет активной поездки.');
+
+  const [, expenseId, categoryId] = ctx.match;
+  try {
+    const updated = await Expenses.updateCategory(trip.id, expenseId, categoryId);
+    if (!updated) return ctx.reply('Расход не найден.');
+    const categories = await Expenses.getCategories(trip.id);
+    const catLabel = Expenses.categoryLabel(categories, categoryId);
+    const text = `✅ Расход ${formatMoney(updated.amount)} (${catLabel})${updated.desc ? ': ' + updated.desc : ''}`;
+    try {
+      await ctx.editMessageText(text, {
+        reply_markup: new InlineKeyboard().text('✏️ Изменить категорию', `exp:recat:${expenseId}`),
+      });
+    } catch (_) {
+      await ctx.reply(text);
+    }
   } catch (e) {
     console.error(e);
     await ctx.reply('⚠️ Ошибка, попробуйте ещё раз.');
@@ -563,8 +641,7 @@ bot.callbackQuery('shop:add', async (ctx) => {
   if (!trip) return ctx.reply('Нет активной поездки.');
 
   const categories = await Shopping.getCategories(trip.id);
-  Wizards.start(ctx.chat.id, 'shopping_add', { tripId: trip.id });
-  Wizards.update(ctx.chat.id, { step: 'category' });
+  Wizards.start(ctx.chat.id, 'shopping_add', 'category', { tripId: trip.id });
 
   const kb = new InlineKeyboard();
   categories.forEach((c, i) => {
