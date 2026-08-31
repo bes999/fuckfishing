@@ -44,21 +44,32 @@ var AppNav = (function () {
       var isActive = btn.getAttribute('data-nav-id') === id;
       btn.classList.toggle('active', isActive);
     });
+    _movePill();
+  }
+
+  // Двигает скользящую подложку под активную вкладку — по индексу в TABS,
+  // а не по пикселям (см. .bnav-pill.iN в nav.css, ширина/сдвиг в %).
+  function _movePill() {
+    var pill = _el && _el.querySelector('.bnav-pill');
+    if (!pill) return;
+    var idx = 0;
+    for (var i = 0; i < TABS.length; i++) { if (TABS[i].id === _active) { idx = i; break; } }
+    pill.className = 'bnav-pill i' + idx;
   }
 
   function _render() {
     if (!_el) return;
-    var h = '<nav class="bottomnav">';
+    var h = '<nav class="bottomnav"><div class="bnav-row"><div class="bnav-pill"></div>';
     TABS.forEach(function (tab) {
       var isActive = tab.id === _active;
       h += '<div class="bnav' + (isActive ? ' active' : '') + '" data-nav-id="' + tab.id + '">';
-      h += '  <div class="bnav-dot"></div>';
       h += '  <svg viewBox="0 0 24 24">' + tab.svg + '</svg>';
       h += '  ' + tab.label;
       h += '</div>';
     });
-    h += '</nav>';
+    h += '</div></nav>';
     _el.innerHTML = h;
+    _movePill();
 
     /* привязка кликов */
     _el.querySelectorAll('.bnav').forEach(function (btn) {
