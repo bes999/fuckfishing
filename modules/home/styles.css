@@ -47,9 +47,9 @@
 }
 .cal-day { text-align: center; padding: 2px 0; cursor: pointer; }
 .cal-day .cn {
-  width: 27px; height: 27px; border-radius: 50%;
+  width: 24px; height: 24px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  margin: 0 auto; font-size: 12.5px;
+  margin: 0 auto; font-size: 12px;
   color: var(--label);
   transition: background .12s;
 }
@@ -58,11 +58,11 @@
 .cal-day.trip-small .cn { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 .cal-day.trip-exp .cn {
   background: var(--accent); color: #fff; font-weight: 700;
-  box-shadow: 0 0 0 2px var(--accent-bg);
+  box-shadow: 0 0 0 1.5px var(--accent-bg);
 }
 .cal-day.trip-soon .cn {
   background: rgba(255,159,10,.15); color: var(--orange); font-weight: 700;
-  box-shadow: 0 0 0 1.5px var(--orange);
+  box-shadow: 0 0 0 1px var(--orange);
 }
 .cal-trip-dot {
   width: 4px; height: 4px; border-radius: 50%;
