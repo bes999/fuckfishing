@@ -626,6 +626,7 @@ const CatchesRender = (() => {
           waterClarity,
           tackle: _tackle,
           date: new Date().toISOString().split('T')[0],
+          createdBy: window.APP?.user?.uid || null,
         }, 'tmp_' + Date.now());
 
         CatchesState.addCatch(_tripId, entry);

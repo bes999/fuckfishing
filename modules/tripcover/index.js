@@ -122,8 +122,12 @@ const TripCoverIndex = (() => {
     // важнее как погода меняется в течение самого этого дня, поэтому
     // дополнительно тянем почасовые данные (см. _weatherChartsSection).
     const isSingleDay = trip.startDate === trip.endDate;
+    // .catch тут же, не в общем Promise.all ниже: часовой запрос — это
+    // третий независимый эндпоинт, и его отдельный сбой (например, только
+    // у него легло HTTP) не должен откатывать уже успешно пришедшие
+    // summary/daily-данные погоды из-за общего .catch(() => {}).
     const hourlyPromise = isSingleDay
-      ? WeatherService.fetchHourlyForTrip(coords.lat, coords.lon, trip.startDate)
+      ? WeatherService.fetchHourlyForTrip(coords.lat, coords.lon, trip.startDate).catch(() => null)
       : Promise.resolve(null);
 
     Promise.all([
@@ -1343,6 +1347,14 @@ const TripCoverIndex = (() => {
     overlay.addEventListener('change', e => {
       const id = e.target.dataset.gtsCheck;
       if (!id) return;
+      // Не даём снять последний чекбокс: пустой guideTabs:[] в Firestore
+      // неотличим от "поле вообще не задано" (см. _guideTabIds выше) — то
+      // есть при перерисовке всё равно покажутся ВСЕ табы, и настройка
+      // "спрятать всё" молча откатится сама собой.
+      if (!e.target.checked && checked.size === 1 && checked.has(id)) {
+        e.target.checked = true;
+        return;
+      }
       if (e.target.checked) checked.add(id); else checked.delete(id);
     });
   }

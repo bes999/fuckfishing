@@ -599,6 +599,13 @@ const TripsIndex = (() => {
     // Вкладки Гида — чекбоксы видимости + стрелки порядка (шаг сводки)
     overlay.querySelectorAll('[data-qtb-check]').forEach(cb => {
       cb.addEventListener('change', () => {
+        // Та же защита от пустого guideTabs, что и в настройках Гида
+        // (modules/tripcover/index.js) — пустой массив неотличим от "не
+        // задано" и молча покажет все табы при следующей отрисовке.
+        if (!cb.checked && _draftGuideTabsChecked.size === 1 && _draftGuideTabsChecked.has(cb.dataset.qtbCheck)) {
+          cb.checked = true;
+          return;
+        }
         if (cb.checked) _draftGuideTabsChecked.add(cb.dataset.qtbCheck);
         else _draftGuideTabsChecked.delete(cb.dataset.qtbCheck);
       });
