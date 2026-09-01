@@ -188,9 +188,7 @@ const CatchesRender = (() => {
        </optgroup>`
     ).join('');
 
-    const memberOptions = members.length
-      ? members.map(m => `<option value="${_esc(m)}">${_esc(m)}</option>`).join('')
-      : '<option value="">Участники не добавлены</option>';
+    const memberOptions = members.map(m => `<option value="${_esc(m)}">${_esc(m)}</option>`).join('');
 
     const riverOptions = rivers.length
       ? rivers.map(r => `<option value="${_esc(r)}">${_esc(r)}</option>`).join('')
@@ -221,9 +219,12 @@ const CatchesRender = (() => {
               <select class="ct-form-select" id="ct-member">
                 <option value="">Выбрать...</option>
                 ${memberOptions}
+                <option value="__manual__">+ Вписать вручную</option>
               </select>
             </div>
           </div>
+          <input class="ct-form-input" id="ct-member-manual" type="text" placeholder="Имя"
+                 style="display:none;margin-top:8px" autocomplete="off">
 
           <div class="ct-form-label">Река</div>
           <select class="ct-form-select" id="ct-river">
@@ -391,11 +392,19 @@ const CatchesRender = (() => {
       keptBtn?.classList.remove('active');
     });
 
+    // "+ Вписать вручную" — участник без аккаунта/ещё не приглашённый в
+    // поездку (то же решение, что для "Кто заплатил" в Расходах).
+    body.querySelector('#ct-member')?.addEventListener('change', e => {
+      const manual = body.querySelector('#ct-member-manual');
+      if (manual) manual.style.display = e.target.value === '__manual__' ? '' : 'none';
+    });
+
     const saveBtn = body.querySelector('#ct-save-btn');
     saveBtn?.addEventListener('click', () => {
       UIUtils.withBusyButton(saveBtn, () => {
-        const fish        = body.querySelector('#ct-fish')?.value || '';
-        const member      = body.querySelector('#ct-member')?.value || '';
+        const fish   = body.querySelector('#ct-fish')?.value || '';
+        let   member = body.querySelector('#ct-member')?.value || '';
+        if (member === '__manual__') member = body.querySelector('#ct-member-manual')?.value.trim() || '';
         const river       = body.querySelector('#ct-river')?.value || '';
         const comment     = body.querySelector('#ct-comment')?.value.trim() || '';
         const waterTemp   = body.querySelector('#ct-watertemp')?.value;
