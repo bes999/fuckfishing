@@ -590,7 +590,8 @@ const TripCoverIndex = (() => {
     opts = opts || {};
     const width = opts.width || 280, chartH = opts.height || 72, pad = 8, labelSpace = 18;
     const axisH = opts.axis ? 16 : 0;
-    const height = chartH + axisH;
+    const arrowH = opts.directions ? 18 : 0;
+    const height = chartH + axisH + arrowH;
     const allVals = series.flatMap(s => s.values).filter(v => v != null);
     if (!allVals.length) return '';
     const n = Math.max(...series.map(s => s.values.length));
@@ -640,13 +641,13 @@ const TripCoverIndex = (() => {
     // Крайние подписи центрированным text-anchor вылезали бы за viewBox
     // и обрезались (первая цифра пропадала) — у краёв якорим к точке
     // изнутри графика, а не по центру. labelEvery прореживает подписи на
-    // плотных графиках (24 часа) — сама кривая всё равно идёт через
-    // каждую точку, подписаны только некоторые.
+    // плотных графиках — сама кривая всё равно идёт через каждую точку,
+    // подписаны только некоторые (раньше ещё насильно подписывалась самая
+    // последняя точка независимо от labelEvery — из-за этого на часовых
+    // графиках подписи у самого края слипались, теперь чисто по шагу).
     series.forEach(s => {
       s.values.forEach((v, i) => {
-        if (v == null) return;
-        const isEdge = i === 0 || i === n - 1;
-        if (!isEdge && i % labelEvery !== 0) return;
+        if (v == null || i % labelEvery !== 0) return;
         const anchor = i === 0 && n > 1 ? 'start' : (i === n - 1 && n > 1 ? 'end' : 'middle');
         labels += `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>`
                 +  `<text x="${x(i)}" y="${y(v) - 8}" font-size="10" fill="${s.color}" text-anchor="${anchor}">${fmt(v)}</text>`;
@@ -666,8 +667,21 @@ const TripCoverIndex = (() => {
       }).join('');
     }
 
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">
-      <defs>${defs}</defs>${fill}${lines}${labels}${axisSvg}</svg>`;
+    // Стрелки направления ветра — своя строка над самим графиком, не
+    // привязана к шкале скорости (это два разных измерения). 0° = север,
+    // стрелка смотрит туда, откуда дует ветер (как флюгер).
+    let arrowsSvg = '';
+    if (opts.directions) {
+      arrowsSvg = opts.directions.map((deg, i) => {
+        if (deg == null || i % labelEvery !== 0) return '';
+        return `<path d="M0,-5 L3.5,3.5 L-3.5,3.5 Z" fill="var(--label3)" transform="translate(${x(i)},9) rotate(${deg})"/>`;
+      }).join('');
+    }
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="${opts.fixedWidth ? width : '100%'}" height="${height}" preserveAspectRatio="none">
+      ${arrowsSvg}
+      <g transform="translate(0,${arrowH})"><defs>${defs}</defs>${fill}${lines}${labels}${axisSvg}</g>
+    </svg>`;
   }
 
   function _weatherChartsDaily(daily) {
@@ -708,33 +722,37 @@ const TripCoverIndex = (() => {
   // Однодневная поездка — сутки уже сегодня/завтра, макс/мин за весь день
   // почти ничего не говорит (день один, сравнивать не с чем), а вот как
   // погода поменяется в течение дня — как раз то, что нужно перед
-  // выездом. Часовая ось встроена прямо в SVG (opts.axis), подписи и
-  // засечки прорежены до раза в 3 часа, чтобы не слипались на 24 точках.
+  // выездом. 280px на 24 часа зажимало точки в ~11px друг от друга — не
+  // влезала подпись даже раз в 3 часа. Вместо сжатия — честная ширина по
+  // часу (44px на точку) и горизонтальный скролл, как часовая лента в
+  // погоде Apple; подписан каждый час, ничего не прорежено.
   function _weatherChartsHourly(hourly) {
-    // Ровно каждый 3-й час, без принудительного последнего — если он
-    // окажется слишком близко к предыдущей засечке (24 часа не делятся
-    // на 3 без остатка), подписи налезали друг на друга. И само "HH:MM"
-    // не влезало даже через засечку — на 280px/24 точки соседи всего в
-    // ~11px друг от друга, минуты всегда :00 у почасовых данных, толку в
-    // них нет — оставляем только час.
-    const ticks = hourly.map((h, i) => (i % 3 === 0) ? String(parseInt(h.time, 10)) : null);
-    const axisOpts = { axis: ticks, labelEvery: 3 };
+    const HOUR_W = 44;
+    const chartWidth = hourly.length * HOUR_W;
+    const ticks = hourly.map(h => String(parseInt(h.time, 10)));
+    const chartOpts = { axis: ticks, width: chartWidth, fixedWidth: true };
 
-    const tempChart = _areaChartSvg([{ values: hourly.map(h => h.temp), color: 'var(--orange)' }], axisOpts);
+    const tempChart = _areaChartSvg([{ values: hourly.map(h => h.temp), color: 'var(--orange)' }], chartOpts);
     const precipChart = _areaChartSvg(
       [{ values: hourly.map(h => h.precip || 0), color: 'var(--accent)' }],
-      { ...axisOpts, min: 0, fmt: v => Math.round(v * 10) / 10 }
+      { ...chartOpts, min: 0, fmt: v => Math.round(v * 10) / 10 }
     );
     const hasWind = hourly.some(h => h.wind != null);
+    const hasDir  = hourly.some(h => h.windDir != null);
     const hasPressure = hourly.some(h => h.pressure != null);
-    const windChart = hasWind ? _areaChartSvg([{ values: hourly.map(h => h.wind), color: 'var(--label2)' }], { ...axisOpts, min: 0 }) : '';
-    const pressureChart = hasPressure ? _areaChartSvg([{ values: hourly.map(h => h.pressure), color: 'var(--label2)' }], axisOpts) : '';
+    const windChart = hasWind ? _areaChartSvg(
+      [{ values: hourly.map(h => h.wind), color: 'var(--label2)' }],
+      { ...chartOpts, min: 0, directions: hasDir ? hourly.map(h => h.windDir) : null }
+    ) : '';
+    const pressureChart = hasPressure ? _areaChartSvg([{ values: hourly.map(h => h.pressure), color: 'var(--label2)' }], chartOpts) : '';
+
+    const wrap = svg => svg ? `<div class="g-chart-scroll">${svg}</div>` : '';
 
     return `
-      <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C</div>${tempChart}</div>
-      <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${precipChart}</div>
-      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${windChart}</div>` : ''}
-      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${pressureChart}</div>` : ''}`;
+      <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C</div>${wrap(tempChart)}</div>
+      <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${wrap(precipChart)}</div>
+      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${wrap(windChart)}</div>` : ''}
+      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${wrap(pressureChart)}</div>` : ''}`;
   }
 
   // Подробная погода поездки — отдельный график на параметр, вместо одних
@@ -1169,6 +1187,9 @@ const TripCoverIndex = (() => {
         .g-chart-block:first-of-type{border-top:none}
         .g-chart-label{font-size:12px;color:var(--label3);margin-bottom:6px;font-weight:600}
         .g-chart-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--label4);margin-top:2px}
+        .g-chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+        .g-chart-scroll::-webkit-scrollbar{display:none}
+        .g-chart-scroll svg{display:block}
         .g-info-gap{margin-top:14px}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10">

@@ -11,7 +11,7 @@ const WeatherService = (() => {
   const ARCHIVE_URL  = 'https://archive-api.open-meteo.com/v1/archive';
   const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
   const DAILY = 'temperature_2m_max,temperature_2m_min,precipitation_sum,surface_pressure_mean,wind_speed_10m_max,sunrise,sunset';
-  const HOURLY = 'temperature_2m,precipitation,wind_speed_10m,surface_pressure';
+  const HOURLY = 'temperature_2m,precipitation,wind_speed_10m,wind_direction_10m,surface_pressure';
 
   function _avg(arr) {
     const vals = arr.filter(v => v != null);
@@ -122,6 +122,7 @@ const WeatherService = (() => {
       temp:     h.temperature_2m ? h.temperature_2m[i] : null,
       precip:   h.precipitation ? h.precipitation[i] : null,
       wind:     h.wind_speed_10m ? h.wind_speed_10m[i] : null,
+      windDir:  h.wind_direction_10m ? h.wind_direction_10m[i] : null,
       pressure: h.surface_pressure ? h.surface_pressure[i] : null,
     }));
   }
