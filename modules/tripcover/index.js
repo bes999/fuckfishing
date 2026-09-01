@@ -102,21 +102,38 @@ const TripCoverIndex = (() => {
 
     const w = trip.weather;
     const STALE_MS = 6 * 3600 * 1000;
-    const isStale = force || !w || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
+    // Архивная погода прошедшего дня не протухает по времени — но если это
+    // однодневная поездка и почасовых данных ещё нет (например, старая
+    // поездка, кэшированная до появления часового графика), это отдельная
+    // причина дёрнуть обновление, даже когда w уже "archive" и вечно свежий.
+    const missingHourly = trip.startDate === trip.endDate && !trip.weatherHourly;
+    const isStale = force || !w || missingHourly || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
     if (!isStale) return;
+
+    // Однодневная рыбалка — суточный максимум/минимум почти бесполезен,
+    // важнее как погода меняется в течение самого этого дня, поэтому
+    // дополнительно тянем почасовые данные (см. _weatherChartsSection).
+    const isSingleDay = trip.startDate === trip.endDate;
+    const hourlyPromise = isSingleDay
+      ? WeatherService.fetchHourlyForTrip(coords.lat, coords.lon, trip.startDate)
+      : Promise.resolve(null);
 
     Promise.all([
       WeatherService.fetchForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate),
-      WeatherService.fetchDailyForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate)
-    ]).then(([weather, weatherDaily]) => {
+      WeatherService.fetchDailyForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate),
+      hourlyPromise
+    ]).then(([weather, weatherDaily, weatherHourly]) => {
         if (!weather) return;
         trip.weather = weather;
         trip.weatherDaily = weatherDaily || null;
+        trip.weatherHourly = weatherHourly || null;
         if (typeof TripsData !== 'undefined') {
-          TripsData.updateTrip(trip.id, { weather, weatherDaily: weatherDaily || null });
+          TripsData.updateTrip(trip.id, { weather, weatherDaily: weatherDaily || null, weatherHourly: weatherHourly || null });
         }
         const block = document.getElementById('cover-weather-block');
         if (block && _tripId === trip.id) block.outerHTML = _weatherSection(trip);
+        const chartsBlock = document.getElementById('g-weather-charts');
+        if (chartsBlock && _tripId === trip.id) chartsBlock.outerHTML = _weatherChartsSection(trip);
         _patchGuideWeather(trip);
       })
       .catch(() => {});
@@ -563,7 +580,9 @@ const TripCoverIndex = (() => {
   // одной точке (однодневная рыбалка) — рисует просто маркер со значением.
   function _areaChartSvg(series, opts) {
     opts = opts || {};
-    const width = opts.width || 280, height = opts.height || 72, pad = 8, labelSpace = 18;
+    const width = opts.width || 280, chartH = opts.height || 72, pad = 8, labelSpace = 18;
+    const axisH = opts.axis ? 16 : 0;
+    const height = chartH + axisH;
     const allVals = series.flatMap(s => s.values).filter(v => v != null);
     if (!allVals.length) return '';
     const n = Math.max(...series.map(s => s.values.length));
@@ -571,9 +590,10 @@ const TripCoverIndex = (() => {
     const max = Math.max(...allVals);
     const range = max - min || 1;
     const x = i => n > 1 ? (i / (n - 1)) * (width - pad * 2) + pad : width / 2;
-    const y = v => height - pad - ((v - min) / range) * (height - pad * 2 - labelSpace);
-    const baseY = height - pad;
+    const y = v => chartH - pad - ((v - min) / range) * (chartH - pad * 2 - labelSpace);
+    const baseY = chartH - pad;
     const fmt = opts.fmt || (v => Math.round(v));
+    const labelEvery = opts.labelEvery || 1;
     const gid = 'gchart_' + Math.random().toString(36).slice(2);
 
     const pointsFor = s => s.values.map((v, i) => v != null ? [x(i), y(v)] : null).filter(Boolean);
@@ -611,28 +631,38 @@ const TripCoverIndex = (() => {
 
     // Крайние подписи центрированным text-anchor вылезали бы за viewBox
     // и обрезались (первая цифра пропадала) — у краёв якорим к точке
-    // изнутри графика, а не по центру.
+    // изнутри графика, а не по центру. labelEvery прореживает подписи на
+    // плотных графиках (24 часа) — сама кривая всё равно идёт через
+    // каждую точку, подписаны только некоторые.
     series.forEach(s => {
       s.values.forEach((v, i) => {
         if (v == null) return;
+        const isEdge = i === 0 || i === n - 1;
+        if (!isEdge && i % labelEvery !== 0) return;
         const anchor = i === 0 && n > 1 ? 'start' : (i === n - 1 && n > 1 ? 'end' : 'middle');
         labels += `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>`
                 +  `<text x="${x(i)}" y="${y(v) - 8}" font-size="10" fill="${s.color}" text-anchor="${anchor}">${fmt(v)}</text>`;
       });
     });
 
+    // Встроенная в тот же SVG шкала времени/дат снизу — только когда явно
+    // просят (opts.axis), иначе ось рисуется отдельным HTML-блоком под
+    // графиком (см. _weatherChartsSection) как и было для дневного вида.
+    let axisSvg = '';
+    if (opts.axis) {
+      const ticks = opts.axis;
+      axisSvg = ticks.map((lbl, i) => {
+        if (lbl == null) return '';
+        const anchor = i === 0 ? 'start' : (i === ticks.length - 1 ? 'end' : 'middle');
+        return `<text x="${x(i)}" y="${chartH + 12}" font-size="9" fill="var(--label4)" text-anchor="${anchor}">${_esc(lbl)}</text>`;
+      }).join('');
+    }
+
     return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">
-      <defs>${defs}</defs>${fill}${lines}${labels}</svg>`;
+      <defs>${defs}</defs>${fill}${lines}${labels}${axisSvg}</svg>`;
   }
 
-  // Подробная погода по дням поездки — отдельный график на параметр,
-  // вместо одних только текущих бейджей. Данные — уже загружаемый
-  // trip.weatherDaily (см. _maybeRefreshWeather/shared/weather.js), новый
-  // запрос не нужен.
-  function _weatherChartsSection(trip) {
-    const daily = trip.weatherDaily;
-    if (!daily || !daily.length) return '';
-
+  function _weatherChartsDaily(daily) {
     // Подпись по каждому дню, а не только по первому/последнему — месяц
     // указываем только там, где он меняется, чтобы не повторять его на
     // каждой отметке. Точки на самом графике идут вровень (x = i/(n-1)),
@@ -661,12 +691,68 @@ const TripCoverIndex = (() => {
     const pressureChart = hasPressure ? _areaChartSvg([{ values: daily.map(d => d.pressure), color: 'var(--label2)' }]) : '';
 
     return `
-      <div class="cover-section">
-        <div class="cover-section-head"><div class="cover-section-title">Погода по дням</div></div>
-        <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C (макс/мин)</div>${tempChart}${axis}</div>
-        <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${precipChart}${axis}</div>
-        ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${windChart}${axis}</div>` : ''}
-        ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${pressureChart}${axis}</div>` : ''}
+      <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C (макс/мин)</div>${tempChart}${axis}</div>
+      <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${precipChart}${axis}</div>
+      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${windChart}${axis}</div>` : ''}
+      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${pressureChart}${axis}</div>` : ''}`;
+  }
+
+  // Однодневная поездка — сутки уже сегодня/завтра, макс/мин за весь день
+  // почти ничего не говорит (день один, сравнивать не с чем), а вот как
+  // погода поменяется в течение дня — как раз то, что нужно перед
+  // выездом. Часовая ось встроена прямо в SVG (opts.axis), подписи и
+  // засечки прорежены до раза в 3 часа, чтобы не слипались на 24 точках.
+  function _weatherChartsHourly(hourly) {
+    // Ровно каждый 3-й час, без принудительного последнего — если он
+    // окажется слишком близко к предыдущей засечке (24 часа не делятся
+    // на 3 без остатка), подписи налезали друг на друга. И само "HH:MM"
+    // не влезало даже через засечку — на 280px/24 точки соседи всего в
+    // ~11px друг от друга, минуты всегда :00 у почасовых данных, толку в
+    // них нет — оставляем только час.
+    const ticks = hourly.map((h, i) => (i % 3 === 0) ? String(parseInt(h.time, 10)) : null);
+    const axisOpts = { axis: ticks, labelEvery: 3 };
+
+    const tempChart = _areaChartSvg([{ values: hourly.map(h => h.temp), color: 'var(--orange)' }], axisOpts);
+    const precipChart = _areaChartSvg(
+      [{ values: hourly.map(h => h.precip || 0), color: 'var(--accent)' }],
+      { ...axisOpts, min: 0, fmt: v => Math.round(v * 10) / 10 }
+    );
+    const hasWind = hourly.some(h => h.wind != null);
+    const hasPressure = hourly.some(h => h.pressure != null);
+    const windChart = hasWind ? _areaChartSvg([{ values: hourly.map(h => h.wind), color: 'var(--label2)' }], { ...axisOpts, min: 0 }) : '';
+    const pressureChart = hasPressure ? _areaChartSvg([{ values: hourly.map(h => h.pressure), color: 'var(--label2)' }], axisOpts) : '';
+
+    return `
+      <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C</div>${tempChart}</div>
+      <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${precipChart}</div>
+      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${windChart}</div>` : ''}
+      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${pressureChart}</div>` : ''}`;
+  }
+
+  // Подробная погода поездки — отдельный график на параметр, вместо одних
+  // только текущих бейджей. Однодневная поездка — по часам (см. выше),
+  // многодневная — по дням. Данные уже загружены (см. _maybeRefreshWeather
+  // / shared/weather.js), новый запрос отсюда не идёт.
+  function _weatherChartsSection(trip) {
+    const isSingleDay = trip.startDate === trip.endDate;
+    const hourly = trip.weatherHourly;
+    const daily = trip.weatherDaily;
+
+    let title, body;
+    if (isSingleDay && hourly && hourly.length) {
+      title = 'Погода по часам';
+      body = _weatherChartsHourly(hourly);
+    } else if (daily && daily.length) {
+      title = 'Погода по дням';
+      body = _weatherChartsDaily(daily);
+    } else {
+      return '';
+    }
+
+    return `
+      <div class="cover-section" id="g-weather-charts">
+        <div class="cover-section-head"><div class="cover-section-title">${title}</div></div>
+        ${body}
       </div>`;
   }
 

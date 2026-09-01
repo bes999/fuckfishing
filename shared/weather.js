@@ -11,6 +11,7 @@ const WeatherService = (() => {
   const ARCHIVE_URL  = 'https://archive-api.open-meteo.com/v1/archive';
   const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
   const DAILY = 'temperature_2m_max,temperature_2m_min,precipitation_sum,surface_pressure_mean,wind_speed_10m_max,sunrise,sunset';
+  const HOURLY = 'temperature_2m,precipitation,wind_speed_10m,surface_pressure';
 
   function _avg(arr) {
     const vals = arr.filter(v => v != null);
@@ -102,6 +103,43 @@ const WeatherService = (() => {
     return _toDailyArray(_mergeDaily(past, future));
   }
 
+  async function _fetchHourly(url, lat, lon, date) {
+    const params = new URLSearchParams({
+      latitude: lat, longitude: lon,
+      start_date: date, end_date: date,
+      hourly: HOURLY, timezone: 'auto'
+    });
+    const res = await fetch(url + '?' + params.toString());
+    if (!res.ok) throw new Error('weather http ' + res.status);
+    const data = await res.json();
+    return data.hourly || null;
+  }
+
+  function _toHourlyArray(h) {
+    if (!h || !h.time) return [];
+    return h.time.map((iso, i) => ({
+      time:     _hm(iso),
+      temp:     h.temperature_2m ? h.temperature_2m[i] : null,
+      precip:   h.precipitation ? h.precipitation[i] : null,
+      wind:     h.wind_speed_10m ? h.wind_speed_10m[i] : null,
+      pressure: h.surface_pressure ? h.surface_pressure[i] : null,
+    }));
+  }
+
+  // Погода по часам одного дня — для однодневной рыбалки суточный
+  // максимум/минимум почти бесполезен (день уже сегодня, важно как
+  // погода поменяется в течение него), а не как она отличается от
+  // соседних дней. Один день — значит один запрос, архив/прогноз не
+  // мёржим (в отличие от fetchDailyForTrip с диапазоном дат).
+  async function fetchHourlyForTrip(lat, lon, date) {
+    if (lat == null || lon == null || !date) return null;
+    const today = new Date().toISOString().slice(0, 10);
+    const maxForecastStr = _addDays(today, 16);
+    if (date > maxForecastStr) return null;
+    const url = date < today ? ARCHIVE_URL : FORECAST_URL;
+    return _toHourlyArray(await _fetchHourly(url, lat, lon, date));
+  }
+
   // Возвращает {tMin,tMax,precip,pressure,wind,source,fetchedAt} или null,
   // если координат нет или дата слишком далеко в будущем для прогноза.
   // source — 'archive' | 'forecast' | 'mixed' (поездка идёт прямо сейчас).
@@ -128,5 +166,5 @@ const WeatherService = (() => {
     return _summarize(_mergeDaily(past, future), 'mixed');
   }
 
-  return { fetchForTrip, fetchDailyForTrip };
+  return { fetchForTrip, fetchDailyForTrip, fetchHourlyForTrip };
 })();
