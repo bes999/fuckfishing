@@ -537,52 +537,92 @@ const TripCoverIndex = (() => {
     return h;
   }
 
-  // ── Мини-графики погоды по дням, без внешних библиотек (их нигде в
-  // проекте нет, у приложения нет сборки) — обычный inline SVG. Линия для
-  // рядов вроде температуры/ветра/давления, столбики для осадков. Both
-  // работают и на одной точке (однодневная рыбалка) — рисуют просто маркер.
-  function _lineChartSvg(series, opts) {
+  // Катмул-Ром → кубический Безье — сглаживает ломаную из точек в мягкую
+  // кривую без единой сторонней библиотеки (её на этот случай тащить не
+  // за чем). Классика для таких мини-графиков.
+  function _smoothPath(pts) {
+    if (!pts.length) return '';
+    if (pts.length === 1) return `M${pts[0][0]},${pts[0][1]}`;
+    let d = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i - 1] || pts[i];
+      const p1 = pts[i];
+      const p2 = pts[i + 1];
+      const p3 = pts[i + 2] || p2;
+      const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+      const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+      d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
+    }
+    return d;
+  }
+
+  // ── Мини-графики погоды по дням, без внешних библиотек — обычный inline
+  // SVG. Плавная кривая (Катмул-Ром) с градиентной заливкой под ней — вид
+  // как в погоде Apple. Один ряд — заливка от линии до нуля; два ряда
+  // (макс/мин температуры) — заливка полосой между ними. Работает и на
+  // одной точке (однодневная рыбалка) — рисует просто маркер со значением.
+  function _areaChartSvg(series, opts) {
     opts = opts || {};
-    const width = opts.width || 280, height = opts.height || 64, pad = 8, labelSpace = 16;
+    const width = opts.width || 280, height = opts.height || 72, pad = 8, labelSpace = 18;
     const allVals = series.flatMap(s => s.values).filter(v => v != null);
     if (!allVals.length) return '';
     const n = Math.max(...series.map(s => s.values.length));
-    const min = Math.min(...allVals), max = Math.max(...allVals);
+    const min = opts.min != null ? Math.min(opts.min, ...allVals) : Math.min(...allVals);
+    const max = Math.max(...allVals);
     const range = max - min || 1;
     const x = i => n > 1 ? (i / (n - 1)) * (width - pad * 2) + pad : width / 2;
     const y = v => height - pad - ((v - min) / range) * (height - pad * 2 - labelSpace);
+    const baseY = height - pad;
     const fmt = opts.fmt || (v => Math.round(v));
+    const gid = 'gchart_' + Math.random().toString(36).slice(2);
 
-    const lines = series.map(s => {
-      const pts = s.values.map((v, i) => v != null ? `${x(i)},${y(v)}` : null).filter(Boolean).join(' ');
-      const dots = s.values.map((v, i) => v == null ? '' : `
-        <circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>
-        <text x="${x(i)}" y="${y(v) - 8}" font-size="10" fill="${s.color}" text-anchor="middle">${fmt(v)}</text>`).join('');
-      return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
-    }).join('');
+    const pointsFor = s => s.values.map((v, i) => v != null ? [x(i), y(v)] : null).filter(Boolean);
 
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">${lines}</svg>`;
-  }
+    let defs, fill, lines = '', labels = '';
 
-  function _barChartSvg(values, opts) {
-    opts = opts || {};
-    const width = opts.width || 280, height = opts.height || 64, pad = 8, labelSpace = 16;
-    const color = opts.color || 'var(--accent)';
-    if (!values.length) return '';
-    const n = values.length;
-    const max = Math.max(...values, 1);
-    const slot = (width - pad * 2) / n;
-    const barW = Math.min(20, slot * 0.6);
-    const fmt = opts.fmt || (v => Math.round(v * 10) / 10);
-    const bars = values.map((v, i) => {
-      const h = max > 0 ? (v / max) * (height - pad * 2 - labelSpace) : 0;
-      const cx = pad + slot * i + slot / 2;
-      const barTop = height - pad - h;
-      return `
-        <rect x="${cx - barW / 2}" y="${barTop}" width="${barW}" height="${Math.max(h, 1)}" rx="2" fill="${color}"/>
-        <text x="${cx}" y="${barTop - 5}" font-size="10" fill="var(--label3)" text-anchor="middle">${fmt(v)}</text>`;
-    }).join('');
-    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">${bars}</svg>`;
+    if (series.length === 2) {
+      // Полоса между макс и мин — как ленты температуры в аппловой погоде.
+      const ptsTop = pointsFor(series[0]);
+      const ptsBot = pointsFor(series[1]);
+      const pathTop = _smoothPath(ptsTop);
+      const pathBotRev = _smoothPath([...ptsBot].reverse()).replace('M', 'L');
+      defs = `<linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${series[0].color}" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="${series[1].color}" stop-opacity="0.08"/>
+      </linearGradient>`;
+      fill = ptsTop.length > 1
+        ? `<path d="${pathTop} ${pathBotRev} Z" fill="url(#${gid})" stroke="none"/>`
+        : '';
+      lines = `<path d="${pathTop}" fill="none" stroke="${series[0].color}" stroke-width="2" stroke-linecap="round"/>`
+             + `<path d="${_smoothPath(ptsBot)}" fill="none" stroke="${series[1].color}" stroke-width="2" stroke-linecap="round"/>`;
+    } else {
+      const s = series[0];
+      const pts = pointsFor(s);
+      const path = _smoothPath(pts);
+      defs = `<linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="${s.color}" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="${s.color}" stop-opacity="0"/>
+      </linearGradient>`;
+      fill = pts.length > 1
+        ? `<path d="${path} L${pts[pts.length - 1][0]},${baseY} L${pts[0][0]},${baseY} Z" fill="url(#${gid})" stroke="none"/>`
+        : '';
+      lines = `<path d="${path}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round"/>`;
+    }
+
+    // Крайние подписи центрированным text-anchor вылезали бы за viewBox
+    // и обрезались (первая цифра пропадала) — у краёв якорим к точке
+    // изнутри графика, а не по центру.
+    series.forEach(s => {
+      s.values.forEach((v, i) => {
+        if (v == null) return;
+        const anchor = i === 0 && n > 1 ? 'start' : (i === n - 1 && n > 1 ? 'end' : 'middle');
+        labels += `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>`
+                +  `<text x="${x(i)}" y="${y(v) - 8}" font-size="10" fill="${s.color}" text-anchor="${anchor}">${fmt(v)}</text>`;
+      });
+    });
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">
+      <defs>${defs}</defs>${fill}${lines}${labels}</svg>`;
   }
 
   // Подробная погода по дням поездки — отдельный график на параметр,
@@ -600,15 +640,18 @@ const TripCoverIndex = (() => {
     const first = daily[0], last = daily[daily.length - 1];
     const axis = `<div class="g-chart-axis"><span>${_esc(dayLabel(first))}</span>${daily.length > 1 ? `<span>${_esc(dayLabel(last))}</span>` : ''}</div>`;
 
-    const tempChart = _lineChartSvg([
+    const tempChart = _areaChartSvg([
       { values: daily.map(d => d.tMax), color: 'var(--orange)' },
       { values: daily.map(d => d.tMin), color: 'var(--accent)' },
     ]);
-    const precipChart = _barChartSvg(daily.map(d => d.precip || 0));
+    const precipChart = _areaChartSvg(
+      [{ values: daily.map(d => d.precip || 0), color: 'var(--accent)' }],
+      { min: 0, fmt: v => Math.round(v * 10) / 10 }
+    );
     const hasWind = daily.some(d => d.wind != null);
     const hasPressure = daily.some(d => d.pressure != null);
-    const windChart = hasWind ? _lineChartSvg([{ values: daily.map(d => d.wind), color: 'var(--label2)' }]) : '';
-    const pressureChart = hasPressure ? _lineChartSvg([{ values: daily.map(d => d.pressure), color: 'var(--label2)' }]) : '';
+    const windChart = hasWind ? _areaChartSvg([{ values: daily.map(d => d.wind), color: 'var(--label2)' }], { min: 0 }) : '';
+    const pressureChart = hasPressure ? _areaChartSvg([{ values: daily.map(d => d.pressure), color: 'var(--label2)' }]) : '';
 
     return `
       <div class="cover-section">
