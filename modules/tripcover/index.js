@@ -1181,7 +1181,12 @@ const TripCoverIndex = (() => {
         .g-empty__icon{font-size:48px;margin-bottom:14px}
         .g-empty__title{font-size:17px;font-weight:700;color:var(--label);margin-bottom:8px}
         .g-empty__sub{font-size:14px;color:var(--label3);line-height:1.5}
-        .g-info-actions{display:flex;gap:8px;padding:0 16px 4px;margin-top:-8px;flex-wrap:wrap}
+        .g-info-actions{display:flex;gap:8px;padding:0 16px 4px;flex-wrap:wrap}
+        /* Тянуть кнопки отрицательным margin-top задевало скруглённый нижний
+           угол шапки (border-radius 18px) — вместо этого просто ужимаем
+           нижний паддинг самой шапки для этого места (не трогая .cover-hero
+           глобально — она же используется на обложке экспедиций). */
+        #g-tab-panel > .cover-hero{padding-bottom:12px}
         #g-tab-panel > .g-info-gap > .g-acc{margin-left:16px;margin-right:16px}
         .g-info-act-btn{flex:1;min-width:100px;background:var(--bg2);border:0.5px solid var(--sep2);border-radius:var(--radius-md);padding:10px 8px;font-size:12.5px;font-weight:600;color:var(--label2);font-family:inherit;cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:var(--card-shadow)}
         .g-info-act-btn:active{background:var(--bg3)}
