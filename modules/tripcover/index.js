@@ -672,9 +672,11 @@ const TripCoverIndex = (() => {
     // стрелка смотрит туда, откуда дует ветер (как флюгер).
     let arrowsSvg = '';
     if (opts.directions) {
+      // Вогнутое основание вместо ровного треугольника — читается как
+      // стрелка/флюгер, а не как одинаковая со всех сторон фигура.
       arrowsSvg = opts.directions.map((deg, i) => {
         if (deg == null || i % labelEvery !== 0) return '';
-        return `<path d="M0,-5 L3.5,3.5 L-3.5,3.5 Z" fill="var(--label3)" transform="translate(${x(i)},9) rotate(${deg})"/>`;
+        return `<path d="M0,-7 L2.2,2 L0,0.3 L-2.2,2 Z" fill="var(--label3)" transform="translate(${x(i)},9) rotate(${deg})"/>`;
       }).join('');
     }
 
@@ -1179,7 +1181,7 @@ const TripCoverIndex = (() => {
         .g-empty__icon{font-size:48px;margin-bottom:14px}
         .g-empty__title{font-size:17px;font-weight:700;color:var(--label);margin-bottom:8px}
         .g-empty__sub{font-size:14px;color:var(--label3);line-height:1.5}
-        .g-info-actions{display:flex;gap:8px;padding:0 12px 4px;flex-wrap:wrap}
+        .g-info-actions{display:flex;gap:8px;padding:0 12px 4px;margin-top:-8px;flex-wrap:wrap}
         .g-info-act-btn{flex:1;min-width:100px;background:var(--bg2);border:0.5px solid var(--sep2);border-radius:var(--radius-md);padding:10px 8px;font-size:12.5px;font-weight:600;color:var(--label2);font-family:inherit;cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:var(--card-shadow)}
         .g-info-act-btn:active{background:var(--bg3)}
         .g-info-add-btn{width:100%;background:none;border:1.5px dashed var(--sep);border-radius:var(--radius-md);padding:12px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer}
