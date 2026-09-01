@@ -85,6 +85,13 @@ const TripsRender = (() => {
         fishCount ? fishCount + ' рыбалок' : ''
       ].filter(Boolean).join(' · ');
 
+      // Экспедиции — как раньше, подробной строкой. Рыбалки — компактной
+      // сеткой по 2 в ряд, их и обычно больше, и деталей на карточке нужно
+      // меньше (без списка участников/тегов улова).
+      const sorted    = trips.sort((a,b) => new Date(b.startDate) - new Date(a.startDate));
+      const expTrips  = sorted.filter(t => t.type === 'expedition');
+      const fishTrips = sorted.filter(t => t.type === 'fishing');
+
       h += `
         <div class="year-section">
           <div class="year-hd ${isOpen ? 'open' : ''}" data-year="${year}">
@@ -100,7 +107,8 @@ const TripsRender = (() => {
           </div>
           <div class="year-body ${isOpen ? '' : 'hidden'}">
             <div class="year-body-inner">
-              ${trips.sort((a,b) => new Date(b.startDate) - new Date(a.startDate)).map(_tripCard).join('')}
+              ${expTrips.map(_tripCard).join('')}
+              ${fishTrips.length ? `<div class="trip-fish-grid">${fishTrips.map(_fishTile).join('')}</div>` : ''}
             </div>
           </div>
         </div>`;
@@ -137,6 +145,24 @@ const TripsRender = (() => {
           ${t.rating ? `<div class="tc-score"><div class="tc-score-num">${t.rating}</div><div class="tc-score-den">/10</div></div>` : ''}
           <div class="tc-goto">›</div>
         </div>
+      </div>`;
+  }
+
+  // Компактная плитка "Рыбалки" — 2 в ряд, без списка участников/тегов
+  // улова (не влезло бы в такую ширину), только самое важное на глаз.
+  function _fishTile(t) {
+    const icon  = _seasonIcon(t.startDate);
+    const dates = _dateRange(t.startDate, t.endDate);
+
+    return `
+      <div class="trip-fish-tile status-${t.status}" data-trip-id="${t.id}">
+        <div class="tft-top">
+          <span class="tft-icon">${icon}</span>
+          <span class="badge ${TripsData.statusClass(t.status)} tft-badge">${TripsData.statusLabel(t.status)}</span>
+        </div>
+        <div class="tft-name">${_esc(t.name)}</div>
+        <div class="tft-date">${dates}</div>
+        ${t.rating ? `<div class="tft-rating">${t.rating}<span>/10</span></div>` : ''}
       </div>`;
   }
 
