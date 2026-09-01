@@ -633,12 +633,19 @@ const TripCoverIndex = (() => {
     const daily = trip.weatherDaily;
     if (!daily || !daily.length) return '';
 
-    const dayLabel = d => {
+    // Подпись по каждому дню, а не только по первому/последнему — месяц
+    // указываем только там, где он меняется, чтобы не повторять его на
+    // каждой отметке. Точки на самом графике идут вровень (x = i/(n-1)),
+    // поэтому space-between даёт подписи ровно под своими точками.
+    let _prevMonth = null;
+    const axis = `<div class="g-chart-axis">${daily.map(d => {
       const dt = new Date(d.date + 'T00:00:00');
-      return dt.getDate() + ' ' + MONTHS_GEN[dt.getMonth()].slice(0, 3);
-    };
-    const first = daily[0], last = daily[daily.length - 1];
-    const axis = `<div class="g-chart-axis"><span>${_esc(dayLabel(first))}</span>${daily.length > 1 ? `<span>${_esc(dayLabel(last))}</span>` : ''}</div>`;
+      const m = dt.getMonth();
+      const showMonth = m !== _prevMonth;
+      _prevMonth = m;
+      const label = dt.getDate() + (showMonth ? ' ' + MONTHS_GEN[m].slice(0, 3) : '');
+      return `<span>${_esc(label)}</span>`;
+    }).join('')}</div>`;
 
     const tempChart = _areaChartSvg([
       { values: daily.map(d => d.tMax), color: 'var(--orange)' },
