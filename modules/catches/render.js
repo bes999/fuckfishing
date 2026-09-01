@@ -177,7 +177,6 @@ const CatchesRender = (() => {
 
   function _tabAdd() {
     const members = CatchesState.getMembers(_tripId);
-    const rivers  = CatchesState.getRivers(_tripId);
     const catches = CatchesState.getCatches(_tripId);
 
     const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
@@ -189,10 +188,6 @@ const CatchesRender = (() => {
     ).join('');
 
     const memberOptions = members.map(m => `<option value="${_esc(m)}">${_esc(m)}</option>`).join('');
-
-    const riverOptions = rivers.length
-      ? rivers.map(r => `<option value="${_esc(r)}">${_esc(r)}</option>`).join('')
-      : '<option value="">Реки не добавлены</option>';
 
     return `
       <div class="ct-scroll">
@@ -226,11 +221,7 @@ const CatchesRender = (() => {
           <input class="ct-form-input" id="ct-member-manual" type="text" placeholder="Имя"
                  style="display:none;margin-top:8px" autocomplete="off">
 
-          <div class="ct-form-label">Река</div>
-          <select class="ct-form-select" id="ct-river">
-            <option value="">Выбрать реку...</option>
-            ${riverOptions}
-          </select>
+          <button type="button" class="ct-tackle-btn" id="ct-place-btn">📍 Место — необязательно</button>
 
           <div class="ct-form-label">Статус</div>
           <div class="ct-tog-row">
@@ -256,7 +247,9 @@ const CatchesRender = (() => {
 
           <div class="ct-form-label">Комментарий <span style="font-weight:400;text-transform:none;letter-spacing:0">— необязательно</span></div>
           <input class="ct-form-input" id="ct-comment" type="text"
-                 placeholder="Проводка, приманка, цвет, вес..." autocomplete="off">
+                 placeholder="Заметка о поимке..." autocomplete="off">
+
+          <button type="button" class="ct-tackle-btn" id="ct-tackle-btn">🎣 Снасть — необязательно</button>
 
           <button class="ct-save-btn" id="ct-save-btn">Сохранить поимку</button>
         </div>
@@ -280,12 +273,23 @@ const CatchesRender = (() => {
 
   const CLARITY_LABELS = { clear: 'чистая', medium: 'слегка мутная', murky: 'мутная' };
 
+  function _tackleSummary(t) {
+    if (!t) return '';
+    const parts = [t.type, t.brand, t.size, t.color].filter(Boolean);
+    if (t.weight != null) parts.push(`${t.weight}г`);
+    if (t.weightType) parts.push(t.weightType);
+    return parts.join(' · ');
+  }
+
   function _catchRow(c, showDelete) {
     const condParts = [];
     if (c.waterTemp != null) condParts.push(`🌡 ${c.waterTemp}°C`);
     if (c.waterClarity) condParts.push(CLARITY_LABELS[c.waterClarity] || c.waterClarity);
     const condLine = condParts.length ? `<div class="ct-catch-comment">${_esc(condParts.join(' · '))}</div>` : '';
     const commentLine = c.comment ? `<div class="ct-catch-comment">${_esc(c.comment)}</div>` : '';
+    const tackleText = _tackleSummary(c.tackle);
+    const tackleLine = tackleText ? `<div class="ct-catch-comment">🎣 ${_esc(tackleText)}</div>` : '';
+    const place = [c.river, c.lat != null ? '📍 точка' : ''].filter(Boolean).join(' ');
 
     return `
       <div class="ct-catch-row" data-id="${c._id}">
@@ -293,9 +297,10 @@ const CatchesRender = (() => {
         <div class="ct-catch-info">
           <div class="ct-catch-fish">${_esc(c.fish)} · ${c.count} шт</div>
           <div class="ct-catch-meta">
-            ${c.member ? _esc(c.member) + ' · ' : ''}${c.river ? _esc(c.river) : ''}${c.date ? ' · ' + _fmtDate(c.date) : ''}
+            ${c.member ? _esc(c.member) + ' · ' : ''}${_esc(place)}${c.date ? ' · ' + _fmtDate(c.date) : ''}
           </div>
           ${commentLine}
+          ${tackleLine}
           ${condLine}
         </div>
         <div class="ct-catch-right">
@@ -303,6 +308,161 @@ const CatchesRender = (() => {
           ${showDelete ? `<button class="ct-catch-del" data-action="del-catch" data-id="${c._id}" aria-label="Удалить">×</button>` : ''}
         </div>
       </div>`;
+  }
+
+  // ── Попапы: место (река/водоём + точка GPS) и снасть ───────────
+  // Оба — необязательные доп. поля к поимке, вынесены в попап, чтобы не
+  // раздувать основную форму (которую заполняют быстро, часто прямо с
+  // лодки). Собранные значения живут в замыкании _bindBody до сохранения.
+
+  const TACKLE_TYPES  = ['Воблер', 'Блесна', 'Силиконовая приманка', 'Мормышка', 'Балансир', 'Живец/наживка', 'Другое'];
+  const WEIGHT_TYPES  = ['Джиг-головка', 'Чебурашка', 'Каролинская оснастка', 'Отводной поводок', 'Без огрузки', 'Другое'];
+
+  function _showPlacePicker(rivers, current, onDone) {
+    document.getElementById('ct-popup-overlay')?.remove();
+    const cur = current || {};
+    const isManual = !!cur.name && !rivers.includes(cur.name);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'ct-popup-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Место</div>
+        <div class="ct-form-label">Река/водоём</div>
+        <select class="ct-form-select" id="pp-river">
+          <option value="">Не указано</option>
+          ${rivers.map(r => `<option value="${_esc(r)}" ${!isManual && cur.name === r ? 'selected' : ''}>${_esc(r)}</option>`).join('')}
+          <option value="__manual__" ${isManual ? 'selected' : ''}>+ Вписать вручную</option>
+        </select>
+        <input class="ct-form-input" id="pp-river-manual" type="text" placeholder="Название места"
+               style="display:${isManual ? '' : 'none'};margin-top:8px" value="${isManual ? _esc(cur.name) : ''}" autocomplete="off">
+
+        <div class="ct-form-label" style="margin-top:14px">Точка на воде</div>
+        <button type="button" class="ct-geo-btn" id="pp-geo-btn">📍 ${cur.lat != null ? 'Точка привязана' : 'Привязать по GPS'}</button>
+        <div class="ct-geo-status" id="pp-geo-status" ${cur.lat != null ? 'data-clear="1"' : ''}>${cur.lat != null ? `${cur.lat.toFixed(5)}, ${cur.lon.toFixed(5)} · сбросить` : ''}</div>
+
+        <button class="tqp-all" data-action="pp-done">Готово</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    let geo = cur.lat != null ? { lat: cur.lat, lon: cur.lon } : null;
+
+    overlay.querySelector('#pp-river')?.addEventListener('change', e => {
+      const manual = overlay.querySelector('#pp-river-manual');
+      if (manual) manual.style.display = e.target.value === '__manual__' ? '' : 'none';
+    });
+
+    const geoBtn    = overlay.querySelector('#pp-geo-btn');
+    const geoStatus = overlay.querySelector('#pp-geo-status');
+    geoBtn?.addEventListener('click', () => {
+      if (!navigator.geolocation) { alert('Геолокация не поддерживается этим браузером'); return; }
+      geoBtn.disabled = true;
+      geoBtn.textContent = 'Определяю…';
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          geo = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          geoBtn.disabled = false;
+          geoBtn.textContent = '📍 Точка привязана';
+          if (geoStatus) {
+            geoStatus.textContent = `${geo.lat.toFixed(5)}, ${geo.lon.toFixed(5)} · сбросить`;
+            geoStatus.setAttribute('data-clear', '1');
+          }
+        },
+        err => {
+          geoBtn.disabled = false;
+          geoBtn.textContent = '📍 Привязать по GPS';
+          alert('Не удалось определить местоположение: ' + (err.message || 'проверь разрешение геолокации'));
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    });
+    geoStatus?.addEventListener('click', () => {
+      if (!geoStatus.hasAttribute('data-clear')) return;
+      geo = null;
+      geoStatus.textContent = '';
+      geoStatus.removeAttribute('data-clear');
+      if (geoBtn) geoBtn.textContent = '📍 Привязать по GPS';
+    });
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-action="pp-done"]')) {
+        let name = overlay.querySelector('#pp-river')?.value || '';
+        if (name === '__manual__') name = overlay.querySelector('#pp-river-manual')?.value.trim() || '';
+        overlay.remove();
+        onDone({ name, lat: geo?.lat ?? null, lon: geo?.lon ?? null });
+      }
+    });
+  }
+
+  function _showTacklePicker(current, onDone) {
+    document.getElementById('ct-popup-overlay')?.remove();
+    const cur = current || {};
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'ct-popup-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Снасть</div>
+
+        <div class="ct-form-label">Тип приманки</div>
+        <select class="ct-form-select" id="tk-type">
+          <option value="">Не указано</option>
+          ${TACKLE_TYPES.map(t => `<option value="${_esc(t)}" ${cur.type === t ? 'selected' : ''}>${_esc(t)}</option>`).join('')}
+        </select>
+
+        <div class="ct-form-row-2" style="margin-top:10px">
+          <div>
+            <div class="ct-form-label">Бренд</div>
+            <input class="ct-form-input" id="tk-brand" type="text" placeholder="—" value="${_esc(cur.brand || '')}" autocomplete="off">
+          </div>
+          <div>
+            <div class="ct-form-label">Размер/модель</div>
+            <input class="ct-form-input" id="tk-size" type="text" placeholder="7см" value="${_esc(cur.size || '')}" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="ct-form-row-2">
+          <div>
+            <div class="ct-form-label">Цвет</div>
+            <input class="ct-form-input" id="tk-color" type="text" placeholder="—" value="${_esc(cur.color || '')}" autocomplete="off">
+          </div>
+          <div>
+            <div class="ct-form-label">Вес, г</div>
+            <input class="ct-form-input" id="tk-weight" type="number" placeholder="—" inputmode="decimal" step="0.5" value="${cur.weight ?? ''}">
+          </div>
+        </div>
+
+        <div class="ct-form-label">Тип огрузки</div>
+        <select class="ct-form-select" id="tk-weighttype">
+          <option value="">Не указано</option>
+          ${WEIGHT_TYPES.map(t => `<option value="${_esc(t)}" ${cur.weightType === t ? 'selected' : ''}>${_esc(t)}</option>`).join('')}
+        </select>
+
+        <button class="tqp-all" data-action="tk-done">Готово</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-action="tk-done"]')) {
+        const weightVal = overlay.querySelector('#tk-weight')?.value;
+        const result = {
+          type:       overlay.querySelector('#tk-type')?.value || '',
+          brand:      overlay.querySelector('#tk-brand')?.value.trim() || '',
+          size:       overlay.querySelector('#tk-size')?.value.trim() || '',
+          color:      overlay.querySelector('#tk-color')?.value.trim() || '',
+          weight:     weightVal !== '' && weightVal != null ? parseFloat(weightVal) : null,
+          weightType: overlay.querySelector('#tk-weighttype')?.value || '',
+        };
+        overlay.remove();
+        onDone(result);
+      }
+    });
   }
 
   // ── Events ───────────────────────────────────────────────────
@@ -368,6 +528,9 @@ const CatchesRender = (() => {
 
     let _kept  = true;
     let _count = 1;
+    let _place  = { name: '' };
+    let _geo    = null; // { lat, lon } | null
+    let _tackle = null; // { type, brand, size, color, weight, weightType } | null
 
     const keptBtn = body.querySelector('#ct-tog-kept');
     const relBtn  = body.querySelector('#ct-tog-rel');
@@ -399,13 +562,42 @@ const CatchesRender = (() => {
       if (manual) manual.style.display = e.target.value === '__manual__' ? '' : 'none';
     });
 
+    // "Место" — попап с рекой/водоёмом (список из поездки + ручной ввод —
+    // на лодке посреди водохранилища выбирать не из чего) и точкой GPS.
+    body.querySelector('#ct-place-btn')?.addEventListener('click', () => {
+      const rivers = CatchesState.getRivers(_tripId);
+      _showPlacePicker(rivers, { name: _place.name, lat: _geo?.lat, lon: _geo?.lon }, next => {
+        _place = { name: next.name };
+        _geo = next.lat != null ? { lat: next.lat, lon: next.lon } : null;
+        const btn = body.querySelector('#ct-place-btn');
+        if (btn) {
+          const parts = [];
+          if (next.name) parts.push(next.name);
+          if (next.lat != null) parts.push('📍 точка');
+          btn.textContent = parts.length ? `📍 ${parts.join(' · ')}` : '📍 Место — необязательно';
+          btn.classList.toggle('ct-tackle-btn--filled', parts.length > 0);
+        }
+      });
+    });
+
+    body.querySelector('#ct-tackle-btn')?.addEventListener('click', () => {
+      _showTacklePicker(_tackle, next => {
+        _tackle = next;
+        const btn = body.querySelector('#ct-tackle-btn');
+        if (btn) {
+          const filled = next && Object.values(next).some(Boolean);
+          btn.textContent = filled ? '🎣 Снасть указана ✓' : '🎣 Снасть — необязательно';
+          btn.classList.toggle('ct-tackle-btn--filled', !!filled);
+        }
+      });
+    });
+
     const saveBtn = body.querySelector('#ct-save-btn');
     saveBtn?.addEventListener('click', () => {
       UIUtils.withBusyButton(saveBtn, () => {
         const fish   = body.querySelector('#ct-fish')?.value || '';
         let   member = body.querySelector('#ct-member')?.value || '';
         if (member === '__manual__') member = body.querySelector('#ct-member-manual')?.value.trim() || '';
-        const river       = body.querySelector('#ct-river')?.value || '';
         const comment     = body.querySelector('#ct-comment')?.value.trim() || '';
         const waterTemp   = body.querySelector('#ct-watertemp')?.value;
         const waterClarity = body.querySelector('#ct-clarity')?.value || '';
@@ -414,9 +606,11 @@ const CatchesRender = (() => {
 
         const entry = CatchesData.normalizeCatch({
           fish, count: _count, kept: _kept,
-          member, river, comment,
+          member, river: _place.name, comment,
+          lat: _geo?.lat ?? null, lon: _geo?.lon ?? null,
           waterTemp: waterTemp !== '' ? parseFloat(waterTemp) : null,
           waterClarity,
+          tackle: _tackle,
           date: new Date().toISOString().split('T')[0],
         }, 'tmp_' + Date.now());
 

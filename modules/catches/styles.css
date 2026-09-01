@@ -253,6 +253,28 @@
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* Кнопки-попапы "Место"/"Снасть" — необязательные доп. поля, вынесены
+   из основной формы, чтобы её не раздувать */
+.ct-tackle-btn {
+  width: 100%; margin-top: 10px;
+  background: var(--bg3); border: 0.5px solid var(--sep);
+  border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 500;
+  color: var(--label3); font-family: inherit; cursor: pointer; text-align: left;
+}
+.ct-tackle-btn--filled { color: var(--accent); border-color: var(--accent); }
+
+.ct-geo-btn {
+  width: 100%;
+  background: var(--bg3); border: 0.5px solid var(--sep);
+  border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 500;
+  color: var(--label2); font-family: inherit; cursor: pointer;
+}
+.ct-geo-btn:disabled { opacity: .6; }
+.ct-geo-status {
+  font-size: 12px; color: var(--label3); margin-top: 6px; text-align: center;
+}
+.ct-geo-status[data-clear] { cursor: pointer; color: var(--accent); }
+
 .ct-form-row-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

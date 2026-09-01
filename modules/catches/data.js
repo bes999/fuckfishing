@@ -60,6 +60,8 @@ const CatchesData = (() => {
   }
 
   function normalizeCatch(data, id) {
+    const tackle = data.tackle && Object.values(data.tackle).some(v => v !== '' && v != null)
+      ? data.tackle : null;
     return {
       _id:       id,
       fish:      data.fish      || 'Другое',
@@ -68,8 +70,11 @@ const CatchesData = (() => {
       river:     data.river     || '',
       member:    data.member    || '',
       comment:      data.comment || '',
+      lat:          data.lat != null ? data.lat : null,
+      lon:          data.lon != null ? data.lon : null,
       waterTemp:    data.waterTemp != null && !Number.isNaN(data.waterTemp) ? data.waterTemp : null,
       waterClarity: data.waterClarity || '',
+      tackle,
       date:      data.date      || new Date().toISOString().split('T')[0],
       createdAt: data.createdAt || new Date().toISOString(),
       createdBy: data.createdBy || null,
