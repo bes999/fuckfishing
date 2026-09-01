@@ -638,6 +638,68 @@ const TripCoverIndex = (() => {
       if (!btn) return;
       _useMyLocation(trip.id, btn);
     });
+
+    el.querySelector('[data-action="edit-rating"]')?.addEventListener('click', () => _showEditRating(trip));
+    el.querySelector('[data-action="edit-comment"]')?.addEventListener('click', () => _showEditComment(trip));
+  }
+
+  // Кнопки "Изменить"/"Редактировать" у рейтинга и заметок на обложке
+  // завершённой поездки были просто без обработчика — чиню тут же, раз уж
+  // рядом. Правки — прямо в объект trip (та же ссылка, что живёт в
+  // TripsState) + запись в Firestore, как и остальные точечные апдейты
+  // обложки (см. _useMyLocation), затем перерисовка всей обложки.
+  function _showEditRating(trip) {
+    document.getElementById('tc-edit-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'tc-edit-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Рейтинг поездки</div>
+        <input type="number" id="tcEditRating" class="tc-edit-input" min="0" max="10" step="1" value="${trip.rating ?? ''}" placeholder="0–10">
+        <button class="tqp-all" data-action="tc-edit-save">Сохранить</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', async e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      if (!e.target.closest('[data-action="tc-edit-save"]')) return;
+      let val = parseInt(document.getElementById('tcEditRating')?.value, 10);
+      if (!Number.isFinite(val)) val = null;
+      else val = Math.max(0, Math.min(10, val));
+      trip.rating = val;
+      overlay.remove();
+      await TripsData.updateTrip(trip.id, { rating: val });
+      _renderCover(trip);
+    });
+  }
+
+  function _showEditComment(trip) {
+    document.getElementById('tc-edit-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'tc-edit-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Заметки</div>
+        <textarea id="tcEditComment" class="tc-edit-textarea" placeholder="На что клевало, что взять в следующий раз...">${_esc(trip.comment || '')}</textarea>
+        <button class="tqp-all" data-action="tc-edit-save">Сохранить</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', async e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      if (!e.target.closest('[data-action="tc-edit-save"]')) return;
+      const val = document.getElementById('tcEditComment')?.value.trim() || '';
+      trip.comment = val;
+      overlay.remove();
+      await TripsData.updateTrip(trip.id, { comment: val });
+      _renderCover(trip);
+    });
   }
 
   // Полный вход в поездку — переключает нижнюю вкладку/роутер на Гид,

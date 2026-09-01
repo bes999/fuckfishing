@@ -162,6 +162,43 @@ async function startExpenseFlow(ctx, user) {
   await ctx.reply('Сумма и описание одним сообщением, например: «1500 бензин»');
 }
 
+// Клавиатура выбора "кто заплатил" — участники поездки по индексу (как
+// реки в улове), плюс ручной ввод для гостя без аккаунта.
+function payerKeyboard(participants) {
+  const kb = new InlineKeyboard();
+  participants.forEach((name, i) => {
+    kb.text(name, `exp:payer:${i}`);
+    if (i % 2 === 1) kb.row();
+  });
+  if (participants.length % 2 === 1) kb.row();
+  kb.text('✏️ Другое имя', 'exp:payer:other');
+  return kb;
+}
+
+async function _finishExpense(ctx, w, paidBy) {
+  const chatId = ctx.chat.id;
+  const trip = await Trips.getTrip(w.data.tripId);
+  if (!trip) {
+    Wizards.cancel(chatId);
+    return ctx.reply('Поездка не найдена.');
+  }
+  const categories = await Expenses.getCategories(trip.id);
+  await Expenses.addExpense(trip.id, {
+    desc: w.data.desc,
+    amount: w.data.amount,
+    category: w.data.category,
+    paidBy,
+    participants: trip.participants || [],
+    uid: w.data.uid,
+  });
+  Wizards.cancel(chatId);
+  const catLabel = Expenses.categoryLabel(categories, w.data.category);
+  await ctx.reply(
+    `✅ Расход ${formatMoney(w.data.amount)} (${catLabel})${w.data.desc ? ': ' + w.data.desc : ''}\nЗаплатил: ${paidBy}`,
+    { reply_markup: MAIN_MENU }
+  );
+}
+
 async function handleExpenseText(ctx, w, text) {
   const chatId = ctx.chat.id;
 
@@ -170,38 +207,31 @@ async function handleExpenseText(ctx, w, text) {
     if (!parsed) {
       return ctx.reply('Не распознал сумму. Начните сообщение с числа, например: «1500 бензин». Попробуйте ещё раз:');
     }
-    Wizards.update(chatId, { step: 'category', data: { amount: parsed.amount, desc: parsed.desc } });
 
     const categories = await Expenses.getCategories(w.data.tripId);
+    const trip = await Trips.getTrip(w.data.tripId);
+    const participants = trip?.participants || [];
 
-    // Пробуем определить категорию ИИ по описанию — если уверенно, пишем сразу.
+    // Пробуем определить категорию ИИ по описанию — если уверенно, сразу
+    // переходим к "кто заплатил"; не угадала/нет ключа — на кнопки категорий.
+    let aiCat = null;
     if (parsed.desc) {
       try {
-        const aiCat = await AI.classifyCategory(parsed.desc, categories);
-        if (aiCat) {
-          const trip = await Trips.getTrip(w.data.tripId);
-          if (trip) {
-            const exp = await Expenses.addExpense(trip.id, {
-              desc: parsed.desc,
-              amount: parsed.amount,
-              category: aiCat,
-              paidBy: w.data.displayName,
-              participants: trip.participants || [],
-              uid: w.data.uid,
-            });
-            Wizards.cancel(chatId);
-            const kb = new InlineKeyboard().text('✏️ Изменить категорию', `exp:recat:${exp.id}`);
-            return ctx.reply(
-              `✅ Расход ${formatMoney(parsed.amount)} (${Expenses.categoryLabel(categories, aiCat)}): ${parsed.desc}`,
-              { reply_markup: kb }
-            );
-          }
-        }
+        aiCat = await AI.classifyCategory(parsed.desc, categories);
       } catch (e) {
         console.error('AI-категоризация не удалась, откат на кнопки:', e?.message || e);
       }
     }
 
+    if (aiCat) {
+      Wizards.update(chatId, { step: 'payer', data: { amount: parsed.amount, desc: parsed.desc, category: aiCat } });
+      return ctx.reply(
+        `Категория: ${Expenses.categoryLabel(categories, aiCat)}. Кто заплатил?`,
+        { reply_markup: payerKeyboard(participants) }
+      );
+    }
+
+    Wizards.update(chatId, { step: 'category', data: { amount: parsed.amount, desc: parsed.desc } });
     const kb = new InlineKeyboard();
     categories.forEach((c, i) => {
       kb.text(c.title, `exp:cat:${c.id}`);
@@ -210,7 +240,12 @@ async function handleExpenseText(ctx, w, text) {
     return ctx.reply('Категория?', { reply_markup: kb });
   }
 
-  return ctx.reply('Выберите категорию кнопкой выше 👆');
+  if (w.step === 'payer_other') {
+    if (!text) return ctx.reply('Введите имя того, кто заплатил:');
+    return _finishExpense(ctx, w, text);
+  }
+
+  return ctx.reply('Выберите вариант кнопкой выше 👆');
 }
 
 // ── Улов ─────────────────────────────────────────────────────────
@@ -463,25 +498,37 @@ bot.callbackQuery(/^exp:cat:(.+)$/, async (ctx) => {
     return ctx.reply('Поездка не найдена.');
   }
 
+  Wizards.update(chatId, { step: 'payer', data: { category: categoryId } });
+  await ctx.reply('Кто заплатил?', { reply_markup: payerKeyboard(trip.participants || []) });
+});
+
+bot.callbackQuery(/^exp:payer:(\d+)$/, async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const chatId = ctx.chat.id;
+  const w = Wizards.get(chatId);
+  if (!w || w.type !== 'expense' || w.step !== 'payer') {
+    return ctx.reply('Диалог устарел. Начните заново: «➕ Расход».');
+  }
+  const trip = await Trips.getTrip(w.data.tripId);
+  const name = trip?.participants?.[Number(ctx.match[1])];
+  if (!name) return ctx.reply('Не понял выбор, попробуйте ещё раз.');
   try {
-    const categories = await Expenses.getCategories(trip.id);
-    const catLabel = Expenses.categoryLabel(categories, categoryId);
-    await Expenses.addExpense(trip.id, {
-      desc: w.data.desc,
-      amount: w.data.amount,
-      category: categoryId,
-      paidBy: w.data.displayName,
-      participants: trip.participants || [],
-      uid: w.data.uid,
-    });
-    Wizards.cancel(chatId);
-    await ctx.reply(`✅ Расход ${formatMoney(w.data.amount)} (${catLabel})${w.data.desc ? ': ' + w.data.desc : ''}`, {
-      reply_markup: MAIN_MENU,
-    });
+    await _finishExpense(ctx, w, name);
   } catch (e) {
     console.error(e);
     await ctx.reply('⚠️ Ошибка, попробуйте ещё раз.');
   }
+});
+
+bot.callbackQuery('exp:payer:other', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const chatId = ctx.chat.id;
+  const w = Wizards.get(chatId);
+  if (!w || w.type !== 'expense' || w.step !== 'payer') {
+    return ctx.reply('Диалог устарел. Начните заново: «➕ Расход».');
+  }
+  Wizards.update(chatId, { step: 'payer_other' });
+  await ctx.reply('Введите имя того, кто заплатил:');
 });
 
 // Смена категории уже записанного расхода (после ИИ-категоризации).

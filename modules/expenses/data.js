@@ -7,6 +7,8 @@ const ExpensesData = (() => {
     { id: 'food',      title: 'Еда',        icon: 'ti-basket' },
     { id: 'alcohol',   title: 'Алкоголь',   icon: 'ti-glass-full' },
     { id: 'transport', title: 'Транспорт',  icon: 'ti-car' },
+    { id: 'parking',   title: 'Парковка',   icon: 'ti-parking' },
+    { id: 'slip',      title: 'Слип',       icon: 'ti-anchor' },
     { id: 'housing',   title: 'Жильё',      icon: 'ti-home' },
     { id: 'gear',      title: 'Снаряга',    icon: 'ti-backpack' },
     { id: 'medicine',  title: 'Медицина',   icon: 'ti-first-aid-kit' },

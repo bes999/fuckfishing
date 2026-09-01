@@ -37,22 +37,13 @@ const ExpensesIndex = (() => {
   }
 
   function _loadMembers() {
-    // Берём участников из Firebase (коллекция members)
-    return firebase.firestore().collection('members').get()
-      .then(snap => {
-        const names = [];
-        snap.forEach(doc => {
-          const d = doc.data();
-          if (d.displayName) names.push(d.displayName);
-        });
-        ExpensesState.setMembers(_tripId, names);
-      })
-      .catch(() => {
-        // Fallback: берём из данных поездки
-        const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
-        const names = trip?.participants || [];
-        ExpensesState.setMembers(_tripId, names);
-      });
+    // Только участники ЭТОЙ поездки — раньше тут был весь список members
+    // приложения (все зарегистрированные, а не те, кто реально в поездке),
+    // из-за чего "Кто заплатил"/"Участвуют в расходе" были захламлены
+    // посторонними людьми.
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    ExpensesState.setMembers(_tripId, trip?.participants || []);
+    return Promise.resolve();
   }
 
   function close() {

@@ -10,6 +10,8 @@ export const DEFAULT_CATEGORIES = [
   { id: 'food', title: 'Еда' },
   { id: 'alcohol', title: 'Алкоголь' },
   { id: 'transport', title: 'Транспорт' },
+  { id: 'parking', title: 'Парковка' },
+  { id: 'slip', title: 'Слип' },
   { id: 'housing', title: 'Жильё' },
   { id: 'gear', title: 'Снаряга' },
   { id: 'medicine', title: 'Медицина' },
