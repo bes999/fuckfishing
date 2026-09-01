@@ -69,6 +69,7 @@ const CatchesData = (() => {
       kept:      data.kept !== undefined ? !!data.kept : true,
       river:     data.river     || '',
       member:    data.member    || '',
+      weight:       data.weight != null && !Number.isNaN(data.weight) ? data.weight : null,
       comment:      data.comment || '',
       lat:          data.lat != null ? data.lat : null,
       lon:          data.lon != null ? data.lon : null,

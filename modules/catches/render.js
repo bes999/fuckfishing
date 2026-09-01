@@ -221,6 +221,9 @@ const CatchesRender = (() => {
           <input class="ct-form-input" id="ct-member-manual" type="text" placeholder="Имя"
                  style="display:none;margin-top:8px" autocomplete="off">
 
+          <div class="ct-form-label">Вес рыбы, кг <span style="font-weight:400;text-transform:none;letter-spacing:0">— необязательно</span></div>
+          <input class="ct-form-input" id="ct-weight" type="number" placeholder="—" inputmode="decimal" step="0.05">
+
           <button type="button" class="ct-tackle-btn" id="ct-place-btn">📍 Место — необязательно</button>
 
           <div class="ct-form-label">Статус</div>
@@ -295,7 +298,7 @@ const CatchesRender = (() => {
       <div class="ct-catch-row" data-id="${c._id}">
         <div class="ct-catch-icon">${_fishEmoji(c.fish)}</div>
         <div class="ct-catch-info">
-          <div class="ct-catch-fish">${_esc(c.fish)} · ${c.count} шт</div>
+          <div class="ct-catch-fish">${_esc(c.fish)} · ${c.count} шт${c.weight != null ? ' · ' + c.weight + ' кг' : ''}</div>
           <div class="ct-catch-meta">
             ${c.member ? _esc(c.member) + ' · ' : ''}${_esc(place)}${c.date ? ' · ' + _fmtDate(c.date) : ''}
           </div>
@@ -315,7 +318,13 @@ const CatchesRender = (() => {
   // раздувать основную форму (которую заполняют быстро, часто прямо с
   // лодки). Собранные значения живут в замыкании _bindBody до сохранения.
 
-  const TACKLE_TYPES  = ['Воблер', 'Блесна', 'Силиконовая приманка', 'Мормышка', 'Балансир', 'Живец/наживка', 'Другое'];
+  const TACKLE_TYPE_GROUPS = [
+    { label: 'Силиконовые приманки', items: ['Твистер', 'Виброхвост', 'Слаг', 'Креатура'] },
+    { label: 'Поролоновые приманки', items: ['Поролонка (слаг)', 'Поролонка обычная'] },
+    { label: 'Воблеры', items: ['Кренк', 'Минноу', 'Фэт'] },
+    { label: 'Железо', items: ['Вертушка', 'Колебалка'] },
+    { label: 'Другое', items: ['Мормышка', 'Балансир', 'Живец/наживка', 'Мандула', 'Другое'] },
+  ];
   const WEIGHT_TYPES  = ['Джиг-головка', 'Чебурашка', 'Каролинская оснастка', 'Отводной поводок', 'Без огрузки', 'Другое'];
 
   function _showPlacePicker(rivers, current, onDone) {
@@ -412,7 +421,10 @@ const CatchesRender = (() => {
         <div class="ct-form-label">Тип приманки</div>
         <select class="ct-form-select" id="tk-type">
           <option value="">Не указано</option>
-          ${TACKLE_TYPES.map(t => `<option value="${_esc(t)}" ${cur.type === t ? 'selected' : ''}>${_esc(t)}</option>`).join('')}
+          ${TACKLE_TYPE_GROUPS.map(g => `
+            <optgroup label="${_esc(g.label)}">
+              ${g.items.map(t => `<option value="${_esc(t)}" ${cur.type === t ? 'selected' : ''}>${_esc(t)}</option>`).join('')}
+            </optgroup>`).join('')}
         </select>
 
         <div class="ct-form-row-2" style="margin-top:10px">
@@ -599,6 +611,7 @@ const CatchesRender = (() => {
         let   member = body.querySelector('#ct-member')?.value || '';
         if (member === '__manual__') member = body.querySelector('#ct-member-manual')?.value.trim() || '';
         const comment     = body.querySelector('#ct-comment')?.value.trim() || '';
+        const weight      = body.querySelector('#ct-weight')?.value;
         const waterTemp   = body.querySelector('#ct-watertemp')?.value;
         const waterClarity = body.querySelector('#ct-clarity')?.value || '';
 
@@ -607,6 +620,7 @@ const CatchesRender = (() => {
         const entry = CatchesData.normalizeCatch({
           fish, count: _count, kept: _kept,
           member, river: _place.name, comment,
+          weight: weight !== '' ? parseFloat(weight) : null,
           lat: _geo?.lat ?? null, lon: _geo?.lon ?? null,
           waterTemp: waterTemp !== '' ? parseFloat(waterTemp) : null,
           waterClarity,
