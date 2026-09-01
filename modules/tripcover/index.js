@@ -50,25 +50,30 @@ const TripCoverIndex = (() => {
     const trip = TripsData.getById(tripId);
     if (!trip) return;
 
-    // Для завершённых поездок обложка показывает живую статистику улова
-    // и расходов — подтягиваем её один раз (не через listen(), чтобы не
+    // Для завершённых поездок обложка/Инфо показывает живую статистику
+    // улова и расходов — подтягиваем один раз (не через listen(), чтобы не
     // оборвать подписку уже открытых страниц Улов/Расходы) перед рендером.
-    if (trip.status === 'done') {
-      Promise.all([
-        CatchesFirebase.getOnce(tripId),
-        ExpensesFirebase.getOnce(tripId)
-      ]).then(([catches, expenseData]) => {
-        CatchesState.setCatches(tripId, catches);
-        ExpensesState.setExpenses(tripId, expenseData.expenses);
-        ExpensesState.setSettlements(tripId, expenseData.settlements);
-        _renderCover(trip);
-        _maybeRefreshWeather(trip);
-      });
+    const prefetchDone = trip.status === 'done'
+      ? Promise.all([CatchesFirebase.getOnce(tripId), ExpensesFirebase.getOnce(tripId)])
+          .then(([catches, expenseData]) => {
+            CatchesState.setCatches(tripId, catches);
+            ExpensesState.setExpenses(tripId, expenseData.expenses);
+            ExpensesState.setSettlements(tripId, expenseData.settlements);
+          })
+      : Promise.resolve();
+
+    // Простые "Рыбалки" (без AI-импорта) — без промежуточной обложки,
+    // сразу в Гид; всё, что раньше показывала обложка, теперь живёт в
+    // табе "Инфо" (см. _renderFishingInfo). Экспедиции — обложка как была.
+    if (trip.type === 'fishing') {
+      prefetchDone.then(() => enterTrip(tripId));
       return;
     }
 
-    _renderCover(trip);
-    _maybeRefreshWeather(trip);
+    prefetchDone.then(() => {
+      _renderCover(trip);
+      _maybeRefreshWeather(trip);
+    });
   }
 
   // ── Погода по координатам поездки (см. shared/weather.js) — берём первую
@@ -532,6 +537,116 @@ const TripCoverIndex = (() => {
     return h;
   }
 
+  // ── Мини-графики погоды по дням, без внешних библиотек (их нигде в
+  // проекте нет, у приложения нет сборки) — обычный inline SVG. Линия для
+  // рядов вроде температуры/ветра/давления, столбики для осадков. Both
+  // работают и на одной точке (однодневная рыбалка) — рисуют просто маркер.
+  function _lineChartSvg(series, opts) {
+    opts = opts || {};
+    const width = opts.width || 280, height = opts.height || 56, pad = 6;
+    const allVals = series.flatMap(s => s.values).filter(v => v != null);
+    if (!allVals.length) return '';
+    const n = Math.max(...series.map(s => s.values.length));
+    const min = Math.min(...allVals), max = Math.max(...allVals);
+    const range = max - min || 1;
+    const x = i => n > 1 ? (i / (n - 1)) * (width - pad * 2) + pad : width / 2;
+    const y = v => height - pad - ((v - min) / range) * (height - pad * 2);
+
+    const lines = series.map(s => {
+      const pts = s.values.map((v, i) => v != null ? `${x(i)},${y(v)}` : null).filter(Boolean).join(' ');
+      const dots = s.values.map((v, i) => v != null ? `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>` : '').join('');
+      return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
+    }).join('');
+
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">${lines}</svg>`;
+  }
+
+  function _barChartSvg(values, opts) {
+    opts = opts || {};
+    const width = opts.width || 280, height = opts.height || 56, pad = 6;
+    const color = opts.color || 'var(--accent)';
+    if (!values.length) return '';
+    const n = values.length;
+    const max = Math.max(...values, 1);
+    const slot = (width - pad * 2) / n;
+    const barW = Math.min(20, slot * 0.6);
+    const bars = values.map((v, i) => {
+      const h = max > 0 ? (v / max) * (height - pad * 2) : 0;
+      const cx = pad + slot * i + slot / 2;
+      return `<rect x="${cx - barW / 2}" y="${height - pad - h}" width="${barW}" height="${Math.max(h, 1)}" rx="2" fill="${color}"/>`;
+    }).join('');
+    return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">${bars}</svg>`;
+  }
+
+  // Подробная погода по дням поездки — отдельный график на параметр,
+  // вместо одних только текущих бейджей. Данные — уже загружаемый
+  // trip.weatherDaily (см. _maybeRefreshWeather/shared/weather.js), новый
+  // запрос не нужен.
+  function _weatherChartsSection(trip) {
+    const daily = trip.weatherDaily;
+    if (!daily || !daily.length) return '';
+
+    const dayLabel = d => {
+      const dt = new Date(d.date + 'T00:00:00');
+      return dt.getDate() + ' ' + MONTHS_GEN[dt.getMonth()].slice(0, 3);
+    };
+    const first = daily[0], last = daily[daily.length - 1];
+    const axis = `<div class="g-chart-axis"><span>${_esc(dayLabel(first))}</span>${daily.length > 1 ? `<span>${_esc(dayLabel(last))}</span>` : ''}</div>`;
+
+    const tempChart = _lineChartSvg([
+      { values: daily.map(d => d.tMax), color: 'var(--orange)' },
+      { values: daily.map(d => d.tMin), color: 'var(--accent)' },
+    ]);
+    const precipChart = _barChartSvg(daily.map(d => d.precip || 0));
+    const hasWind = daily.some(d => d.wind != null);
+    const hasPressure = daily.some(d => d.pressure != null);
+    const windChart = hasWind ? _lineChartSvg([{ values: daily.map(d => d.wind), color: 'var(--label2)' }]) : '';
+    const pressureChart = hasPressure ? _lineChartSvg([{ values: daily.map(d => d.pressure), color: 'var(--label2)' }]) : '';
+
+    return `
+      <div class="cover-section">
+        <div class="cover-section-head"><div class="cover-section-title">Погода по дням</div></div>
+        <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C (макс/мин)</div>${tempChart}${axis}</div>
+        <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${precipChart}${axis}</div>
+        ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${windChart}${axis}</div>` : ''}
+        ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${pressureChart}${axis}</div>` : ''}
+      </div>`;
+  }
+
+  // Таб "Инфо" для простой "Рыбалки" (без AI-импорта) — раньше это была
+  // голая заглушка "Маршрут не добавлен", а всё, что реально относилось к
+  // такой поездке (шапка/погода/готово-статистика/действия), жило на
+  // отдельной обложке-странице перед входом в Гид. Теперь обложка для
+  // рыбалок вообще не рендерится (см. show()) — всё это переехало сюда.
+  function _renderFishingInfo(trip) {
+    const emoji = _seasonEmoji(trip.startDate);
+    const dates = _dateRange(trip.startDate, trip.endDate);
+    const location = (trip.rivers || []).map(r => r.region).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+    const isOwner = window.APP?.user?.uid === trip.ownerId;
+
+    // Рейтинг/статистика улова-расходов/комментарий — та же логика, что
+    // была на обложке (_doneContent уже сама решает, что показывать,
+    // по наличию данных); плюс "добавить" для того, чего ещё нет.
+    const hasRating  = trip.rating != null;
+    const hasComment = !!trip.comment;
+
+    return `
+      ${_hero(trip, emoji, dates, location)}
+      <div class="g-info-actions">
+        <button class="g-info-act-btn" data-action="info-invite">➕ Пригласить</button>
+        <button class="g-info-act-btn" data-action="info-gear">🎒 Снаряга</button>
+        ${isOwner ? `<button class="g-info-act-btn" data-action="info-edit">✏️ Редактировать</button>` : ''}
+      </div>
+      ${_weatherChartsSection(trip)}
+      ${_windyAccordion(trip)}
+      ${_doneContent(trip)}
+      ${trip.status === 'done' && !hasRating ? `
+        <div class="cover-section"><button class="g-info-add-btn" data-action="info-add-rating">+ Оценить поездку</button></div>` : ''}
+      ${!hasComment ? `
+        <div class="cover-section"><button class="g-info-add-btn" data-action="info-add-comment">+ Добавить заметку</button></div>` : ''}
+    `;
+  }
+
   function _targetFish(t) {
     // Берём целевую рыбу из importData (поле targetFish из meta)
     const fish = t.importData?.meta?.targetFish || t.targetFish || null;
@@ -648,7 +763,10 @@ const TripCoverIndex = (() => {
   // рядом. Правки — прямо в объект trip (та же ссылка, что живёт в
   // TripsState) + запись в Firestore, как и остальные точечные апдейты
   // обложки (см. _useMyLocation), затем перерисовка всей обложки.
-  function _showEditRating(trip) {
+  // onRefresh — что перерисовать после сохранения: по умолчанию обложка
+  // (вызов с завершённой обложки), но таб "Инфо" рыбалки зовёт с другим
+  // колбэком (там своей обложки нет, перерисовывать нужно сам таб).
+  function _showEditRating(trip, onRefresh) {
     document.getElementById('tc-edit-overlay')?.remove();
     const overlay = document.createElement('div');
     overlay.className = 'tqp-overlay';
@@ -672,11 +790,11 @@ const TripCoverIndex = (() => {
       trip.rating = val;
       overlay.remove();
       await TripsData.updateTrip(trip.id, { rating: val });
-      _renderCover(trip);
+      (onRefresh || (() => _renderCover(trip)))();
     });
   }
 
-  function _showEditComment(trip) {
+  function _showEditComment(trip, onRefresh) {
     document.getElementById('tc-edit-overlay')?.remove();
     const overlay = document.createElement('div');
     overlay.className = 'tqp-overlay';
@@ -698,7 +816,7 @@ const TripCoverIndex = (() => {
       trip.comment = val;
       overlay.remove();
       await TripsData.updateTrip(trip.id, { comment: val });
-      _renderCover(trip);
+      (onRefresh || (() => _renderCover(trip)))();
     });
   }
 
@@ -741,6 +859,37 @@ const TripCoverIndex = (() => {
       if (settingsBtn) { _showGuideTabsSettings(trip); return; }
       const geoBtn = e.target.closest('[data-action="geo-weather"]');
       if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
+
+      // Действия таба "Инфо" у простой рыбалки — те же обработчики, что
+      // раньше были на кнопках обложки (#coverInvite/#coverGear/#coverEdit),
+      // теперь просто как кнопки внутри самого таба.
+      if (e.target.closest('[data-action="info-invite"]')) {
+        if (typeof MembersRender !== 'undefined') MembersRender.showInvite(trip.id, trip.name);
+        return;
+      }
+      if (e.target.closest('[data-action="info-edit"]')) {
+        if (typeof TripsIndex !== 'undefined') TripsIndex.showEdit(trip.id);
+        return;
+      }
+      if (e.target.closest('[data-action="info-gear"]')) {
+        const uid = window.APP?.user?.uid;
+        if (uid && typeof GearData !== 'undefined') {
+          GearData.ensureLoaded(uid).then(() => {
+            if (GearData.hasTripSnapshot(trip.id)) _openGear(trip.id);
+            else _showGearSourcePicker(trip);
+          });
+        }
+        return;
+      }
+      if (e.target.closest('[data-action="info-add-rating"]') || e.target.closest('[data-action="edit-rating"]')) {
+        _showEditRating(trip, () => _mountGuideTab(trip, 'info'));
+        return;
+      }
+      if (e.target.closest('[data-action="info-add-comment"]') || e.target.closest('[data-action="edit-comment"]')) {
+        _showEditComment(trip, () => _mountGuideTab(trip, 'info'));
+        return;
+      }
+
       const hd = e.target.closest('[data-target]');
       if (!hd) return;
       const body = document.getElementById(hd.dataset.target);
@@ -860,6 +1009,14 @@ const TripCoverIndex = (() => {
         .g-empty__icon{font-size:48px;margin-bottom:14px}
         .g-empty__title{font-size:17px;font-weight:700;color:var(--label);margin-bottom:8px}
         .g-empty__sub{font-size:14px;color:var(--label3);line-height:1.5}
+        .g-info-actions{display:flex;gap:8px;padding:0 12px 4px;flex-wrap:wrap}
+        .g-info-act-btn{flex:1;min-width:100px;background:var(--bg2);border:0.5px solid var(--sep2);border-radius:var(--radius-md);padding:10px 8px;font-size:12.5px;font-weight:600;color:var(--label2);font-family:inherit;cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:var(--card-shadow)}
+        .g-info-act-btn:active{background:var(--bg3)}
+        .g-info-add-btn{width:100%;background:none;border:1.5px dashed var(--sep);border-radius:var(--radius-md);padding:12px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer}
+        .g-chart-block{padding:12px 15px;border-top:0.5px solid var(--sep2)}
+        .g-chart-block:first-of-type{border-top:none}
+        .g-chart-label{font-size:12px;color:var(--label3);margin-bottom:6px;font-weight:600}
+        .g-chart-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--label4);margin-top:2px}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
@@ -893,6 +1050,9 @@ const TripCoverIndex = (() => {
     if (tabId === 'info') {
       if (trip?.importData?.route?.length) {
         panel.innerHTML = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderGuideInfo(trip);
+        _maybeRefreshWeather(trip);
+      } else if (trip.type === 'fishing') {
+        panel.innerHTML = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderFishingInfo(trip);
         _maybeRefreshWeather(trip);
       } else {
         panel.innerHTML = `
@@ -1165,6 +1325,33 @@ const TripCoverIndex = (() => {
   // раньше была всем Гидом целиком; вызывается только когда у поездки уже
   // есть импортированный маршрут (см. проверку в _mountGuideTab), поэтому
   // явно на это не перепроверяет.
+  // Аккордеон-хелпер — общий для Инфо экспедиций и рыбалок.
+  function _acc(title, bodyHtml, open) {
+    const id = 'gacc_' + Math.random().toString(36).slice(2);
+    return `
+      <div class="g-acc">
+        <div class="g-acc-hd" data-target="${id}">
+          <span class="g-acc-title">${title}</span>
+          <span class="g-acc-chev ${open ? 'open' : ''}">⌄</span>
+        </div>
+        <div class="g-acc-body ${open ? 'show' : ''}" id="${id}"><div class="g-acc-body-inner">${bodyHtml}</div></div>
+      </div>`;
+  }
+
+  // Карта ветра (Windy) — свой анимированный ветровой рендер не наш
+  // масштаб (у Windy на это WebGL-команда и лицензии на метеомодели).
+  // Вместо велосипеда — их же бесплатный embed-виджет на координаты
+  // поездки. Аккордеон закрыт по умолчанию и iframe без src, пока не
+  // откроют (data-src → src ставит _guideHandler при разворачивании) —
+  // тяжёлая штука, незачем грузить сразу всем, кто открыл Гид. Общий для
+  // Инфо экспедиций и рыбалок.
+  function _windyAccordion(trip) {
+    const windyCoords = _tripCoords(trip);
+    if (!windyCoords) return '';
+    const windySrc = `https://embed.windy.com/embed2.html?lat=${windyCoords.lat}&lon=${windyCoords.lon}&detailLat=${windyCoords.lat}&detailLon=${windyCoords.lon}&width=650&height=450&zoom=8&level=surface&overlay=wind&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
+    return _acc('🌬 Карта ветра (Windy)', `<div class="g-windy-wrap"><iframe class="g-windy-frame" data-src="${_esc(windySrc)}" loading="lazy" frameborder="0"></iframe></div>`, false);
+  }
+
   function _renderGuideInfo(trip) {
     const d = trip.importData || {};
 
@@ -1173,33 +1360,9 @@ const TripCoverIndex = (() => {
       return String(s).replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{231A}-\u{231B}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{25AA}-\u{25AB}\u{25B6}\u{25C0}\u{25FB}-\u{25FE}\u{2614}-\u{2615}\u{2648}-\u{2653}\u{267F}\u{2693}\u{26A1}\u{26AA}-\u{26AB}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26CE}\u{26D4}\u{26EA}\u{26F2}-\u{26F3}\u{26F5}\u{26FA}\u{26FD}\u{2702}\u{2705}\u{2708}-\u{270D}\u{270F}\u{2712}\u{2714}\u{2716}\u{271D}\u{2721}\u{2728}\u{2733}-\u{2734}\u{2744}\u{2747}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2763}-\u{2764}\u{2795}-\u{2797}\u{27A1}\u{27B0}\u{27BF}]/gu, '').replace(/\s+/g, ' ').trim();
     }
 
-    // Аккордеон-хелпер
-    function _acc(title, bodyHtml, open) {
-      const id = 'gacc_' + Math.random().toString(36).slice(2);
-      return `
-        <div class="g-acc">
-          <div class="g-acc-hd" data-target="${id}">
-            <span class="g-acc-title">${title}</span>
-            <span class="g-acc-chev ${open ? 'open' : ''}">⌄</span>
-          </div>
-          <div class="g-acc-body ${open ? 'show' : ''}" id="${id}"><div class="g-acc-body-inner">${bodyHtml}</div></div>
-        </div>`;
-    }
-
     let h = '';
 
-    // ── Карта ветра (Windy) ─────────────────────────────────────────────
-    // Свой анимированный ветровой рендер — не наш масштаб (у Windy на это
-    // WebGL-команда и лицензии на метеомодели). Вместо велосипеда — их же
-    // бесплатный embed-виджет на координаты поездки. Аккордеон закрыт по
-    // умолчанию и iframe без src, пока не откроют (data-src → src ставит
-    // _guideHandler при разворачивании) — тяжёлая штука, незачем грузить
-    // сразу всем, кто просто открыл Гид.
-    const windyCoords = _tripCoords(trip);
-    if (windyCoords) {
-      const windySrc = `https://embed.windy.com/embed2.html?lat=${windyCoords.lat}&lon=${windyCoords.lon}&detailLat=${windyCoords.lat}&detailLon=${windyCoords.lon}&width=650&height=450&zoom=8&level=surface&overlay=wind&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
-      h += _acc('🌬 Карта ветра (Windy)', `<div class="g-windy-wrap"><iframe class="g-windy-frame" data-src="${_esc(windySrc)}" loading="lazy" frameborder="0"></iframe></div>`, false);
-    }
+    h += _windyAccordion(trip);
 
     // ── Авиабилеты ──────────────────────────────────────────────────────
     if (d.flights && d.flights.length) {
