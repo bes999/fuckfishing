@@ -35,22 +35,12 @@ const CatchesIndex = (() => {
   }
 
   function _loadMembers() {
-    // Берём участников из Firebase (коллекция members)
-    return firebase.firestore().collection('members').get()
-      .then(snap => {
-        const names = [];
-        snap.forEach(doc => {
-          const d = doc.data();
-          if (d.displayName) names.push(d.displayName);
-        });
-        CatchesState.setMembers(_tripId, names);
-      })
-      .catch(() => {
-        // Fallback: берём из данных поездки
-        const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
-        const names = trip?.participants || [];
-        CatchesState.setMembers(_tripId, names);
-      });
+    // Только участники ЭТОЙ поездки — тот же баг, что был в Расходах
+    // (modules/expenses/index.js): раньше тут подтягивался весь список
+    // members приложения, а не участники конкретной поездки.
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    CatchesState.setMembers(_tripId, trip?.participants || []);
+    return Promise.resolve();
   }
 
   function _loadRivers() {

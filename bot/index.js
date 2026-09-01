@@ -250,9 +250,9 @@ async function handleExpenseText(ctx, w, text) {
 
 // ── Улов ─────────────────────────────────────────────────────────
 
-function fishKeyboard() {
+function fishKeyboard(trip) {
   const kb = new InlineKeyboard();
-  Catches.FISH_GROUPS.forEach((group, gi) => {
+  Catches.pickFishGroups(trip).forEach((group, gi) => {
     let col = 0;
     group.items.forEach((name, ii) => {
       if (name === 'Другое') return; // отдельная кнопка в конце
@@ -273,7 +273,7 @@ async function startCatchFlow(ctx, user) {
     return showTrips(ctx);
   }
   Wizards.start(ctx.chat.id, 'catch', 'fish', { uid: user.uid, displayName: user.displayName, tripId: trip.id });
-  await ctx.reply('Вид рыбы?', { reply_markup: fishKeyboard() });
+  await ctx.reply('Вид рыбы?', { reply_markup: fishKeyboard(trip) });
 }
 
 async function handleCatchText(ctx, w, text) {
@@ -592,7 +592,8 @@ bot.callbackQuery(/^catch:fish:(\d+):(\d+)$/, async (ctx) => {
 
   const gi = Number(ctx.match[1]);
   const ii = Number(ctx.match[2]);
-  const fish = Catches.FISH_GROUPS[gi]?.items?.[ii];
+  const trip = await Trips.getTrip(w.data.tripId);
+  const fish = Catches.pickFishGroups(trip)[gi]?.items?.[ii];
   if (!fish) return ctx.reply('Не понял выбор, попробуйте ещё раз.');
 
   Wizards.update(chatId, { step: 'count', data: { fish } });

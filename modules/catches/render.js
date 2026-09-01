@@ -180,7 +180,8 @@ const CatchesRender = (() => {
     const rivers  = CatchesState.getRivers(_tripId);
     const catches = CatchesState.getCatches(_tripId);
 
-    const fishGroups = CatchesData.getFishGroups();
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const fishGroups = CatchesData.getFishGroups(trip);
     const fishOptions = fishGroups.map(g =>
       `<optgroup label="${_esc(g.label)}">
         ${g.items.map(f => `<option value="${_esc(f)}">${_esc(f)}</option>`).join('')}
