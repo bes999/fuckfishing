@@ -128,6 +128,17 @@ const AppHeader = (() => {
     const tripId   = window.APP?.currentTripId;
     const tripName = window.APP?.currentTripData?.name;
 
+    // Табы Гида, которые выключили в настройках конкретной поездки (⚙ в
+    // Гиде), не должны оставаться доступными в гамбургере — иначе
+    // "выключил Бар в Гиде" ничего не значит, он всё равно рядом в меню.
+    // "Гид"/"Участники" сами не входят в список настраиваемых табов —
+    // видны всегда, когда поездка открыта.
+    const trip = tripId && typeof TripsData !== 'undefined' ? TripsData.getById(tripId) : null;
+    const visibleIds = trip && typeof TripCoverIndex !== 'undefined' ? TripCoverIndex.visibleGuideTabs(trip) : null;
+    const tripItems = visibleIds
+      ? TRIP_ITEMS.filter(it => it.id === 'guide' || it.id === 'members' || visibleIds.includes(it.id))
+      : TRIP_ITEMS;
+
     const overlay = document.createElement('div');
     overlay.className = 'ah-drawer-overlay';
     overlay.id = 'ah-drawer-overlay';
@@ -148,7 +159,7 @@ const AppHeader = (() => {
         ${PERSONAL_ITEMS.map(_itemHtml).join('')}
         <div class="ah-drawer-group-label">Поездка${tripName ? ' — ' + _esc(tripName) : ''}</div>
         ${tripId
-          ? TRIP_ITEMS.map(_itemHtml).join('')
+          ? tripItems.map(_itemHtml).join('')
           : `<div class="ah-drawer-hint">Открой поездку на вкладке «Поездки», чтобы увидеть Гид, Реки, Меню и другие разделы</div>`}
       </div>`;
 

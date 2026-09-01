@@ -45,6 +45,14 @@ const TripCoverIndex = (() => {
     return ['info', ...(saved.length ? saved : _DEFAULT_TAB_ORDER)];
   }
 
+  // Публичная версия без 'info' — гамбургер-меню (shared/header.js)
+  // фильтрует свои пункты Реки/Меню/Бар/Улов/Расходы/Закупка/Безопасность/
+  // Рецепты по этому же списку, чтобы там не оставались табы, которые
+  // выключили в настройках Гида (⚙).
+  function visibleGuideTabs(trip) {
+    return _guideTabIds(trip).filter(id => id !== 'info');
+  }
+
   function show(tripId) {
     _tripId = tripId;
     const trip = TripsData.getById(tripId);
@@ -1600,5 +1608,5 @@ const TripCoverIndex = (() => {
 
 
 
-  return { show, hide, enterTrip, showQuickPicker, getCurrentTripId: () => _tripId };
+  return { show, hide, enterTrip, showQuickPicker, visibleGuideTabs, getCurrentTripId: () => _tripId };
 })();
