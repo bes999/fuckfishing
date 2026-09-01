@@ -761,6 +761,9 @@ const TripCoverIndex = (() => {
   // только текущих бейджей. Однодневная поездка — по часам (см. выше),
   // многодневная — по дням. Данные уже загружены (см. _maybeRefreshWeather
   // / shared/weather.js), новый запрос отсюда не идёт.
+  // Схлопываемый аккордеон (тот же _acc, что и у Windy рядом) — 4 графика
+  // подряд разворачивают таб на приличную высоту, а нужны не всегда сразу
+  // при каждом заходе, так что по умолчанию свёрнут.
   function _weatherChartsSection(trip) {
     const isSingleDay = trip.startDate === trip.endDate;
     const hourly = trip.weatherHourly;
@@ -768,20 +771,16 @@ const TripCoverIndex = (() => {
 
     let title, body;
     if (isSingleDay && hourly && hourly.length) {
-      title = 'Погода по часам';
+      title = '🌡 Погода по часам';
       body = _weatherChartsHourly(hourly);
     } else if (daily && daily.length) {
-      title = 'Погода по дням';
+      title = '🌡 Погода по дням';
       body = _weatherChartsDaily(daily);
     } else {
       return '';
     }
 
-    return `
-      <div class="cover-section" id="g-weather-charts">
-        <div class="cover-section-head"><div class="cover-section-title">${title}</div></div>
-        ${body}
-      </div>`;
+    return `<div id="g-weather-charts" class="g-info-gap">${_acc(title, body, false)}</div>`;
   }
 
   // Таб "Инфо" для простой "Рыбалки" (без AI-импорта) — раньше это была
@@ -793,22 +792,18 @@ const TripCoverIndex = (() => {
     const emoji = _seasonEmoji(trip.startDate);
     const dates = _dateRange(trip.startDate, trip.endDate);
     const location = (trip.rivers || []).map(r => r.region).filter((v, i, a) => a.indexOf(v) === i).join(', ');
-    const isOwner = window.APP?.user?.uid === trip.ownerId;
 
     // Рейтинг/статистика улова-расходов/комментарий — та же логика, что
     // была на обложке (_doneContent уже сама решает, что показывать,
     // по наличию данных); плюс "добавить" для того, чего ещё нет.
+    // Пригласить/Снаряга/Редактировать переехали в полоску табов (см.
+    // _renderTabStrip) — отдельным рядом кнопок под шапкой не понравилось.
     const hasRating  = trip.rating != null;
     const hasComment = !!trip.comment;
     const windy = _windyAccordion(trip);
 
     return `
       ${_hero(trip, emoji, dates, location)}
-      <div class="g-info-actions">
-        <button class="g-info-act-btn" data-action="info-invite">➕ Пригласить</button>
-        <button class="g-info-act-btn" data-action="info-gear">🎒 Снаряга</button>
-        ${isOwner ? `<button class="g-info-act-btn" data-action="info-edit">✏️ Редактировать</button>` : ''}
-      </div>
       ${_weatherChartsSection(trip)}
       ${windy ? `<div class="g-info-gap">${windy}</div>` : ''}
       ${_doneContent(trip)}
@@ -1085,7 +1080,23 @@ const TripCoverIndex = (() => {
       const label = id === 'info' ? 'Инфо' : _ALL_TAB_DEFS[id].label;
       return `<div class="g-tab ${id === _activeGuideTab ? 'active' : ''}" data-gtab="${id}">${_esc(label)}</div>`;
     }).join('');
-    return `<div class="g-tabstrip" id="g-tabstrip">${pills}<button class="g-tab-settings" data-action="guide-tabs-settings" title="Настроить вкладки">⚙</button></div>`;
+
+    // У простой "Рыбалки" нет обложки со своими иконками (Пригласить/
+    // Снаряга/Редактировать) — раньше эти три жили отдельным рядом кнопок
+    // под шапкой в Инфо, не понравилось. Переехали сюда же, компактными
+    // кружками рядом с ⚙, тем же классом .g-tab-settings. Иконки — из
+    // подключённого в приложении шрифта Tabler (не эмодзи: цветные эмодзи
+    // вроде ✏️ выбиваются на фоне монохромной остальной полоски, а ➕ на
+    // тёмном фоне почти не видно). Снаряга — словом, не иконкой-рюкзаком.
+    let icons = `<button class="g-tab-settings" data-action="guide-tabs-settings" title="Настроить вкладки">⚙</button>`;
+    if (trip.type === 'fishing') {
+      const isOwner = window.APP?.user?.uid === trip.ownerId;
+      icons = `<button class="g-tab-settings g-tab-word" data-action="info-gear" title="Снаряга">Снаряга</button>`
+            + icons
+            + `<button class="g-tab-settings" data-action="info-invite" title="Пригласить"><i class="ti ti-plus"></i></button>`
+            + (isOwner ? `<button class="g-tab-settings" data-action="info-edit" title="Редактировать"><i class="ti ti-pencil"></i></button>` : '');
+    }
+    return `<div class="g-tabstrip" id="g-tabstrip">${pills}${icons}</div>`;
   }
 
   // Липкий заголовок + полоска табов рисуются один раз на весь вход в
@@ -1101,8 +1112,9 @@ const TripCoverIndex = (() => {
         .g-tab.active{background:#fff;color:var(--topbar-bg)}
         .g-tab:active{transform:scale(0.96)}
         #g-tab-panel{transition:opacity 120ms var(--ease)}
-        .g-tab-settings{flex:0 0 auto;margin-left:2px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+        .g-tab-settings{flex:0 0 auto;margin-left:2px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;display:inline-flex;align-items:center;justify-content:center}
         .g-tab-settings:active{background:rgba(255,255,255,.16)}
+        .g-tab-word{width:auto;border-radius:15px;padding:0 12px;font-size:13px;font-weight:600;font-family:inherit;white-space:nowrap}
         #g-tab-panel .mn-topbar, #g-tab-panel .sh-topbar,
         #g-tab-panel .exp-topbar, #g-tab-panel .ct-topbar,
         #g-tab-panel .bar-topbar, #g-tab-panel .sf-topbar,
@@ -1181,15 +1193,7 @@ const TripCoverIndex = (() => {
         .g-empty__icon{font-size:48px;margin-bottom:14px}
         .g-empty__title{font-size:17px;font-weight:700;color:var(--label);margin-bottom:8px}
         .g-empty__sub{font-size:14px;color:var(--label3);line-height:1.5}
-        .g-info-actions{display:flex;gap:8px;padding:0 16px 4px;flex-wrap:wrap}
-        /* Тянуть кнопки отрицательным margin-top задевало скруглённый нижний
-           угол шапки (border-radius 18px) — вместо этого просто ужимаем
-           нижний паддинг самой шапки для этого места (не трогая .cover-hero
-           глобально — она же используется на обложке экспедиций). */
-        #g-tab-panel > .cover-hero{padding-bottom:12px}
         #g-tab-panel > .g-info-gap > .g-acc{margin-left:16px;margin-right:16px}
-        .g-info-act-btn{flex:1;min-width:100px;background:var(--bg2);border:0.5px solid var(--sep2);border-radius:var(--radius-md);padding:10px 8px;font-size:12.5px;font-weight:600;color:var(--label2);font-family:inherit;cursor:pointer;text-align:center;-webkit-tap-highlight-color:transparent;box-shadow:var(--card-shadow)}
-        .g-info-act-btn:active{background:var(--bg3)}
         .g-info-add-btn{width:100%;background:none;border:1.5px dashed var(--sep);border-radius:var(--radius-md);padding:12px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer}
         .g-chart-block{padding:12px 15px;border-top:0.5px solid var(--sep2)}
         .g-chart-block:first-of-type{border-top:none}
