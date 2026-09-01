@@ -31,10 +31,12 @@ export async function getTrip(tripId) {
   return doc.exists ? { id: doc.id, ...doc.data() } : null;
 }
 
-/** Список всех поездок, новые сверху. */
-export async function listTrips() {
+/** Поездки, где uid реально в участниках — не все подряд, новые сверху. */
+export async function listTrips(uid) {
   const snap = await db.collection('trips').orderBy('startDate', 'desc').get();
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .filter((t) => (t.memberIds || []).includes(uid));
 }
 
 export async function createTrip({ type, name, startDate, endDate, uid, displayName }) {

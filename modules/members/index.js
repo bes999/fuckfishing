@@ -368,6 +368,11 @@ var MembersModule = (() => {
         MembersRender.showInvite();
       }
 
+      if (action === 'profile-trip-open') {
+        const tripId = t.dataset.tripId;
+        if (tripId && typeof TripCoverIndex !== 'undefined') TripCoverIndex.show(tripId);
+      }
+
       if (action === 'member-add-trip') {
         const uid  = t.dataset.uid;
         const name = t.dataset.name;

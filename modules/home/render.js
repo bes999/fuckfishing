@@ -25,9 +25,10 @@ const HomeRender = (() => {
     _calYear  = now.getFullYear();
     _calMonth = now.getMonth();
 
-    const upcoming = TripsData.getUpcoming();
-    const byYear   = TripsData.getByYear();
-    const stats    = TripsData.getYearStats(String(now.getFullYear()));
+    const uid = window.APP?.user?.uid;
+    const upcoming = TripsData.getUpcoming(uid);
+    const byYear   = TripsData.getByYear(uid);
+    const stats    = TripsData.getYearStats(String(now.getFullYear()), uid);
 
     el.innerHTML = `
       <div class="page-scroll">
@@ -80,7 +81,7 @@ const HomeRender = (() => {
   }
 
   function _renderCalGrid(el) {
-    const markers = TripsData.getCalendarMarkers();
+    const markers = TripsData.getCalendarMarkers(window.APP?.user?.uid);
     const now     = new Date();
     const todayStr = _isoDate(now);
 

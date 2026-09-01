@@ -70,7 +70,8 @@ const TripsIndex = (() => {
       endDate:   prefillDate || _today(),
       rivers: [],
       participants: myName ? [myName] : [],
-      comment: ''
+      comment: '',
+      private: false,
     };
     _rivers = [];
     _renderCreate();
@@ -101,6 +102,7 @@ const TripsIndex = (() => {
       rivers:       trip.rivers || [],
       participants: trip.participants ? [...trip.participants] : [],
       comment:      trip.comment || '',
+      private:      !!trip.private,
     };
     _rivers = trip.type === 'fishing' ? [...(trip.rivers || [])] : [];
 
@@ -279,15 +281,8 @@ const TripsIndex = (() => {
     return `
       ${_steps()}
 
-      <div class="field-group" style="margin-bottom:8px">
-        <div class="field-label">Участники</div>
-        <div class="parts-wrap" id="partsList">
-          ${(_draft.participants || []).map((p,i) => `
-            <div class="part-chip-sel" data-part-idx="${i}">${_esc(p)} ×</div>`).join('')}
-          <input class="field-input" id="f-participant" type="text"
-                 placeholder="Имя участника..." style="width:auto;flex:1;min-width:120px">
-        </div>
-      </div>
+      ${_participantsField()}
+      ${_privacyToggleField()}
 
       <div class="exp-mode-tabs">
         <div class="exp-mode-tab ${_expMode === 'quiz' ? 'on' : ''}" data-exp-mode="quiz">📝 Квиз</div>
@@ -336,15 +331,8 @@ const TripsIndex = (() => {
         </div>
       </div>
 
-      <div class="field-group">
-        <div class="field-label">Участники</div>
-        <div class="parts-wrap" id="partsList">
-          ${(_draft.participants || []).map((p,i) => `
-            <div class="part-chip-sel" data-part-idx="${i}">${_esc(p)} ×</div>`).join('')}
-          <input class="field-input" id="f-participant" type="text"
-                 placeholder="Имя участника..." style="width:auto;flex:1;min-width:120px">
-        </div>
-      </div>
+      ${_participantsField()}
+      ${_privacyToggleField()}
 
       <div class="field-group">
         <div class="field-label">Комментарий</div>
@@ -466,6 +454,91 @@ const TripsIndex = (() => {
     return `
       <button class="btn-primary" id="createSave">${isExp ? 'Создать экспедицию' : 'Создать рыбалку'}</button>
       <button class="btn-secondary" id="createPrev">← Назад</button>`;
+  }
+
+  // Поле "Участники" — чипы уже выбранных + кнопка открыть пикер
+  // зарегистрированных участников + текстовое поле для гостей без
+  // аккаунта (их имена остаются в participants строкой, но не попадают
+  // в memberIds — см. _matchMemberIds).
+  function _participantsField() {
+    return `
+      <div class="field-group" style="margin-bottom:8px">
+        <div class="field-label">Участники</div>
+        <div class="parts-wrap" id="partsList">
+          ${(_draft.participants || []).map((p,i) => `
+            <div class="part-chip-sel" data-part-idx="${i}">${_esc(p)} ×</div>`).join('')}
+          <div class="part-chip-add" id="partPickBtn">+ из списка</div>
+          <input class="field-input" id="f-participant" type="text"
+                 placeholder="Или впиши имя гостя..." style="width:auto;flex:1;min-width:120px">
+        </div>
+      </div>`;
+  }
+
+  function _privacyToggleField() {
+    return `
+      <div class="field-group" style="margin-bottom:8px">
+        <label class="priv-toggle-row">
+          <input type="checkbox" id="f-private" ${_draft.private ? 'checked' : ''}>
+          <span>🔒 Приватная поездка — не показывать в профиле другим участникам</span>
+        </label>
+      </div>`;
+  }
+
+  // Пикер зарегистрированных участников — тап переключает присутствие в
+  // _draft.participants по displayName (точное совпадение, поэтому дальше
+  // _matchMemberIds надёжно сопоставит их с uid без хрупкого текстового
+  // ввода).
+  async function _showMemberPicker() {
+    document.getElementById('member-pick-overlay')?.remove();
+    if (typeof MembersFirebase === 'undefined') return;
+
+    let members;
+    try {
+      members = await MembersFirebase.getAllMembers();
+    } catch (e) {
+      return;
+    }
+    if (!members.length) return;
+
+    const norm = s => String(s || '').trim().toLowerCase();
+    const selected = new Set((_draft.participants || []).map(norm));
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'member-pick-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Участники</div>
+        <div class="tqp-list">
+          ${members.map(m => `
+            <div class="tqp-row" data-member-name="${_esc(m.displayName || '')}">
+              <div class="tqp-name">${_esc(m.displayName || 'Без имени')}</div>
+              <div class="mp-check ${selected.has(norm(m.displayName)) ? 'on' : ''}">✓</div>
+            </div>`).join('')}
+        </div>
+        <button class="tqp-all" data-action="mp-done">Готово</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    const close = () => {
+      overlay.remove();
+      _refreshCreate();
+    };
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-action="mp-done"]')) { close(); return; }
+      const row = e.target.closest('[data-member-name]');
+      if (!row) return;
+      const name = row.dataset.memberName;
+      if (!name) return;
+      if (!_draft.participants) _draft.participants = [];
+      const idx = _draft.participants.findIndex(p => norm(p) === norm(name));
+      if (idx >= 0) _draft.participants.splice(idx, 1);
+      else _draft.participants.push(name);
+      row.querySelector('.mp-check')?.classList.toggle('on');
+    });
   }
 
   function _bindCreate(overlay) {
@@ -644,6 +717,12 @@ const TripsIndex = (() => {
         _draft.participants.splice(parseInt(chip.dataset.partIdx), 1);
         _refreshCreate();
       });
+    });
+
+    document.getElementById('partPickBtn')?.addEventListener('click', _showMemberPicker);
+
+    document.getElementById('f-private')?.addEventListener('change', e => {
+      _draft.private = e.target.checked;
     });
   }
 
@@ -888,8 +967,24 @@ const TripsIndex = (() => {
       ? (_importedData?.rivers?.map(r => ({ name: r.name, region: r.type || '' })) || [])
       : _rivers;
 
+    const existing = _editMode && _editTripId ? TripsData.getById(_editTripId) : null;
+    const ownerUid = _editMode ? (existing?.ownerId || null) : (window.APP?.user?.uid || null);
+
     const participants = _draft.participants || [];
-    const memberIds = await _matchMemberIds(participants);
+    const matched = await _matchMemberIds(participants);
+    // matched === null значит "не удалось загрузить список участников для
+    // сопоставления" (сеть/MembersFirebase недоступен) — при редактировании
+    // НЕ трогаем memberIds вообще (оставляем как в Firestore), чтобы
+    // временный сбой не стёр уже верный список в пустоту. При создании
+    // терять нечего — пишем хотя бы владельца, чтобы поездка не оказалась
+    // невидимой даже для себя.
+    let memberIds;
+    if (matched === null) {
+      memberIds = _editMode ? undefined : (ownerUid ? [ownerUid] : []);
+    } else {
+      memberIds = ownerUid ? [...new Set([...matched, ownerUid])] : matched;
+    }
+
     const guideTabs = _draftGuideTabOrder.filter(id => _draftGuideTabsChecked.has(id));
 
     const trip = {
@@ -899,8 +994,8 @@ const TripsIndex = (() => {
       endDate:   _draft.endDate || _draft.startDate,
       rivers,
       participants,
-      memberIds,
       comment:   _draft.comment || '',
+      private:   !!_draft.private,
       status:    _tripStatus(_draft.startDate, _draft.endDate || _draft.startDate),
       rating:    null,
       fish:      [],
@@ -912,24 +1007,26 @@ const TripsIndex = (() => {
       importData: isExp && _importedData ? _importedData : null,
       guideTabs,
     };
+    if (memberIds !== undefined) trip.memberIds = memberIds;
 
     if (_editMode && _editTripId) {
       // В режиме редактирования сохраняем существующие данные рейтинга, улова и т.д.
-      const existing = TripsData.getById(_editTripId);
-      await TripsData.updateTrip(_editTripId, {
+      const update = {
         name:        trip.name,
         startDate:   trip.startDate,
         endDate:     trip.endDate,
         rivers:      trip.rivers,
         participants: trip.participants,
-        memberIds:   trip.memberIds,
         comment:     trip.comment,
+        private:     trip.private,
         status:      trip.status,
         importData:  trip.importData !== undefined ? trip.importData : (existing?.importData || null),
         guideTabs:   trip.guideTabs,
-      });
+      };
+      if (memberIds !== undefined) update.memberIds = memberIds;
+      await TripsData.updateTrip(_editTripId, update);
     } else {
-      trip.ownerId = window.APP?.user?.uid || null;
+      trip.ownerId = ownerUid;
       await TripsData.addTrip(trip);
     }
     _closeCreate();
@@ -938,11 +1035,15 @@ const TripsIndex = (() => {
   }
 
   // Сопоставляет вписанные вручную имена участников с реальными профилями
-  // (по displayName, без учёта регистра) — задел на будущее приглашение
-  // в поездку и роли. Само поле participants (строки) не меняется — от
-  // него по-прежнему зависят Расходы/Улов/Реки/Безопасность/CSV-экспорт.
+  // (по displayName, без учёта регистра) — участники, выбранные через
+  // _showMemberPicker, попадают сюда с именем, гарантированно совпадающим
+  // 1-в-1, так что сопоставление для них надёжно; текстом вписанные гости
+  // без аккаунта просто не находятся, и это ожидаемо. Возвращает null (не
+  // []), если сопоставление в принципе не удалось выполнить — вызывающий
+  // код должен отличать "участников нет" от "не смогли проверить".
   async function _matchMemberIds(participants) {
-    if (!participants.length || typeof MembersFirebase === 'undefined') return [];
+    if (!participants.length) return [];
+    if (typeof MembersFirebase === 'undefined') return null;
     try {
       const members = await MembersFirebase.getAllMembers();
       const byName = new Map(members.map(m => [(m.displayName || '').trim().toLowerCase(), m.uid]));
@@ -950,7 +1051,7 @@ const TripsIndex = (() => {
         .map(name => byName.get(String(name).trim().toLowerCase()))
         .filter(Boolean);
     } catch (e) {
-      return [];
+      return null;
     }
   }
 

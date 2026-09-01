@@ -946,7 +946,7 @@ const TripCoverIndex = (() => {
   // поездка ровно одна — заходим в неё сразу, без лишнего тапа. Если
   // актуальных нет вообще — как раньше, список поездок.
   function showQuickPicker() {
-    const trips = (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
+    const trips = (typeof TripsData !== 'undefined' ? TripsData.getMine(window.APP?.user?.uid) : [])
       .filter(t => t.status !== 'done')
       .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 

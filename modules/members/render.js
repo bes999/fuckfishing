@@ -219,23 +219,34 @@ const MembersRender = (() => {
       </div>`;
   }
 
-  function _tabTrips(catchStat, balance) {
-    return `
-      <div class="p-trip-card">
+  // Полная история поездок владельца профиля — предстоящие/идущие/
+  // завершённые, независимо от того, участвует ли в них сам смотрящий
+  // (это осознанно: "Мои поездки"/Главная у КАЖДОГО фильтруются по своим
+  // memberIds, чтобы не захламляться чужими компаниями, а тут наоборот —
+  // это же профиль конкретного человека, и видно всё, чем он занимался).
+  // Единственное исключение — поездки с trip.private: они скрыты от всех,
+  // кроме тех, кто сам в их memberIds (см. чекбокс в modules/trips/index.js).
+  function _tabTrips(profileUid) {
+    const viewerUid = window.APP?.user?.uid;
+    const trips = (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
+      .filter(t => (t.memberIds || []).includes(profileUid))
+      .filter(t => !t.private || (t.memberIds || []).includes(viewerUid))
+      .sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+
+    if (!trips.length) {
+      return `<p style="color:var(--label3);font-size:14px;padding:12px 0">Поездок пока нет</p>`;
+    }
+
+    return trips.map(t => `
+      <div class="p-trip-card" data-action="profile-trip-open" data-trip-id="${t.id}">
         <div class="p-trip-header">
           <div>
-            <div class="p-trip-name">🎣 Сахалин 2026</div>
-            <div class="p-trip-dates">10–17 июня 2026</div>
+            <div class="p-trip-name">${t.type === 'expedition' ? '🏔' : '🎣'} ${_esc(t.name)}</div>
+            <div class="p-trip-dates">${_fmtDate(t.startDate)}${t.endDate && t.endDate !== t.startDate ? ' – ' + _fmtDate(t.endDate) : ''}</div>
           </div>
-          <div class="p-trip-badge">Активная</div>
+          <div class="p-trip-badge">${typeof TripsData !== 'undefined' ? TripsData.statusLabel(t.status) : ''}</div>
         </div>
-        <div class="p-trip-stats">
-          <div class="p-trip-stat">🐟 <span>${catchStat.total}</span> рыб</div>
-          <div class="p-trip-stat">⚖️ <span>${catchStat.weight} кг</span></div>
-          <div class="p-trip-stat">💰 <span>${balance.balance >= 0 ? '+' : ''}${balance.balance} ₽</span></div>
-        </div>
-      </div>
-      <div class="p-trip-add" data-action="trip-new">+ Создать новую поездку</div>`;
+      </div>`).join('');
   }
 
   function _tabGear(p, isMe) {
@@ -283,7 +294,7 @@ const MembersRender = (() => {
     if (tab === 'profile') {
       content.innerHTML = _tabProfile(d.profile, d.isMe);
     } else if (tab === 'trips') {
-      content.innerHTML = _tabTrips(d.catchStat, d.balance);
+      content.innerHTML = _tabTrips(d.profile.uid);
     } else if (tab === 'gear') {
       content.innerHTML = '<div id="gear-tab-container"></div>';
       if (typeof GearModule !== 'undefined') {
@@ -377,7 +388,10 @@ const MembersRender = (() => {
      (пикер прямо с его профиля — без ссылки, uid уже известен)
   ══════════════════════════════════════════════ */
   function showTripPicker(uid, name) {
-    const trips = (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
+    // Список — только поездки, где сам смотрящий (организатор, который
+    // добавляет человека) уже участник: добавить куда-то ещё нельзя, там
+    // просто негде взять на это право.
+    const trips = (typeof TripsData !== 'undefined' ? TripsData.getMine(window.APP?.user?.uid) : [])
       .filter(t => t.status !== 'done')
       .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 

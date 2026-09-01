@@ -78,7 +78,7 @@ async function showTrips(ctx) {
   const user = await requireUser(ctx);
   if (!user) return;
 
-  const trips = await Trips.listTrips();
+  const trips = await Trips.listTrips(user.uid);
   const kb = new InlineKeyboard();
   trips.forEach((t) => {
     kb.text(`${Trips.statusLabel(t.status)} ${t.name}`, `trip:select:${t.id}`).row();

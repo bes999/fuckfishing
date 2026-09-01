@@ -162,10 +162,11 @@ const TripsData = (() => {
   // --- Чтение — синхронно, из кэша (TripsState) ---
   function getAll()             { return TripsState.getAll(); }
   function getById(id)          { return TripsState.getById(id); }
-  function getUpcoming()        { return TripsState.getUpcoming(); }
-  function getByYear()          { return TripsState.getByYear(); }
-  function getCalendarMarkers() { return TripsState.getCalendarMarkers(); }
-  function getYearStats(year)   { return TripsState.getYearStats(year); }
+  function getMine(uid)         { return TripsState.getMine(uid); }
+  function getUpcoming(uid)        { return TripsState.getUpcoming(uid); }
+  function getByYear(uid)          { return TripsState.getByYear(uid); }
+  function getCalendarMarkers(uid) { return TripsState.getCalendarMarkers(uid); }
+  function getYearStats(year, uid) { return TripsState.getYearStats(year, uid); }
 
   // --- Запись — асинхронно, через Firestore ---
   function addTrip(trip) {
@@ -215,7 +216,7 @@ const TripsData = (() => {
 
   return {
     migrateFromLocalStorage, backfillOwnerId,
-    getAll, getById, getUpcoming, getByYear, getCalendarMarkers, getYearStats,
+    getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats,
     addTrip, updateTrip, updateReadiness, addParticipant,
     statusLabel, statusClass,
   };

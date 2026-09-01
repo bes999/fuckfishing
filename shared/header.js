@@ -26,12 +26,12 @@ const AppHeader = (() => {
   const PERSONAL_ITEMS = [
     { id: 'gear',             label: 'Снаряга',   icon: 'ti-backpack' },
     { id: 'medkit',           label: 'Аптечка',   icon: 'ti-first-aid-kit' },
-    { id: 'members',          label: 'Участники', icon: 'ti-users' },
     { id: 'medkit-reference', label: 'Справка',   icon: 'ti-list' },
   ];
 
   const TRIP_ITEMS = [
     { id: 'guide',    label: 'Гид',          icon: 'ti-map-2' },
+    { id: 'members',  label: 'Участники',    icon: 'ti-users' },
     { id: 'rivers',   label: 'Реки',         icon: 'ti-droplet' },
     { id: 'menu',     label: 'Меню',         icon: 'ti-clipboard-list' },
     { id: 'catches',  label: 'Улов',         icon: 'ti-fish' },

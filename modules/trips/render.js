@@ -10,8 +10,9 @@ const TripsRender = (() => {
 
   function render(el) {
     const now   = new Date().getFullYear();
-    const stats = TripsData.getYearStats(String(now));
-    const byYear = TripsData.getByYear();
+    const uid   = window.APP?.user?.uid;
+    const stats = TripsData.getYearStats(String(now), uid);
+    const byYear = TripsData.getByYear(uid);
 
     el.innerHTML = `
       ${_topbar()}

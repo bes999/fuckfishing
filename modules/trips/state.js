@@ -39,15 +39,23 @@ const TripsState = (() => {
     return getAll().find(t => t.id === id) || null;
   }
 
-  function getUpcoming() {
-    const now = new Date();
-    return getAll()
+  // Только поездки, где uid реально в участниках (memberIds) — чтобы
+  // собственный список/Главная не захламлялись поездками с другой
+  // компанией. Профиль (чужая история поездок) сюда не ходит — там
+  // специально показывают ВСЕ поездки человека, см. modules/members/render.js.
+  function getMine(uid) {
+    if (!uid) return [];
+    return getAll().filter(t => (t.memberIds || []).includes(uid));
+  }
+
+  function getUpcoming(uid) {
+    return getMine(uid)
       .filter(t => t.status === 'upcoming' || t.status === 'active')
       .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))[0] || null;
   }
 
-  function getByYear() {
-    const trips = getAll().slice().sort((a, b) =>
+  function getByYear(uid) {
+    const trips = getMine(uid).slice().sort((a, b) =>
       new Date(b.startDate) - new Date(a.startDate)
     );
     const years = {};
@@ -59,9 +67,9 @@ const TripsState = (() => {
     return years;
   }
 
-  function getCalendarMarkers() {
+  function getCalendarMarkers(uid) {
     const markers = {};
-    getAll().forEach(t => {
+    getMine(uid).forEach(t => {
       const start = new Date(t.startDate);
       const end = new Date(t.endDate);
       let cur = new Date(start);
@@ -80,8 +88,8 @@ const TripsState = (() => {
     return markers;
   }
 
-  function getYearStats(year) {
-    const trips = getAll().filter(t => {
+  function getYearStats(year, uid) {
+    const trips = getMine(uid).filter(t => {
       return t.startDate.startsWith(year) && t.status === 'done';
     });
     let fishCount = 0;
@@ -99,5 +107,5 @@ const TripsState = (() => {
     };
   }
 
-  return { setTrips, getAll, getById, getUpcoming, getByYear, getCalendarMarkers, getYearStats };
+  return { setTrips, getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats };
 })();
