@@ -46,12 +46,13 @@ export function pickFishGroups(trip) {
   return DEFAULT_GROUPS;
 }
 
-export async function addCatch(tripId, { fish, count, kept, river, member, uid }) {
+export async function addCatch(tripId, { fish, count, kept, river, comment, member, uid }) {
   const data = {
     fish,
     count,
     kept: !!kept,
     river: river || '',
+    comment: comment || '',
     member,
     date: todayStr(),
     createdAt: new Date().toISOString(),

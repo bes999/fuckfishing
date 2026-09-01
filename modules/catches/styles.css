@@ -235,6 +235,24 @@
   appearance: none;
 }
 
+.ct-form-input {
+  width: 100%;
+  background: var(--bg3);
+  border: 0.5px solid var(--sep);
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: var(--label);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.ct-form-input::placeholder { color: var(--label4); }
+
+.ct-catch-comment {
+  font-size: 11px; color: var(--label4); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
 .ct-form-row-2 {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -237,6 +237,26 @@ const CatchesRender = (() => {
             <button class="ct-tog" id="ct-tog-rel">↩️ Отпустили</button>
           </div>
 
+          <div class="ct-form-row-2">
+            <div>
+              <div class="ct-form-label">Темп. воды, °C</div>
+              <input class="ct-form-input" id="ct-watertemp" type="number" placeholder="—" inputmode="decimal" step="0.5">
+            </div>
+            <div>
+              <div class="ct-form-label">Прозрачность</div>
+              <select class="ct-form-select" id="ct-clarity">
+                <option value="">—</option>
+                <option value="clear">Чистая</option>
+                <option value="medium">Слегка мутная</option>
+                <option value="murky">Мутная</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="ct-form-label">Комментарий <span style="font-weight:400;text-transform:none;letter-spacing:0">— необязательно</span></div>
+          <input class="ct-form-input" id="ct-comment" type="text"
+                 placeholder="Проводка, приманка, цвет, вес..." autocomplete="off">
+
           <button class="ct-save-btn" id="ct-save-btn">Сохранить поимку</button>
         </div>
 
@@ -257,7 +277,15 @@ const CatchesRender = (() => {
     return typeof TripsData !== 'undefined' && TripsData.getById(_tripId)?.ownerId === myUid;
   }
 
+  const CLARITY_LABELS = { clear: 'чистая', medium: 'слегка мутная', murky: 'мутная' };
+
   function _catchRow(c, showDelete) {
+    const condParts = [];
+    if (c.waterTemp != null) condParts.push(`🌡 ${c.waterTemp}°C`);
+    if (c.waterClarity) condParts.push(CLARITY_LABELS[c.waterClarity] || c.waterClarity);
+    const condLine = condParts.length ? `<div class="ct-catch-comment">${_esc(condParts.join(' · '))}</div>` : '';
+    const commentLine = c.comment ? `<div class="ct-catch-comment">${_esc(c.comment)}</div>` : '';
+
     return `
       <div class="ct-catch-row" data-id="${c._id}">
         <div class="ct-catch-icon">${_fishEmoji(c.fish)}</div>
@@ -266,6 +294,8 @@ const CatchesRender = (() => {
           <div class="ct-catch-meta">
             ${c.member ? _esc(c.member) + ' · ' : ''}${c.river ? _esc(c.river) : ''}${c.date ? ' · ' + _fmtDate(c.date) : ''}
           </div>
+          ${commentLine}
+          ${condLine}
         </div>
         <div class="ct-catch-right">
           <span class="ct-catch-badge ${c.kept ? 'ct-badge-kept' : 'ct-badge-rel'}">${c.kept ? 'взяли' : 'отпустили'}</span>
@@ -364,15 +394,20 @@ const CatchesRender = (() => {
     const saveBtn = body.querySelector('#ct-save-btn');
     saveBtn?.addEventListener('click', () => {
       UIUtils.withBusyButton(saveBtn, () => {
-        const fish   = body.querySelector('#ct-fish')?.value || '';
-        const member = body.querySelector('#ct-member')?.value || '';
-        const river  = body.querySelector('#ct-river')?.value || '';
+        const fish        = body.querySelector('#ct-fish')?.value || '';
+        const member      = body.querySelector('#ct-member')?.value || '';
+        const river       = body.querySelector('#ct-river')?.value || '';
+        const comment     = body.querySelector('#ct-comment')?.value.trim() || '';
+        const waterTemp   = body.querySelector('#ct-watertemp')?.value;
+        const waterClarity = body.querySelector('#ct-clarity')?.value || '';
 
         if (!fish) return;
 
         const entry = CatchesData.normalizeCatch({
           fish, count: _count, kept: _kept,
-          member, river,
+          member, river, comment,
+          waterTemp: waterTemp !== '' ? parseFloat(waterTemp) : null,
+          waterClarity,
           date: new Date().toISOString().split('T')[0],
         }, 'tmp_' + Date.now());
 

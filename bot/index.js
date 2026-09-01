@@ -295,13 +295,29 @@ async function handleCatchText(ctx, w, text) {
 
   if (w.step === 'river_other') {
     if (!text) return ctx.reply('Введите название реки:');
-    return finishCatch(ctx, w, text);
+    return askCatchComment(ctx, chatId, text);
+  }
+
+  if (w.step === 'comment') {
+    return finishCatch(ctx, w, w.data.river, text.trim());
   }
 
   return ctx.reply('Выберите вариант кнопкой выше 👆');
 }
 
-async function finishCatch(ctx, w, river) {
+// Необязательный последний шаг — приманка/проводка/температура и
+// прозрачность воды текстом, для будущей статистики. Кнопка "Пропустить",
+// чтобы не удлинять быстрый чат-флоу для тех, кому это не нужно каждый раз.
+async function askCatchComment(ctx, chatId, river) {
+  Wizards.update(chatId, { step: 'comment', data: { river } });
+  const kb = new InlineKeyboard().text('Пропустить', 'catch:comment:skip');
+  await ctx.reply(
+    'Что-нибудь ещё? Приманка, проводка, температура/прозрачность воды — одним сообщением (необязательно):',
+    { reply_markup: kb }
+  );
+}
+
+async function finishCatch(ctx, w, river, comment) {
   const chatId = ctx.chat.id;
   const data = w.data;
   try {
@@ -310,6 +326,7 @@ async function finishCatch(ctx, w, river) {
       count: data.count,
       kept: data.kept,
       river,
+      comment: comment || '',
       member: data.displayName,
       uid: data.uid,
     });
@@ -642,7 +659,15 @@ bot.callbackQuery(/^catch:river:(\d+)$/, async (ctx) => {
   const idx = Number(ctx.match[1]);
   const riverObj = trip?.rivers?.[idx];
   const river = (riverObj && riverObj.name) || (typeof riverObj === 'string' ? riverObj : '');
-  await finishCatch(ctx, w, river);
+  await askCatchComment(ctx, chatId, river);
+});
+
+bot.callbackQuery('catch:comment:skip', async (ctx) => {
+  await ctx.answerCallbackQuery();
+  const chatId = ctx.chat.id;
+  const w = Wizards.get(chatId);
+  if (!w || w.type !== 'catch' || w.step !== 'comment') return ctx.reply('Диалог устарел. Начните заново: «🐟 Улов».');
+  await finishCatch(ctx, w, w.data.river, '');
 });
 
 bot.callbackQuery('catch:river:other', async (ctx) => {
