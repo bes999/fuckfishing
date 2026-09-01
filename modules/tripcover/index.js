@@ -543,18 +543,21 @@ const TripCoverIndex = (() => {
   // работают и на одной точке (однодневная рыбалка) — рисуют просто маркер.
   function _lineChartSvg(series, opts) {
     opts = opts || {};
-    const width = opts.width || 280, height = opts.height || 56, pad = 6;
+    const width = opts.width || 280, height = opts.height || 64, pad = 8, labelSpace = 16;
     const allVals = series.flatMap(s => s.values).filter(v => v != null);
     if (!allVals.length) return '';
     const n = Math.max(...series.map(s => s.values.length));
     const min = Math.min(...allVals), max = Math.max(...allVals);
     const range = max - min || 1;
     const x = i => n > 1 ? (i / (n - 1)) * (width - pad * 2) + pad : width / 2;
-    const y = v => height - pad - ((v - min) / range) * (height - pad * 2);
+    const y = v => height - pad - ((v - min) / range) * (height - pad * 2 - labelSpace);
+    const fmt = opts.fmt || (v => Math.round(v));
 
     const lines = series.map(s => {
       const pts = s.values.map((v, i) => v != null ? `${x(i)},${y(v)}` : null).filter(Boolean).join(' ');
-      const dots = s.values.map((v, i) => v != null ? `<circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>` : '').join('');
+      const dots = s.values.map((v, i) => v == null ? '' : `
+        <circle cx="${x(i)}" cy="${y(v)}" r="2.5" fill="${s.color}"/>
+        <text x="${x(i)}" y="${y(v) - 8}" font-size="10" fill="${s.color}" text-anchor="middle">${fmt(v)}</text>`).join('');
       return `<polyline points="${pts}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>${dots}`;
     }).join('');
 
@@ -563,17 +566,21 @@ const TripCoverIndex = (() => {
 
   function _barChartSvg(values, opts) {
     opts = opts || {};
-    const width = opts.width || 280, height = opts.height || 56, pad = 6;
+    const width = opts.width || 280, height = opts.height || 64, pad = 8, labelSpace = 16;
     const color = opts.color || 'var(--accent)';
     if (!values.length) return '';
     const n = values.length;
     const max = Math.max(...values, 1);
     const slot = (width - pad * 2) / n;
     const barW = Math.min(20, slot * 0.6);
+    const fmt = opts.fmt || (v => Math.round(v * 10) / 10);
     const bars = values.map((v, i) => {
-      const h = max > 0 ? (v / max) * (height - pad * 2) : 0;
+      const h = max > 0 ? (v / max) * (height - pad * 2 - labelSpace) : 0;
       const cx = pad + slot * i + slot / 2;
-      return `<rect x="${cx - barW / 2}" y="${height - pad - h}" width="${barW}" height="${Math.max(h, 1)}" rx="2" fill="${color}"/>`;
+      const barTop = height - pad - h;
+      return `
+        <rect x="${cx - barW / 2}" y="${barTop}" width="${barW}" height="${Math.max(h, 1)}" rx="2" fill="${color}"/>
+        <text x="${cx}" y="${barTop - 5}" font-size="10" fill="var(--label3)" text-anchor="middle">${fmt(v)}</text>`;
     }).join('');
     return `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}" preserveAspectRatio="none">${bars}</svg>`;
   }
@@ -629,6 +636,7 @@ const TripCoverIndex = (() => {
     // по наличию данных); плюс "добавить" для того, чего ещё нет.
     const hasRating  = trip.rating != null;
     const hasComment = !!trip.comment;
+    const windy = _windyAccordion(trip);
 
     return `
       ${_hero(trip, emoji, dates, location)}
@@ -638,7 +646,7 @@ const TripCoverIndex = (() => {
         ${isOwner ? `<button class="g-info-act-btn" data-action="info-edit">✏️ Редактировать</button>` : ''}
       </div>
       ${_weatherChartsSection(trip)}
-      ${_windyAccordion(trip)}
+      ${windy ? `<div class="g-info-gap">${windy}</div>` : ''}
       ${_doneContent(trip)}
       ${trip.status === 'done' && !hasRating ? `
         <div class="cover-section"><button class="g-info-add-btn" data-action="info-add-rating">+ Оценить поездку</button></div>` : ''}
@@ -1017,6 +1025,7 @@ const TripCoverIndex = (() => {
         .g-chart-block:first-of-type{border-top:none}
         .g-chart-label{font-size:12px;color:var(--label3);margin-bottom:6px;font-weight:600}
         .g-chart-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--label4);margin-top:2px}
+        .g-info-gap{margin-top:14px}
       </style>
       <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10">
         <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
