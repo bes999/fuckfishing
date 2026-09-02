@@ -29,7 +29,10 @@ const AuthRender = (() => {
           <input class="auth-input" id="auth-password" type="password"
                  placeholder="Пароль (мин. 6 символов)" autocomplete="current-password">
           <button class="btn-auth-primary" data-action="auth-email">
-            Войти / Зарегистрироваться
+            Войти
+          </button>
+          <button class="btn-auth-link" data-action="auth-register">
+            Нет аккаунта? Зарегистрироваться
           </button>
 
           <div class="auth-error hidden" id="auth-error"></div>
@@ -103,11 +106,16 @@ const AuthRender = (() => {
   }
 
   /* ── Шаг 1: Личные данные ── */
+  // "← Выйти" — на случай, если сюда попали по ошибке (опечатка в email на
+  // экране входа тихо заводит новый аккаунт вместо ошибки "нет такого
+  // пользователя", см. signInEmail в modules/auth/index.js) — без него
+  // единственный путь наружу был через devtools (auth.signOut() вручную).
   function _step0() {
     const avBtns = AVATARS.map(a =>
       `<button class="ob-av-btn${_draft.avatar===a?' sel':''}" data-ob-av="${a}">${a}</button>`
     ).join('');
     return `
+      <button class="ob-exit" data-action="auth-signout">← Выйти</button>
       <p class="ob-title">Как тебя зовут?</p>
       <p class="ob-sub">Шаг 1 из 2 — личные данные</p>
 

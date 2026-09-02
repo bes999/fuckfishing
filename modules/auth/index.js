@@ -93,25 +93,40 @@ const AuthActions = (() => {
     try {
       await auth.signInWithEmailAndPassword(email, pass);
     } catch (e) {
-      if (['auth/user-not-found','auth/invalid-credential'].includes(e.code)) {
-        // 'invalid-credential' покрывает и "такого юзера нет", и "пароль
-        // неверный" — Firebase намеренно их не различает (защита от
-        // перебора почт). Пробуем зарегистрировать; если Firebase в ответ
-        // говорит "email уже занят" — значит юзер как раз существовал,
-        // и дело было в опечатке в пароле, а не в отсутствии аккаунта.
-        try { await auth.createUserWithEmailAndPassword(email, pass); }
-        catch (e2) {
-          if (e2.code === 'auth/email-already-in-use') {
-            AuthRender.showError('Неверный пароль');
-          } else {
-            AuthRender.showError(e2.message);
-          }
-        }
-      } else { AuthRender.showError(e.message); }
+      AuthRender.showError(e.message);
     }
   }
 
-  async function signOut() { await auth.signOut(); }
+  // Раньше "Войти" при неудаче сам пробовал зарегистрировать новый
+  // аккаунт — Firebase не различает "такого юзера нет" и "пароль неверный"
+  // (invalid-credential — защита от перебора почт), так что опечатка в
+  // email тихо заводила новый пустой аккаунт вместо понятной ошибки
+  // (человек долетал до "Как тебя зовут?" со свежим аккаунтом-призраком,
+  // без профиля и без приглашения). Теперь регистрация — отдельное явное
+  // действие: обычная опечатка при входе просто покажет ошибку.
+  async function registerEmail() {
+    AuthRender.clearError();
+    const email = (document.getElementById('auth-email')?.value || '').trim();
+    const pass  = (document.getElementById('auth-password')?.value || '').trim();
+    if (!email || !pass) { AuthRender.showError('Введи email и пароль'); return; }
+    try {
+      await auth.createUserWithEmailAndPassword(email, pass);
+    } catch (e) {
+      if (e.code === 'auth/email-already-in-use') {
+        AuthRender.showError('Аккаунт с таким email уже есть — просто войди');
+      } else {
+        AuthRender.showError(e.message);
+      }
+    }
+  }
+
+  async function signOut() {
+    // Онбординг рисует свой оверлей поверх всего (см. ob-overlay) и не
+    // убирает себя сам — если выйти прямо из него ("← Выйти"), оверлей
+    // остался бы висеть поверх появившегося экрана входа.
+    document.getElementById('ob-overlay')?.remove();
+    await auth.signOut();
+  }
 
   /* ── Boot ── */
   function _boot() {
@@ -144,9 +159,10 @@ const AuthActions = (() => {
       const btn = e.target.closest('[data-action]');
       if (btn) {
         const a = btn.dataset.action;
-        if (a === 'auth-google')  { signInGoogle(); return; }
-        if (a === 'auth-email')   { signInEmail();  return; }
-        if (a === 'auth-signout') { signOut();       return; }
+        if (a === 'auth-google')   { signInGoogle();  return; }
+        if (a === 'auth-email')    { signInEmail();   return; }
+        if (a === 'auth-register') { registerEmail();  return; }
+        if (a === 'auth-signout')  { signOut();        return; }
         if (['ob-next','ob-back','ob-finish'].includes(a)) {
           AuthRender.handleObEvent(btn); return;
         }
