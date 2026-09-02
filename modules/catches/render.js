@@ -221,16 +221,11 @@ const CatchesRender = (() => {
           <input class="ct-form-input" id="ct-member-manual" type="text" placeholder="Имя"
                  style="display:none;margin-top:8px" autocomplete="off">
 
-          <div class="ct-form-row-2">
-            <div>
-              <div class="ct-form-label">Вес рыбы, кг <span style="font-weight:400;text-transform:none;letter-spacing:0">— необязательно</span></div>
-              <input class="ct-form-input" id="ct-weight" type="number" placeholder="—" inputmode="decimal" step="0.05">
-            </div>
-            <div>
-              <div class="ct-form-label">Время поимки</div>
-              <input class="ct-form-input" id="ct-time" type="time" value="${new Date().toTimeString().slice(0, 5)}">
-            </div>
-          </div>
+          <div class="ct-form-label">Вес рыбы, кг <span style="font-weight:400;text-transform:none;letter-spacing:0">— необязательно</span></div>
+          <input class="ct-form-input" id="ct-weight" type="number" placeholder="—" inputmode="decimal" step="0.05">
+
+          <div class="ct-form-label">Время поимки</div>
+          <input class="ct-form-input" id="ct-time" type="time" value="${new Date().toTimeString().slice(0, 5)}">
 
           <button type="button" class="ct-tackle-btn" id="ct-place-btn">📍 Место — необязательно</button>
 
