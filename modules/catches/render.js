@@ -221,8 +221,16 @@ const CatchesRender = (() => {
           <input class="ct-form-input" id="ct-member-manual" type="text" placeholder="Имя"
                  style="display:none;margin-top:8px" autocomplete="off">
 
-          <div class="ct-form-label">Вес рыбы, кг <span style="font-weight:400;text-transform:none;letter-spacing:0">— необязательно</span></div>
-          <input class="ct-form-input" id="ct-weight" type="number" placeholder="—" inputmode="decimal" step="0.05">
+          <div class="ct-form-row-2">
+            <div>
+              <div class="ct-form-label">Вес рыбы, кг <span style="font-weight:400;text-transform:none;letter-spacing:0">— необязательно</span></div>
+              <input class="ct-form-input" id="ct-weight" type="number" placeholder="—" inputmode="decimal" step="0.05">
+            </div>
+            <div>
+              <div class="ct-form-label">Время поимки</div>
+              <input class="ct-form-input" id="ct-time" type="time" value="${new Date().toTimeString().slice(0, 5)}">
+            </div>
+          </div>
 
           <button type="button" class="ct-tackle-btn" id="ct-place-btn">📍 Место — необязательно</button>
 
@@ -300,7 +308,7 @@ const CatchesRender = (() => {
         <div class="ct-catch-info">
           <div class="ct-catch-fish">${_esc(c.fish)} · ${c.count} шт${c.weight != null ? ' · ' + c.weight + ' кг' : ''}</div>
           <div class="ct-catch-meta">
-            ${c.member ? _esc(c.member) + ' · ' : ''}${_esc(place)}${c.date ? ' · ' + _fmtDate(c.date) : ''}
+            ${c.member ? _esc(c.member) + ' · ' : ''}${_esc(place)}${c.date ? ' · ' + _fmtDate(c.date) : ''}${c.time ? ', ' + _esc(c.time) : ''}
           </div>
           ${commentLine}
           ${tackleLine}
@@ -612,6 +620,7 @@ const CatchesRender = (() => {
         if (member === '__manual__') member = body.querySelector('#ct-member-manual')?.value.trim() || '';
         const comment     = body.querySelector('#ct-comment')?.value.trim() || '';
         const weight      = body.querySelector('#ct-weight')?.value;
+        const time        = body.querySelector('#ct-time')?.value || '';
         const waterTemp   = body.querySelector('#ct-watertemp')?.value;
         const waterClarity = body.querySelector('#ct-clarity')?.value || '';
 
@@ -626,6 +635,7 @@ const CatchesRender = (() => {
           waterClarity,
           tackle: _tackle,
           date: new Date().toISOString().split('T')[0],
+          time,
           createdBy: window.APP?.user?.uid || null,
         }, 'tmp_' + Date.now());
 

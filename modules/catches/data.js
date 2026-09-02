@@ -77,6 +77,7 @@ const CatchesData = (() => {
       waterClarity: data.waterClarity || '',
       tackle,
       date:      data.date      || new Date().toISOString().split('T')[0],
+      time:      data.time      || '',
       createdAt: data.createdAt || new Date().toISOString(),
       createdBy: data.createdBy || null,
     };
