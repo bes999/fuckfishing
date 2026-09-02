@@ -1,11 +1,20 @@
 /* ===== MEDKIT DATA ===== */
 
+// Стандартные категории ниже помечены personalOptional: true — раньше в
+// "Личной" аптечке они были обязательными (isGroupEnabled без этого флага
+// всегда включает группу) и показывались ВСЕМ участникам как чек-лист по
+// конкретным препаратам одного человека (изначально куратора приложения),
+// хотя реально у каждого свой набор лекарств. В "Общей" аптечке (флаг
+// commonOptional не трогаем) они остаются обязательными как были — это
+// действительно общий сбор группы. В личной — теперь опционально, как уже
+// давно устроены "Ампулы"/"БАДы", включаются по кнопке 👁 самим человеком.
 var MEDKIT_BASE = [
   {
     id: 'painkillers',
     label: 'Обезбол',
     icon: '💊',
     availableIn: ['common', 'personal'],
+    personalOptional: true,
     items: [
       { id: 'pain_ibuprofen',  name: 'Ибупрофен / Нурофен' },
       { id: 'pain_ketanov',    name: 'Кетанов' },
@@ -18,6 +27,7 @@ var MEDKIT_BASE = [
     label: 'Простуда / температура',
     icon: '🤧',
     availableIn: ['common', 'personal'],
+    personalOptional: true,
     items: [
       { id: 'cold_paracetamol', name: 'Парацетамол' },
       { id: 'cold_aciclovir',   name: 'Ацикловир' },
@@ -30,6 +40,7 @@ var MEDKIT_BASE = [
     label: 'ЖКТ',
     icon: '🫃',
     availableIn: ['common', 'personal'],
+    personalOptional: true,
     items: [
       { id: 'gi_smecta',      name: 'Смекта' },
       { id: 'gi_loperamide',  name: 'Лоперамид' },
@@ -42,6 +53,7 @@ var MEDKIT_BASE = [
     label: 'Аллергия',
     icon: '🌿',
     availableIn: ['common', 'personal'],
+    personalOptional: true,
     items: [
       { id: 'allergy_suprastin', name: 'Супрастин' }
     ]
@@ -51,6 +63,7 @@ var MEDKIT_BASE = [
     label: 'Раны / перевязка',
     icon: '🩹',
     availableIn: ['common', 'personal'],
+    personalOptional: true,
     items: [
       { id: 'wound_peroxide',   name: 'Перекись водорода' },
       { id: 'wound_iodine',     name: 'Йод / зелёнка' },
@@ -63,6 +76,7 @@ var MEDKIT_BASE = [
     label: 'Глаза / нос',
     icon: '👁',
     availableIn: ['common', 'personal'],
+    personalOptional: true,
     items: [
       { id: 'eye_albucid',   name: 'Альбуцид' },
       { id: 'eye_vizin',     name: 'Визин' }
@@ -73,6 +87,7 @@ var MEDKIT_BASE = [
     label: 'Сон',
     icon: '😴',
     availableIn: ['common', 'personal'],
+    personalOptional: true,
     items: [
       { id: 'sleep_melaxen', name: 'Мелаксен' },
       { id: 'sleep_velson',  name: 'Вэлсон' }
