@@ -1,5 +1,16 @@
 /* ===== MEDKIT ACTIONS ===== */
 
+// --- Личную аптечку может менять только её владелец ---
+// Раньше любой участник, переключившись на чужого человека в свитчере
+// "Личная", мог отмечать ему препараты как принятые, включать/выключать
+// категории и т.п. — свитчер задуман для ПРОСМОТРА (что у товарища есть на
+// экстренный случай), а не для правки чужого мед. списка. "Общая" (mode
+// !== 'personal') — по-прежнему общая для всех, тут ничего не меняется.
+function _canEditMedkit(mode, memberId) {
+  if (mode !== 'personal') return true;
+  return !!window.APP && !!window.APP.user && window.APP.user.uid === memberId;
+}
+
 // --- Обновление мета-строки препарата без перерисовки ---
 function updateMedkitMeta(mode, memberId, itemId) {
   var itemState = getMedkitItem(mode, memberId, itemId);
@@ -66,6 +77,7 @@ function updateMedkitProgressBar(mode, memberId) {
 function toggleMedkitItem(mode, memberId, itemId, event) {
   if (event) event.stopPropagation();
   if (mode === 'personal' && !memberId) return;
+  if (!_canEditMedkit(mode, memberId)) return;
   var item = getMedkitItem(mode, memberId, itemId);
   item.checked = !item.checked;
   saveMedkit();
@@ -97,36 +109,42 @@ function toggleMedkitItem(mode, memberId, itemId, event) {
 
 // --- Поля карточки ---
 function updateMedkitTotal(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).total = val;
   saveMedkit();
   updateMedkitMeta(mode, memberId, itemId);
 }
 
 function updateMedkitLeft(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).left = val;
   saveMedkit();
   updateMedkitMeta(mode, memberId, itemId);
 }
 
 function updateMedkitUnit(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).unit = val;
   saveMedkit();
   updateMedkitMeta(mode, memberId, itemId);
 }
 
 function updateMedkitDose(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).dose = val;
   saveMedkit();
   updateMedkitMeta(mode, memberId, itemId);
 }
 
 function updateMedkitExpiry(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).expiry = val;
   saveMedkit();
   updateMedkitMeta(mode, memberId, itemId);
 }
 
 function updateMedkitSlot(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   if (val && !validateSlot(mode, val)) return;
   getMedkitItem(mode, memberId, itemId).slot = val;
   saveMedkit();
@@ -134,16 +152,19 @@ function updateMedkitSlot(mode, memberId, itemId, val) {
 }
 
 function updateMedkitNote(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).note = val;
   saveMedkit();
 }
 
 function updateMedkitSlotTime(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).slot_time = val;
   saveMedkit();
 }
 
 function updateMedkitHow(mode, memberId, itemId, val) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitItem(mode, memberId, itemId).how = val;
   saveMedkit();
 }
@@ -151,6 +172,7 @@ function updateMedkitHow(mode, memberId, itemId, val) {
 // --- Трекер приёма БАДов ---
 function toggleMedkitTakenDay(mode, memberId, itemId, dayKey, event) {
   if (event) event.stopPropagation();
+  if (!_canEditMedkit(mode, memberId)) return;
   var item = getMedkitItem(mode, memberId, itemId);
   if (!item.taken) item.taken = {};
   item.taken[dayKey] = !item.taken[dayKey];
@@ -161,12 +183,14 @@ function toggleMedkitTakenDay(mode, memberId, itemId, dayKey, event) {
 // --- Скрыть / показать препарат ---
 function hideMedkitItem(mode, memberId, itemId, event) {
   if (event) event.stopPropagation();
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitState(mode, memberId).hiddenItems[itemId] = true;
   saveMedkit();
   rMedkit();
 }
 
 function restoreMedkitItem(mode, memberId, itemId) {
+  if (!_canEditMedkit(mode, memberId)) return;
   delete getMedkitState(mode, memberId).hiddenItems[itemId];
   saveMedkit();
   rMedkit();
@@ -175,12 +199,14 @@ function restoreMedkitItem(mode, memberId, itemId) {
 // --- Скрыть / показать группу ---
 function hideMedkitGroup(mode, memberId, groupId, event) {
   if (event) event.stopPropagation();
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitState(mode, memberId).hiddenGroups[groupId] = true;
   saveMedkit();
   rMedkit();
 }
 
 function restoreMedkitGroup(mode, memberId, groupId) {
+  if (!_canEditMedkit(mode, memberId)) return;
   delete getMedkitState(mode, memberId).hiddenGroups[groupId];
   saveMedkit();
   rMedkit();
@@ -188,12 +214,14 @@ function restoreMedkitGroup(mode, memberId, groupId) {
 
 // --- Включить опциональную группу ---
 function enableMedkitGroup(mode, memberId, groupId) {
+  if (!_canEditMedkit(mode, memberId)) return;
   getMedkitState(mode, memberId).enabledGroups[groupId] = true;
   saveMedkit();
   rMedkit();
 }
 
 function disableMedkitGroup(mode, memberId, groupId) {
+  if (!_canEditMedkit(mode, memberId)) return;
   delete getMedkitState(mode, memberId).enabledGroups[groupId];
   saveMedkit();
   rMedkit();
@@ -202,6 +230,7 @@ function disableMedkitGroup(mode, memberId, groupId) {
 // --- Добавить препарат вручную ---
 function addMedkitCustomItem(mode, memberId, groupId, name) {
   if (!name || !name.trim()) return;
+  if (!_canEditMedkit(mode, memberId)) return;
   var state = getMedkitState(mode, memberId);
   var id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
   state.customItems.push({
@@ -217,6 +246,7 @@ function addMedkitCustomItem(mode, memberId, groupId, name) {
 // --- Удалить кастомный препарат ---
 function deleteMedkitCustomItem(mode, memberId, itemId, event) {
   if (event) event.stopPropagation();
+  if (!_canEditMedkit(mode, memberId)) return;
   var state = getMedkitState(mode, memberId);
   state.customItems = state.customItems.filter(function(i) {
     return i.id !== itemId;

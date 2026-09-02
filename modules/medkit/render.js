@@ -16,14 +16,20 @@ function rMedkit() {
   var mode = medkitMode;
   var memberId = medkitMemberId;
   var progress = getMedkitProgress(mode, memberId);
+  // Чужую личную аптечку можно только просматривать — переключаться на
+  // товарища в свитчере "Личная" задумано для "что у него есть на крайний
+  // случай", не для правки его списка (_canEditMedkit блокирует запись,
+  // тут — визуально гасим кнопки, чтобы не выглядело кликабельным).
+  var readOnly = mode === 'personal' && !_canEditMedkit(mode, memberId);
+  el.classList.toggle('mk-readonly', readOnly);
   var h = '';
 
   h += '<div class="topbar">';
   h += '<div class="tb-left"><div class="tb1">Аптечка</div>';
-  h += '<div class="tb2">' + (mode === 'common' ? 'Общая' : 'Личная — ' + escHtml(getMemberName(memberId))) + ' · ' + progress.done + ' / ' + progress.total + '</div></div>';
+  h += '<div class="tb2">' + (mode === 'common' ? 'Общая' : 'Личная — ' + escHtml(getMemberName(memberId))) + ' · ' + progress.done + ' / ' + progress.total + (readOnly ? ' · только просмотр' : '') + '</div></div>';
   h += '<div class="tb-right">';
   h += '<span class="tb-sync" id="syncStatus"></span>';
-  if (mode !== 'reference') h += '<button class="tb-btn" onclick="showMedkitImport()">⬇ Импорт</button>';
+  if (mode !== 'reference' && !readOnly) h += '<button class="tb-btn" onclick="showMedkitImport()">⬇ Импорт</button>';
   h += '</div></div>';
 
   h += '<div class="tabs">';

@@ -231,6 +231,10 @@
 #p-medkit {
   padding: 10px;
   padding-top: calc(env(safe-area-inset-top) + var(--app-header-h) + 10px);
+  /* padding: 10px выше перебивал #p-medkit{padding-bottom} из shared/app.css
+     (тот же вес селектора, этот файл подключается позже) — контент упирался
+     в нижнее меню. Возвращаем безопасный отступ явно. */
+  padding-bottom: calc(83px + env(safe-area-inset-bottom));
   max-width: 420px; margin: 0 auto;
 }
 .group.collapsed .drug,
@@ -380,7 +384,14 @@
   cursor: pointer;
 }
 
-.medkit-page,
-.medkit-wrap {
-  padding-bottom: calc(83px + env(safe-area-inset-bottom));
+/* Чужая "Личная" аптечка (свитчер на не-себя) — только просмотр, кнопки
+   правки визуально гашены; сама запись уже заблокирована в actions.js
+   (_canEditMedkit), это только чтобы не выглядело кликабельным. */
+.mk-readonly .hide-btn,
+.mk-readonly .enable-btn,
+.mk-readonly .gh-btn,
+.mk-readonly .cc,
+.mk-readonly .add-drug-row {
+  pointer-events: none;
+  opacity: .45;
 }

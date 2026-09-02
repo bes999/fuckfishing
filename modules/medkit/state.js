@@ -51,6 +51,27 @@ function getMedkitItem(mode, memberId, itemId) {
   return state.items[itemId];
 }
 
+// Группа считается фактически заполненной, если у любого её препарата
+// (из каталога или добавленного вручную) есть реальные данные — отмечен
+// как есть, указан слот/остаток/срок/заметка и т.п. Нужно для миграции:
+// когда стандартные категории стали personalOptional (раньше были
+// обязательными для всех), у людей, кто уже вёл свою личную аптечку, флаг
+// enabledGroups для них никогда не выставлялся — без этой проверки их уже
+// заполненные категории тихо спрятались бы за "не подключено".
+function _groupHasData(state, group) {
+  var ids = group.items.map(function(it) { return it.id; });
+  state.customItems.forEach(function(ci) {
+    if (ci.groupId === group.id) ids.push(ci.id);
+  });
+  for (var i = 0; i < ids.length; i++) {
+    var it = state.items[ids[i]];
+    if (!it) continue;
+    if (it.checked || it.slot || it.total || it.left || it.dose || it.expiry || it.note) return true;
+    if (it.taken && Object.keys(it.taken).length) return true;
+  }
+  return false;
+}
+
 function isGroupEnabled(mode, memberId, groupId) {
   var group = null;
   for (var i = 0; i < MEDKIT_BASE.length; i++) {
@@ -64,7 +85,8 @@ function isGroupEnabled(mode, memberId, groupId) {
   }
   if (mode === 'personal') {
     if (!group.personalOptional) return true;
-    return !!getMedkitState(mode, memberId).enabledGroups[groupId];
+    var state = getMedkitState(mode, memberId);
+    return !!state.enabledGroups[groupId] || _groupHasData(state, group);
   }
   return true;
 }
