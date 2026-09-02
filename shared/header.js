@@ -114,7 +114,9 @@ const AppHeader = (() => {
     const trips = TripsData.getAll();
     const done  = trips.filter(t => t.status === 'done').length;
     let fish = 0;
-    trips.forEach(t => (t.fish || []).forEach(f => fish += f.count || 0));
+    if (typeof CatchesState !== 'undefined') {
+      trips.forEach(t => fish += CatchesState.speciesForTrip(t.id).total);
+    }
     return `${done} поездок · ${fish} рыб`;
   }
 

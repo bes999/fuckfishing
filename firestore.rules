@@ -73,6 +73,18 @@ service cloud.firestore {
       }
     }
 
+    // Вложенное правило выше (match /trips/{tripId} { match /catches/{docId} })
+    // действует только на запросы к конкретной поездке — collectionGroup-
+    // запрос по всем catches сразу (см. CatchesFirebase.listenAll, нужен
+    // для агрегированной статистики на Главной/в "Планах") требует
+    // отдельного рекурсивного правила, иначе Firestore отвечает
+    // permission-denied даже при isMember() == true. Запись сюда не нужна —
+    // пишут всегда по конкретному пути trips/{tripId}/catches, это уже
+    // покрыто правилом выше.
+    match /{path=**}/catches/{docId} {
+      allow read: if isMember();
+    }
+
     match /menu/{tripId}        { allow read, write: if isMember(); }
     match /shopping/{tripId}    { allow read, write: if isMember(); }
     match /bar_reviews/{id}     { allow read, write: if isMember(); }

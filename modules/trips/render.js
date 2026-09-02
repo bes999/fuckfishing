@@ -122,7 +122,10 @@ const TripsRender = (() => {
     const iconCls = t.type === 'expedition' ? 'exp' : 'fish';
     const dates = _dateRange(t.startDate, t.endDate);
     const parts = t.participants ? t.participants.join(' · ') : '';
-    const fish  = (t.fish || []).map(f => `${f.species} ×${f.count}`).join(', ');
+    // trip.fish не пишется с переезда уловов в Firestore-подколлекцию —
+    // реальная разбивка по видам берётся из глобального кэша уловов.
+    const fishList = typeof CatchesState !== 'undefined' ? CatchesState.speciesForTrip(t.id).list : [];
+    const fish  = fishList.map(f => `${f.species} ×${f.count}`).join(', ');
     const daysLeft = Math.ceil((new Date(t.startDate) - new Date()) / 86400000);
 
     return `

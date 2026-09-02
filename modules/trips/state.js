@@ -94,11 +94,14 @@ const TripsState = (() => {
     });
     let fishCount = 0;
     const species = new Set();
+    // trip.fish самой поездки давно не пишется (уловы — Firestore-
+    // подколлекция с 2026-08-21) — реальные цифры берём из
+    // CatchesState.speciesForTrip, наполненного CatchesFirebase.listenAll.
     trips.forEach(t => {
-      (t.fish || []).forEach(f => {
-        fishCount += f.count || 0;
-        if (f.species) species.add(f.species);
-      });
+      if (typeof CatchesState === 'undefined') return;
+      const { total, list } = CatchesState.speciesForTrip(t.id);
+      fishCount += total;
+      list.forEach(f => species.add(f.species));
     });
     return {
       trips: trips.length,

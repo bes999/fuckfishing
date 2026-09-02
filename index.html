@@ -304,6 +304,20 @@
         }
       });
 
+      // Уловы всех поездок сразу — только для статистики (см.
+      // CatchesState.speciesForTrip); не блокирует старт приложения,
+      // цифры на Главной/в "Планах" просто дорисуются, когда придёт первый
+      // снапшот (тот же паттерн, что уже используется для погоды).
+      if (typeof CatchesFirebase !== 'undefined') {
+        CatchesFirebase.listenAll(arr => {
+          CatchesState.setAllCatches(arr);
+          if (_tripsBooted) {
+            if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+            if (typeof TripsIndex !== 'undefined') TripsIndex.render();
+          }
+        });
+      }
+
       // Ждём первый снапшот (обычно почти мгновенно — офлайн-персистентность
       // включена в shared/config.js), затем один раз мигрируем локальные
       // поездки, которых ещё нет в Firestore, и только после этого

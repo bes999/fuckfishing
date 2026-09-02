@@ -51,6 +51,25 @@ const CatchesFirebase = (() => {
     if (_unsub) { _unsub(); _unsub = null; }
   }
 
+  // Реалтайм по уловам СРАЗУ ВСЕХ поездок (collectionGroup, не под
+  // конкретным trips/{tripId}) — нужен для агрегированной статистики
+  // (Главная/шапка/карточки "Планов"), которую иначе пришлось бы считать
+  // по trip.fish — полю, которое с переезда уловов в подколлекцию Firestore
+  // больше никогда не пишется и оставалось нулевым. Правила Firestore для
+  // catches/{docId} завязаны только на isMember(), без обращения к tripId
+  // родителя — тот же rule применяется и к collectionGroup-запросам.
+  function listenAll(cb) {
+    return firebase.firestore().collectionGroup('catches')
+      .onSnapshot(snap => {
+        const arr = [];
+        snap.forEach(doc => {
+          const tripId = doc.ref.parent.parent.id;
+          arr.push(Object.assign(CatchesData.normalizeCatch(doc.data(), doc.id), { tripId }));
+        });
+        cb(arr);
+      }, err => console.warn('catches listenAll:', err));
+  }
+
   // Разовое чтение без подписки — для обложки завершённой поездки, чтобы
   // не задевать уже идущую (если есть) подписку страницы Улов.
   function getOnce(tripId) {
@@ -114,7 +133,7 @@ const CatchesFirebase = (() => {
   }
 
   return {
-    listen, stopListening, getOnce,
+    listen, stopListening, listenAll, getOnce,
     addCatch, deleteCatch,
     migrateFromLocalStorage,
   };
