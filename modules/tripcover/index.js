@@ -815,6 +815,7 @@ const TripCoverIndex = (() => {
         <div class="cover-section"><button class="g-info-add-btn" data-action="info-add-rating">+ Оценить поездку</button></div>` : ''}
       ${!hasComment ? `
         <div class="cover-section"><button class="g-info-add-btn" data-action="info-add-comment">+ Добавить заметку</button></div>` : ''}
+      <div class="g-info-bottom-pad"></div>
     `;
   }
 
@@ -1116,6 +1117,12 @@ const TripCoverIndex = (() => {
         .g-tab.active{background:#fff;color:var(--topbar-bg)}
         .g-tab:active{transform:scale(0.96)}
         #g-tab-panel{transition:opacity 120ms var(--ease)}
+        /* Другие модули, монтируемые в #g-tab-panel (Улов/Расходы/...),
+           уже сами кладут нижний отступ под таб-бар в своих .xx-scroll —
+           таб "Инфо" рисуется прямо в панель без обёртки и своего отступа
+           не имел, поэтому последний блок (рейтинг/заметка) прятался под
+           нижним меню. */
+        .g-info-bottom-pad{height:calc(83px + env(safe-area-inset-bottom))}
         .g-tab-settings{flex:0 0 auto;margin-left:2px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;display:inline-flex;align-items:center;justify-content:center}
         .g-tab-settings:active{background:rgba(255,255,255,.16)}
         .g-tab-word{width:auto;border-radius:15px;padding:0 12px;font-size:13px;font-weight:600;font-family:inherit;white-space:nowrap}
