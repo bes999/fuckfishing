@@ -555,8 +555,8 @@ function rMedkitReference() {
   h += '<div class="contacts">';
   h += '<div class="contact-item"><div><div class="contact-name">Единый экстренный</div></div><a href="tel:112" class="contact-phone">112</a></div>';
   h += '<div class="contact-item"><div><div class="contact-name">Скорая</div></div><a href="tel:103" class="contact-phone">103</a></div>';
-  h += '<div class="contact-item"><div><div class="contact-name">Обл. больница Южный</div><div class="contact-sub">ул. Мира, 430</div></div><a href="tel:+74242460051" class="contact-phone">46-00-51</a></div>';
-  h += '<div class="contact-item"><div><div class="contact-name">ЦРБ Долинск</div></div><a href="tel:+74244323344" class="contact-phone">3-23-44</a></div>';
+  h += '<div class="contact-item"><div><div class="contact-name">Пожарная</div></div><a href="tel:101" class="contact-phone">101</a></div>';
+  h += '<div class="contact-item"><div><div class="contact-name">Полиция</div></div><a href="tel:102" class="contact-phone">102</a></div>';
   h += '</div>';
   h += '<div class="sep-ref">Ситуации</div>';
   h += '<div id="emergencyList">' + rEmergencyList(EMERGENCY) + '</div>';
