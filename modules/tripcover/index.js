@@ -761,13 +761,45 @@ const TripCoverIndex = (() => {
       ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${wrap(pressureChart)}</div>` : ''}`;
   }
 
+  // Примета по клёву для таба "Инфо" — переиспользует _fishingHint (та же
+  // логика, что и в "Погода сегодня" для маршрута экспедиций), только
+  // пересчитанную на диапазон дат самой поездки, а не обязательно
+  // "сегодня" — рыбалка чаще всего уже прошла или ещё впереди, не идёт
+  // прямо в момент просмотра. Для однодневной поездки с почасовыми данными
+  // сравниваем среднее давление первой и второй половины дня; для
+  // многодневной — последний день поездки с первым.
+  function _pressureHintForTrip(trip) {
+    const isSingleDay = trip.startDate === trip.endDate;
+    const avg = arr => {
+      const v = arr.filter(x => x != null);
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+    };
+    if (isSingleDay && trip.weatherHourly && trip.weatherHourly.length >= 4) {
+      const h = trip.weatherHourly;
+      const mid = Math.floor(h.length / 2);
+      const prevEntry = { pressure: avg(h.slice(0, mid).map(x => x.pressure)) };
+      const entry = {
+        pressure: avg(h.slice(mid).map(x => x.pressure)),
+        wind:     Math.max(...h.map(x => x.wind || 0)),
+        precip:   h.reduce((s, x) => s + (x.precip || 0), 0),
+      };
+      return _fishingHint(entry, prevEntry);
+    }
+    if (trip.weatherDaily && trip.weatherDaily.length >= 2) {
+      const d = trip.weatherDaily;
+      return _fishingHint(d[d.length - 1], d[0]);
+    }
+    return null;
+  }
+
   // Подробная погода поездки — отдельный график на параметр, вместо одних
   // только текущих бейджей. Однодневная поездка — по часам (см. выше),
   // многодневная — по дням. Данные уже загружены (см. _maybeRefreshWeather
   // / shared/weather.js), новый запрос отсюда не идёт.
   // Схлопываемый аккордеон (тот же _acc, что и у Windy рядом) — 4 графика
   // подряд разворачивают таб на приличную высоту, а нужны не всегда сразу
-  // при каждом заходе, так что по умолчанию свёрнут.
+  // при каждом заходе, так что по умолчанию свёрнут. Примета по клёву —
+  // над аккордеоном, всегда на виду, разворачивать графики ради неё не надо.
   function _weatherChartsSection(trip) {
     const isSingleDay = trip.startDate === trip.endDate;
     const hourly = trip.weatherHourly;
@@ -784,7 +816,10 @@ const TripCoverIndex = (() => {
       return '';
     }
 
-    return `<div id="g-weather-charts" class="g-info-gap">${_acc(title, body, false)}</div>`;
+    const hint = _pressureHintForTrip(trip);
+    const hintHtml = hint ? `<div class="g-wx-hint g-wx-hint-${hint.mood}">🎣 ${_esc(hint.text)}</div>` : '';
+
+    return `<div id="g-weather-charts" class="g-info-gap">${hintHtml}${_acc(title, body, false)}</div>`;
   }
 
   // Таб "Инфо" для простой "Рыбалки" (без AI-импорта) — раньше это была
@@ -1198,6 +1233,11 @@ const TripCoverIndex = (() => {
         .g-wx-hint{margin-top:8px;font-size:11px;line-height:1.4;color:var(--label3)}
         .g-wx-hint-good{color:#34c759}
         .g-wx-hint-bad{color:#ff9f0a}
+        /* Вне .g-wx-card (прямо над аккордеоном погоды в Инфо) — своя
+           боковая привязка вместо margin-top:8px, чтобы совпадать по
+           краям с карточками рядом, и покрупнее, раз это не мелкая
+           приписка внизу карточки, а самостоятельная строка. */
+        #g-weather-charts > .g-wx-hint{margin:0 16px 8px;font-size:13px}
         .g-windy-wrap{height:320px}
         .g-windy-frame{width:100%;height:100%;border:none;display:block}
         .g-empty{text-align:center;padding:56px 24px}
