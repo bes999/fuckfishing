@@ -555,7 +555,7 @@ function rMedkitReference() {
   h += '<div class="contacts">';
   h += '<div class="contact-item"><div><div class="contact-name">Единый экстренный</div></div><a href="tel:112" class="contact-phone">112</a></div>';
   h += '<div class="contact-item"><div><div class="contact-name">Скорая</div></div><a href="tel:103" class="contact-phone">103</a></div>';
-  h += '<div class="contact-item"><div><div class="contact-name">Пожарная</div></div><a href="tel:101" class="contact-phone">101</a></div>';
+  h += '<div class="contact-item"><div><div class="contact-name">Пожарные и спасатели (МЧС)</div></div><a href="tel:101" class="contact-phone">101</a></div>';
   h += '<div class="contact-item"><div><div class="contact-name">Полиция</div></div><a href="tel:102" class="contact-phone">102</a></div>';
   h += '</div>';
   h += '<div class="sep-ref">Ситуации</div>';
