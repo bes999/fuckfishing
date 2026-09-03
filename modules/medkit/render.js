@@ -29,6 +29,7 @@ function rMedkit() {
   h += '<div class="tb2">' + (mode === 'common' ? 'Общая' : 'Личная — ' + escHtml(getMemberName(memberId))) + ' · ' + progress.done + ' / ' + progress.total + (readOnly ? ' · только просмотр' : '') + '</div></div>';
   h += '<div class="tb-right">';
   h += '<span class="tb-sync" id="syncStatus"></span>';
+  if (mode === 'personal' && !readOnly) h += '<button class="tb-btn" onclick="showMedkitCategoryPicker()">☑ Категории</button>';
   if (mode !== 'reference' && !readOnly) h += '<button class="tb-btn" onclick="showMedkitImport()">⬇ Импорт</button>';
   h += '</div></div>';
 
