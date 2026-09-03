@@ -99,6 +99,25 @@
 .atl-trip-name { color: var(--label); font-weight: 600; }
 .atl-trip-date { color: var(--label3); }
 
+/* ── Таблица видов рыбы (аккордеон "Виды рыбы и сроки хода") ── */
+.atl-sptable { display: flex; flex-direction: column; gap: 10px; }
+.atl-sprow { padding-bottom: 8px; border-bottom: .5px solid var(--sep2); }
+.atl-sprow:last-child { border-bottom: none; padding-bottom: 0; }
+.atl-sprow-hd { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.atl-sp-name { font-size: 14px; font-weight: 700; color: var(--label); }
+.atl-sp-months { font-size: 12px; color: var(--accent); white-space: nowrap; }
+.atl-sp-note { font-size: 12px; color: var(--label3); margin-top: 2px; line-height: 1.4; }
+
+/* ── Простые списки (природа/туризм) ── */
+.atl-plainlist { display: flex; flex-direction: column; gap: 10px; }
+.atl-plainrow { font-size: 13px; line-height: 1.5; color: var(--label2); }
+.atl-plainrow b { color: var(--label); }
+
+.atl-badge--ok { background: rgba(52,199,89,.12); color: var(--green); }
+.atl-river-hero-note {
+  margin-top: 10px; font-size: 13px; line-height: 1.5; color: var(--label2);
+}
+
 /* ── Пусто ── */
 .atl-empty { text-align: center; padding: 48px 20px; }
 .atl-empty-icon { font-size: 40px; margin-bottom: 12px; }

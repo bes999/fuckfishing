@@ -16,12 +16,24 @@ const AtlasRender = (() => {
   // этого достаточно для счётчика "N поездок туда", не для точной аналитики.
   function _tripsForRegion(regionName) {
     if (typeof TripsData === 'undefined') return [];
-    const needle = regionName.toLowerCase().split(' ')[0]; // "Сахалин" из "Сахалин"
+    const needle = regionName.toLowerCase().split(' ')[0];
     return TripsData.getAll().filter(t => {
       const rivers = (t.importData?.rivers || t.rivers || []);
       const hay = (t.name + ' ' + rivers.map(r => (r.region || '') + ' ' + (r.name || '')).join(' ')).toLowerCase();
       return hay.includes(needle);
     });
+  }
+
+  function _acc(title, bodyHtml) {
+    const id = 'atlacc_' + Math.random().toString(36).slice(2);
+    return `
+      <div class="atl-acc">
+        <div class="atl-acc-hd" data-atl-toggle="${id}">
+          <span class="atl-acc-title">${title}</span>
+          <span class="atl-acc-chev">⌄</span>
+        </div>
+        <div class="atl-acc-body" id="${id}"><div class="atl-acc-body-inner"><div class="atl-acc-content">${bodyHtml}</div></div></div>
+      </div>`;
   }
 
   /* ══════════════════ Список регионов ══════════════════ */
@@ -63,6 +75,25 @@ const AtlasRender = (() => {
   function region(r) {
     const trips = _tripsForRegion(r.name);
     const licensed = r.rivers.filter(riv => riv.license && riv.license !== 'Свободная').length;
+    const empty = !r.rivers.length;
+
+    if (empty) {
+      return `
+        <div class="atl-topbar">
+          <button class="atl-back" data-atl-back="list">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <div class="atl-topbar-eyebrow">${_esc(r.subtitle)}</div>
+          <div class="atl-topbar-title">${r.emoji} ${_esc(r.name)}</div>
+        </div>
+        <div class="atl-scroll">
+          <div class="atl-empty">
+            <div class="atl-empty-icon">📍</div>
+            <div class="atl-empty-title">Пока пусто</div>
+            <div class="atl-empty-sub">Как только определимся с поездкой сюда или ты расскажешь, что уже знаешь по прошлым разам — начнём собирать виды рыб, реки и точки.</div>
+          </div>
+        </div>`;
+    }
 
     return `
       <div class="atl-topbar">
@@ -73,21 +104,22 @@ const AtlasRender = (() => {
         <div class="atl-topbar-title">${r.emoji} ${_esc(r.name)}</div>
       </div>
       <div class="atl-scroll">
-        ${r.rivers.length ? `
         <div class="atl-stats">
+          <div class="atl-stat"><div class="atl-stat-num">${r.species.length}</div><div class="atl-stat-lbl">видов рыбы</div></div>
           <div class="atl-stat"><div class="atl-stat-num">${r.rivers.length}</div><div class="atl-stat-lbl">рек / точек</div></div>
-          <div class="atl-stat"><div class="atl-stat-num">${licensed}</div><div class="atl-stat-lbl">по путёвке</div></div>
           <div class="atl-stat"><div class="atl-stat-num">${trips.length}</div><div class="atl-stat-lbl">наших поездок</div></div>
         </div>
-        <div class="atl-sec-label">Реки и точки</div>
+
+        ${r.species.length ? _acc('🐟 Виды рыбы и сроки хода', _speciesTable(r.species)) : ''}
+        ${r.landmarks.length ? _acc('🏞 Природные особенности', _list(r.landmarks)) : ''}
+        ${r.history ? _acc('📜 История', `<p>${_esc(r.history)}</p>`) : ''}
+        ${r.tourism.length ? _acc('🧭 Туристическая справка', _list(r.tourism)) : ''}
+
+        <div class="atl-sec-label">Реки и точки${licensed ? ` · ${licensed} по путёвке` : ''}</div>
         <div class="atl-riverlist">
-          ${r.rivers.map(riv => _riverRow(r.id, riv)).join('')}
-        </div>` : `
-        <div class="atl-empty">
-          <div class="atl-empty-icon">📍</div>
-          <div class="atl-empty-title">Пока пусто</div>
-          <div class="atl-empty-sub">Как только определимся с поездкой сюда — начнём собирать реки, виды рыб и точки.</div>
-        </div>`}
+          ${r.rivers.map(riv => _riverRow(riv)).join('')}
+        </div>
+
         ${trips.length ? `
         <div class="atl-sec-label">Наши поездки сюда</div>
         <div class="atl-triplist">
@@ -99,7 +131,28 @@ const AtlasRender = (() => {
       </div>`;
   }
 
-  function _riverRow(regionId, riv) {
+  function _speciesTable(species) {
+    return `
+      <div class="atl-sptable">
+        ${species.map(s => `
+          <div class="atl-sprow">
+            <div class="atl-sprow-hd">
+              <span class="atl-sp-name">${_esc(s.name)}</span>
+              <span class="atl-sp-months">${_esc(s.months)}</span>
+            </div>
+            ${s.note ? `<div class="atl-sp-note">${_esc(s.note)}</div>` : ''}
+          </div>`).join('')}
+      </div>`;
+  }
+
+  function _list(items) {
+    return `
+      <div class="atl-plainlist">
+        ${items.map(i => `<div class="atl-plainrow"><b>${_esc(i.name)}</b> — ${_esc(i.desc)}</div>`).join('')}
+      </div>`;
+  }
+
+  function _riverRow(riv) {
     const licenseBadge = riv.license && riv.license !== 'Свободная'
       ? `<span class="atl-badge atl-badge--warn">по путёвке</span>`
       : '';
@@ -118,14 +171,6 @@ const AtlasRender = (() => {
 
   function river(r, riv) {
     const facts = [riv.type, riv.size].filter(Boolean).join(' · ');
-    const sections = [
-      { title: '🚗 Доступ', body: riv.access },
-      { title: '🎣 Где и как ловить', body: riv.fishing },
-      { title: '🧰 Снасть', body: riv.lures },
-      { title: '⏰ Лучшее время', body: riv.best },
-      { title: '👥 Люди / статус', body: [riv.crowd, riv.license].filter(Boolean).join('. ') },
-    ].filter(s => s.body && s.body !== '—');
-
     return `
       <div class="atl-topbar">
         <button class="atl-back" data-atl-back="region" data-atl-region-id="${r.id}">
@@ -137,22 +182,10 @@ const AtlasRender = (() => {
       <div class="atl-scroll">
         <div class="atl-river-hero">
           <div class="atl-river-hero-facts">${_esc(facts)}</div>
-          ${riv.warning ? `<div class="atl-warning">${_esc(riv.warning)}</div>` : ''}
+          <div class="atl-badge ${riv.license !== 'Свободная' ? 'atl-badge--warn' : 'atl-badge--ok'}" style="margin-top:8px;display:inline-block">${_esc(riv.license)}</div>
+          ${riv.note ? `<div class="atl-river-hero-note">${_esc(riv.note)}</div>` : ''}
           ${riv.lat != null ? `<div class="atl-nav-btn" data-atl-nav="${_navUrl(riv.lat, riv.lon, riv.name)}">📍 Открыть на карте</div>` : ''}
         </div>
-        ${sections.map(_accSection).join('')}
-      </div>`;
-  }
-
-  function _accSection(s) {
-    const id = 'atlacc_' + Math.random().toString(36).slice(2);
-    return `
-      <div class="atl-acc">
-        <div class="atl-acc-hd" data-atl-toggle="${id}">
-          <span class="atl-acc-title">${s.title}</span>
-          <span class="atl-acc-chev">⌄</span>
-        </div>
-        <div class="atl-acc-body" id="${id}"><div class="atl-acc-body-inner"><div class="atl-acc-content">${_esc(s.body)}</div></div></div>
       </div>`;
   }
 
