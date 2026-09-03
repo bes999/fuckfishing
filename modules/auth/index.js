@@ -43,12 +43,17 @@ const AuthActions = (() => {
   async function completeOnboarding(draft) {
     if (!_user) return;
 
-    // Первый в коллекции → организатор
-    let role = 'member';
+    // "Я первый?" — не через members.limit(1) (её read и так требует
+    // isMember()/isInvited(), которых у самого первого человека в пустой
+    // базе быть не может), а через отдельный публично читаемый маркер
+    // system/bootstrap (см. firestore.rules). Первый онбординг — сразу
+    // организатор и ставит этот маркер, все следующие требуют приглашения.
+    let isFirstEver = false;
     try {
-      const snap = await db.collection('members').limit(1).get();
-      if (snap.empty) role = 'organizer';
+      const bootDoc = await db.collection('system').doc('bootstrap').get();
+      isFirstEver = !bootDoc.exists;
     } catch (_) {}
+    const role = isFirstEver ? 'organizer' : 'member';
 
     _profile = {
       uid:         _user.uid,
@@ -70,6 +75,15 @@ const AuthActions = (() => {
 
     try {
       await db.collection('members').doc(_user.uid).set(_profile);
+      if (isFirstEver) {
+        // Ставим маркер сразу после успешного создания профиля — если бы
+        // раньше (до) и set() профиля вдруг не прошёл, false-первый не
+        // должен был бы блокировать реального первого от повторной попытки.
+        await db.collection('system').doc('bootstrap').set({
+          firstUid: _user.uid,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }).catch(() => {});
+      }
     } catch (e) {
       alert('Этот email пока не приглашён. Попроси того, кто уже пользуется приложением, сначала отправить тебе приглашение.');
       return;

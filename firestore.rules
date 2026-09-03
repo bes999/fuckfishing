@@ -30,12 +30,32 @@ service cloud.firestore {
         get(/databases/$(database)/documents/trips/$(tripId)).data.ownerId == request.auth.uid;
     }
 
+    // Одноразовый публичный маркер "кто-то уже прошёл онбординг" —
+    // используется вместо чтения members.limit(1) для решения "я первый?",
+    // потому что read на /members и так требует isMember()/isInvited(),
+    // а самый первый человек в пустой базе не может быть ни тем, ни другим
+    // (иначе никто и никогда не смог бы стать первым организатором вообще —
+    // до этого документа completeOnboarding() тихо проваливал свою же
+    // "я первый?" проверку permission-denied'ом и никогда не назначал
+    // организатора). Существование этого документа само по себе не
+    // секрет, поэтому read открыт всем; create — только пока документа
+    // ещё нет (значит ставит его ровно один раз, самый первый онбординг).
+    match /system/bootstrap {
+      allow read: if true;
+      allow create: if isSignedIn() && !exists(/databases/$(database)/documents/system/bootstrap);
+      allow update, delete: if false;
+    }
+
     match /members/{uid} {
       // Читать список нужно даже до онбординга — completeOnboarding()
       // (modules/auth/index.js) проверяет "я первый пользователь?" ДО
       // того как свой профиль создан.
       allow read:   if isMember() || isInvited();
-      allow create: if isSignedIn() && request.auth.uid == uid && isInvited();
+      // Первый человек в пустой базе (system/bootstrap ещё не существует)
+      // может пройти онбординг без приглашения — иначе бутстрап приложения
+      // с нуля невозможен вообще никак через UI.
+      allow create: if isSignedIn() && request.auth.uid == uid &&
+        (isInvited() || !exists(/databases/$(database)/documents/system/bootstrap));
       allow update: if isMember() && (request.auth.uid == uid || isOrganizer());
       allow delete: if isMember() && isOrganizer();
     }
