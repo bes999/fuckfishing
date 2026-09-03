@@ -24,6 +24,7 @@ const AppHeader = (() => {
   let _open = false;
 
   const PERSONAL_ITEMS = [
+    { id: 'atlas',            label: 'Атлас',     icon: 'ti-anchor' },
     { id: 'gear',             label: 'Снаряга',   icon: 'ti-backpack' },
     { id: 'medkit',           label: 'Аптечка',   icon: 'ti-first-aid-kit' },
     { id: 'medkit-reference', label: 'Справка',   icon: 'ti-list' },

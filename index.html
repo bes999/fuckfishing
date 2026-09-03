@@ -29,6 +29,7 @@
   <link rel="stylesheet" href="modules/shopping/styles.css">
   <link rel="stylesheet" href="modules/expenses/styles.css">
   <link rel="stylesheet" href="modules/catches/styles.css">
+  <link rel="stylesheet" href="modules/atlas/styles.css">
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -73,6 +74,7 @@
     <div id="p-bar" class="page"></div>
     <div id="p-safety"  class="page"></div>
     <div id="p-gear" class="page"></div>
+    <div id="p-atlas" class="page"></div>
   </div>
 
   <!-- Navigation (рендерится сюда) -->
@@ -167,6 +169,10 @@
   <script src="modules/expenses/index.js"></script>
 
   <!-- ── Catches module ── -->
+  <script src="modules/atlas/data.js"></script>
+  <script src="modules/atlas/render.js"></script>
+  <script src="modules/atlas/index.js"></script>
+
   <script src="modules/catches/data.js"></script>
   <script src="modules/catches/state.js"></script>
   <script src="modules/catches/firebase.js"></script>
@@ -268,6 +274,9 @@
       } else if (pageId === 'recipes') {
         AppRouter.show('recipes');
         RecipesIndex.show(document.getElementById('p-recipes'));
+      } else if (pageId === 'atlas') {
+        AppRouter.show('atlas');
+        AtlasIndex.show(document.getElementById('p-atlas'));
       } else if (pageId === 'gear') {
         AppRouter.show('gear');
         const uid = window.APP?.profile?.uid;
