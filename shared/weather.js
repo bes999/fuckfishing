@@ -28,7 +28,7 @@ const WeatherService = (() => {
     const params = new URLSearchParams({
       latitude: lat, longitude: lon,
       start_date: startDate, end_date: endDate,
-      daily: DAILY, timezone: 'auto'
+      daily: DAILY, timezone: 'auto', wind_speed_unit: 'ms'
     });
     const res = await fetch(url + '?' + params.toString());
     if (!res.ok) throw new Error('weather http ' + res.status);
@@ -48,6 +48,7 @@ const WeatherService = (() => {
       precip:   Math.round((_avg(d.precipitation_sum) || 0) * 10) / 10,
       pressure: Math.round(_avg(d.surface_pressure_mean) || 0),
       wind:     windVals.length ? Math.round(Math.max(...windVals)) : null,
+      windUnit: 'ms',
       source,
       fetchedAt: Date.now()
     };
@@ -107,7 +108,7 @@ const WeatherService = (() => {
     const params = new URLSearchParams({
       latitude: lat, longitude: lon,
       start_date: date, end_date: date,
-      hourly: HOURLY, timezone: 'auto'
+      hourly: HOURLY, timezone: 'auto', wind_speed_unit: 'ms'
     });
     const res = await fetch(url + '?' + params.toString());
     if (!res.ok) throw new Error('weather http ' + res.status);

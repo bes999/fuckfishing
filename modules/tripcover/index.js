@@ -115,7 +115,10 @@ const TripCoverIndex = (() => {
     // поездка, кэшированная до появления часового графика), это отдельная
     // причина дёрнуть обновление, даже когда w уже "archive" и вечно свежий.
     const missingHourly = trip.startDate === trip.endDate && !trip.weatherHourly;
-    const isStale = force || !w || missingHourly || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
+    // Ветер закэширован ещё в км/ч (до перехода на wind_speed_unit=ms в
+    // запросе) — у старых записей windUnit просто нет, добираем один раз.
+    const staleWindUnit = !!w && w.windUnit !== 'ms';
+    const isStale = force || !w || missingHourly || staleWindUnit || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
     if (!isStale) return;
 
     // Однодневная рыбалка — суточный максимум/минимум почти бесполезен,
@@ -222,7 +225,7 @@ const TripCoverIndex = (() => {
       else                            parts.push('давление немного ' + (delta > 0 ? 'растёт' : 'падает') + ' — клёв может быть неровным');
     }
 
-    if (entry.wind != null && entry.wind >= 30) {
+    if (entry.wind != null && entry.wind >= 8) { // 8 м/с — сильный ветер (запрос к Open-Meteo просит wind_speed_unit=ms)
       parts.push('сильный ветер — рыба может уйти на глубину');
       mood = 'bad';
     }
@@ -260,7 +263,7 @@ const TripCoverIndex = (() => {
         <div class="g-wx-temp">${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°</div>
         <div class="g-wx-grid">
           <div class="g-wx-item"><div class="g-wx-ic">🌧</div><div class="g-wx-val">${entry.precip ? (Math.round(entry.precip*10)/10 + ' мм') : '0 мм'}</div><div class="g-wx-lbl">осадки</div></div>
-          <div class="g-wx-item"><div class="g-wx-ic">💨</div><div class="g-wx-val">${entry.wind != null ? Math.round(entry.wind) : '—'}</div><div class="g-wx-lbl">км/ч</div></div>
+          <div class="g-wx-item"><div class="g-wx-ic">💨</div><div class="g-wx-val">${entry.wind != null ? Math.round(entry.wind) : '—'}</div><div class="g-wx-lbl">м/с</div></div>
           <div class="g-wx-item"><div class="g-wx-ic">🧭</div><div class="g-wx-val">${entry.pressure != null ? Math.round(entry.pressure) : '—'}</div><div class="g-wx-lbl">гПа</div></div>
         </div>
         ${(entry.sunrise || entry.sunset) ? `
@@ -318,7 +321,7 @@ const TripCoverIndex = (() => {
           <div class="cover-cond">
             <div class="cover-cond-icon">💨</div>
             <div class="cover-cond-val">${w.wind}</div>
-            <div class="cover-cond-label">км/ч</div>
+            <div class="cover-cond-label">м/с</div>
           </div>` : ''}
         </div>
       </div>`;
@@ -721,7 +724,7 @@ const TripCoverIndex = (() => {
     return `
       <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C (макс/мин)</div>${tempChart}${axis}</div>
       <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${precipChart}${axis}</div>
-      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${windChart}${axis}</div>` : ''}
+      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, м/с</div>${windChart}${axis}</div>` : ''}
       ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${pressureChart}${axis}</div>` : ''}`;
   }
 
@@ -757,7 +760,7 @@ const TripCoverIndex = (() => {
     return `
       <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C</div>${wrap(tempChart)}</div>
       <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${wrap(precipChart)}</div>
-      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, км/ч</div>${wrap(windChart)}</div>` : ''}
+      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, м/с</div>${wrap(windChart)}</div>` : ''}
       ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${wrap(pressureChart)}</div>` : ''}`;
   }
 
