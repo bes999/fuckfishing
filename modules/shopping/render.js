@@ -182,8 +182,8 @@ _bodyHandler = e => {
   }
   if (action === 'toggle') {
     e.stopPropagation();
-    ShoppingState.toggleBought(_tripId, catId, itemId);
-    _sync();
+    const newVal = ShoppingState.toggleBought(_tripId, catId, itemId);
+    if (newVal !== null) ShoppingFirebase.saveBought(_tripId, itemId, newVal);
     _rebuildCat(catId);
     return;
   }

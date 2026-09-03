@@ -24,19 +24,38 @@ const ShoppingState = (() => {
     return _data[tripId].categories;
   }
 
-  function setFromFirebase(tripId, categories) {
+  // boughtMap — новое отдельное поле из Firestore (см. ShoppingFirebase.
+  // saveBought), источник истины для "куплено"; накатываем поверх того,
+  // что лежит в самих items (там bought могло устареть — раньше это было
+  // единственное место, где хранился статус). Без boughtMap (старый
+  // документ, ещё никто не отмечал после обновления) просто оставляем
+  // то, что уже в categories.
+  function setFromFirebase(tripId, categories, boughtMap) {
     if (!_data[tripId]) _data[tripId] = {};
+    if (boughtMap) {
+      categories.forEach(cat => {
+        cat.items.forEach(item => {
+          if (Object.prototype.hasOwnProperty.call(boughtMap, item.id)) {
+            item.bought = !!boughtMap[item.id];
+          }
+        });
+      });
+    }
     _data[tripId].categories = categories;
     _save();
   }
 
+  // Возвращает новое значение bought (или null, если позиция не найдена) —
+  // вызывающий код (render.js) шлёт в Firestore ТОЛЬКО этот один флаг
+  // через saveBought, а не весь список.
   function toggleBought(tripId, catId, itemId) {
     const cat = getCategories(tripId).find(c => c.id === catId);
-    if (!cat) return;
+    if (!cat) return null;
     const item = cat.items.find(i => i.id === itemId);
-    if (!item) return;
+    if (!item) return null;
     item.bought = !item.bought;
     _save();
+    return item.bought;
   }
 
   function updateQty(tripId, catId, itemId, qty) {
