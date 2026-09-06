@@ -47,22 +47,20 @@ const MembersRender = (() => {
 
   async function showProfile(uid, currentUid) {
     _activeTab = 'profile';
-    const tripId = window.APP?.currentTripId;
-    const [profile, catchStat, balance] = await Promise.all([
-      MembersFirebase.getProfile(uid),
-      MembersFirebase.getCatchStats(uid, tripId),
-      MembersFirebase.getExpenseBalance(uid, tripId)
-    ]);
+    const profile = await MembersFirebase.getProfile(uid);
     if (!profile) return;
 
     const isMe  = uid === currentUid;
     const isOrg = AuthActions.isOrganizer();
-    _renderProfilePage(profile, catchStat, balance, isMe, isOrg);
+    _renderProfilePage(profile, isMe, isOrg);
   }
 
-  function _renderProfilePage(profile, catchStat, balance, isMe, isOrg) {
+  function _renderProfilePage(profile, isMe, isOrg) {
     const pg = document.getElementById('p-members');
     if (!pg) return;
+
+    const tripsCount = _tripsForProfile(profile.uid).length;
+    const topMonth   = _topFishingMonth(profile);
 
     pg.innerHTML = `
       <div class="topbar" style="display:flex;align-items:center;gap:12px;padding-top:14px">
@@ -79,7 +77,8 @@ const MembersRender = (() => {
         </div>
       </div>
       <div class="profile-scroll" style="overflow-y:auto;flex:1;padding-bottom:calc(83px + env(safe-area-inset-bottom))">
-        ${_profileHeader(profile)}
+        ${_profileHeader(profile, isMe)}
+        ${_statsRow(tripsCount, topMonth)}
         ${_subtabs()}
         <div id="profile-tab-content">
           ${_tabProfile(profile, isMe)}
@@ -88,7 +87,7 @@ const MembersRender = (() => {
       </div>`;
 
     // Кнопка назад — на главную
-    // TODO: hardcoded 'home' — revisit once nav redesign (hamburger) lands, see back-navigation should return to entry point
+    // TODO: hardcoded 'home' — revisit once nav redesign (hamburger) лендет, back-navigation should return to entry point
     pg.querySelector('[data-action="profile-back"]')?.addEventListener('click', () => {
       if (typeof AppNav !== 'undefined') AppNav.setActive('home');
       if (typeof AppRouter !== 'undefined') AppRouter.show('home');
@@ -96,19 +95,73 @@ const MembersRender = (() => {
     });
 
     // Сохраняем данные для переключения вкладок
-    pg._profileData = { profile, catchStat, balance, isMe, isOrg };
+    pg._profileData = { profile, isMe, isOrg };
   }
 
-  function _profileHeader(p) {
+  function _profileHeader(p, isMe) {
     const roleLabel = p.role === 'organizer' ? 'Организатор' : 'Участник';
+    const nickHtml = p.nickname
+      ? ` <span class="p-nickname">«${_esc(p.nickname)}»</span>`
+      : (isMe ? ` <span class="p-nick-add" data-action="profile-edit" data-uid="${p.uid}">+ ник</span>` : '');
     return `
       <div class="p-header">
         <div class="p-ava-circle">${UIUtils.avatarHtml(p.avatar, '🎣')}</div>
         <div>
-          <div class="p-name">${_esc(p.displayName)}${p.nickname ? ` <span class="p-nickname">«${_esc(p.nickname)}»</span>` : ''}</div>
+          <div class="p-name">${_esc(p.displayName)}${nickHtml}</div>
           ${p.email ? `<div class="p-meta">${_esc(p.email)}</div>` : ''}
           ${p.phone ? `<div class="p-meta">${_esc(p.phone)}</div>` : ''}
           <span class="p-badge ${p.role}">${roleLabel}</span>
+        </div>
+      </div>`;
+  }
+
+  /* ── Статистика (поездки + самый активный месяц по личным уловам) ── */
+
+  const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+
+  // Поездки, где человек участник — те же правила видимости, что и в
+  // "Наши поездки" на вкладке "Поездки" ниже (private-поездки видны только
+  // тем, кто сам в их memberIds).
+  function _tripsForProfile(profileUid) {
+    const viewerUid = window.APP?.user?.uid;
+    return (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
+      .filter(t => (t.memberIds || []).includes(profileUid))
+      .filter(t => !t.private || (t.memberIds || []).includes(viewerUid));
+  }
+
+  // Уловы матчатся по полю member (свободный текст, выбирается в форме
+  // Улова из списка участников поездки) против имени/ника профиля — прямой
+  // uid-связи там нет, это ближайшее доступное сопоставление.
+  function _topFishingMonth(p) {
+    if (typeof CatchesState === 'undefined' || typeof CatchesState.getAllCatches !== 'function') return '';
+    const names = [p.displayName, p.nickname].filter(Boolean).map(s => s.trim().toLowerCase());
+    if (!names.length) return '';
+
+    const byMonth = {};
+    CatchesState.getAllCatches().forEach(c => {
+      if (!c.member || !c.date) return;
+      if (!names.includes(c.member.trim().toLowerCase())) return;
+      const month = parseInt((c.date.split('-')[1] || ''), 10) - 1;
+      if (month < 0 || month > 11) return;
+      byMonth[month] = (byMonth[month] || 0) + 1;
+    });
+
+    const entries = Object.entries(byMonth);
+    if (!entries.length) return '';
+    entries.sort((a, b) => b[1] - a[1]);
+    return MONTHS_RU[+entries[0][0]];
+  }
+
+  function _statsRow(tripsCount, topMonth) {
+    return `
+      <div class="p-stats">
+        <div class="p-stat">
+          <div class="p-stat-num">${tripsCount}</div>
+          <div class="p-stat-lbl">поездок</div>
+        </div>
+        <div class="p-stat">
+          <div class="p-stat-num p-stat-num--text">${topMonth || '—'}</div>
+          <div class="p-stat-lbl">активный месяц</div>
         </div>
       </div>`;
   }
@@ -152,24 +205,19 @@ const MembersRender = (() => {
       </div>`).join('');
 
     return `
-      <div class="p-row"><span class="p-row-lbl">Группа крови</span>${bloodHtml}</div>
-      ${hw ? `<div class="p-row"><span class="p-row-lbl">Рост / Вес</span><span class="p-row-val">${hw}</span></div>` : ''}
-      ${age ? `<div class="p-row"><span class="p-row-lbl">Возраст</span><span class="p-row-val">${age}</span></div>` : ''}
-      ${p.allergies ? `<div class="p-row"><span class="p-row-lbl">Аллергии</span><span class="p-row-val muted">${_esc(p.allergies)}</span></div>` : ''}
-      ${p.conditions ? `<div class="p-row"><span class="p-row-lbl">Хронические</span><span class="p-row-val muted">${_esc(p.conditions)}</span></div>` : ''}
+      <div class="p-card">
+        <div class="p-row"><span class="p-row-lbl">Группа крови</span>${bloodHtml}</div>
+        ${hw ? `<div class="p-row"><span class="p-row-lbl">Рост / Вес</span><span class="p-row-val">${hw}</span></div>` : ''}
+        ${age ? `<div class="p-row"><span class="p-row-lbl">Возраст</span><span class="p-row-val">${age}</span></div>` : ''}
+        ${p.allergies ? `<div class="p-row"><span class="p-row-lbl">Аллергии</span><span class="p-row-val muted">${_esc(p.allergies)}</span></div>` : ''}
+        ${p.conditions ? `<div class="p-row"><span class="p-row-lbl">Хронические</span><span class="p-row-val muted">${_esc(p.conditions)}</span></div>` : ''}
+      </div>
 
       ${isMe ? `
-      <div class="p-medkit-btn" data-action="profile-medkit">
-        <div>
-          <div class="p-medkit-btn-title">💊 Личная аптечка</div>
-          <div class="p-medkit-btn-sub">Мои лекарства</div>
-        </div>
-        <div class="p-medkit-chevron">›</div>
-      </div>` : ''}
+      <div class="p-sec-title">Аккаунт</div>
+      <div class="p-card">${_tabTelegram(p)}</div>` : ''}
 
-      ${isMe ? _tabTelegram(p) : ''}
-
-      <div class="p-emerg-title">Экстренные контакты</div>
+      <div class="p-sec-title">Экстренные контакты</div>
       ${emergHtml}
       ${isMe ? `<div class="p-emerg-add" data-action="emerg-add">+ Добавить контакт</div>` : ''}`;
   }
@@ -183,12 +231,13 @@ const MembersRender = (() => {
     // Привязан
     if (p.telegramId) {
       return `
-      <div class="p-medkit-btn">
-        <div>
-          <div class="p-medkit-btn-title">✈️ Telegram-бот</div>
-          <div class="p-medkit-btn-sub">Привязан${p.telegramUsername ? ` — @${_esc(p.telegramUsername)}` : ''}</div>
+      <div class="p-acct-row">
+        <div class="p-acct-icon">✈️</div>
+        <div class="p-acct-main">
+          <div class="p-acct-title">Telegram-бот</div>
+          <div class="p-acct-sub">Привязан${p.telegramUsername ? ` — @${_esc(p.telegramUsername)}` : ''}</div>
         </div>
-        <div class="p-tg-unlink" data-action="tg-unlink">Отвязать</div>
+        <div class="p-acct-action danger" data-action="tg-unlink">Отвязать</div>
       </div>`;
     }
 
@@ -210,12 +259,13 @@ const MembersRender = (() => {
 
     // Не привязан, кода нет (или протух)
     return `
-      <div class="p-medkit-btn" data-action="tg-link">
-        <div>
-          <div class="p-medkit-btn-title">✈️ Telegram-бот</div>
-          <div class="p-medkit-btn-sub">Привязать аккаунт</div>
+      <div class="p-acct-row" data-action="tg-link">
+        <div class="p-acct-icon">✈️</div>
+        <div class="p-acct-main">
+          <div class="p-acct-title">Telegram-бот</div>
+          <div class="p-acct-sub">Привязать аккаунт</div>
         </div>
-        <div class="p-medkit-chevron">›</div>
+        <div class="p-acct-chevron">›</div>
       </div>`;
   }
 
@@ -227,10 +277,7 @@ const MembersRender = (() => {
   // Единственное исключение — поездки с trip.private: они скрыты от всех,
   // кроме тех, кто сам в их memberIds (см. чекбокс в modules/trips/index.js).
   function _tabTrips(profileUid) {
-    const viewerUid = window.APP?.user?.uid;
-    const trips = (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
-      .filter(t => (t.memberIds || []).includes(profileUid))
-      .filter(t => !t.private || (t.memberIds || []).includes(viewerUid))
+    const trips = _tripsForProfile(profileUid)
       .sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
 
     if (!trips.length) {

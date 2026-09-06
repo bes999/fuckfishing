@@ -122,6 +122,10 @@ const CatchesState = (() => {
     _allCatches = arr || [];
   }
 
+  function getAllCatches() {
+    return _allCatches;
+  }
+
   // { total, list:[{species,count}] } для одной поездки — из глобального
   // кэша, а не из _store (см. комментарий у _allCatches выше).
   function speciesForTrip(tripId) {
@@ -145,6 +149,6 @@ const CatchesState = (() => {
     setCatches, getCatches,
     addCatch,   removeCatch,
     computeStats,
-    setAllCatches, speciesForTrip,
+    setAllCatches, getAllCatches, speciesForTrip,
   };
 })();

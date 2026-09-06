@@ -392,18 +392,6 @@ var MembersModule = (() => {
         });
       }
 
-      if (action === 'profile-medkit') {
-        document.getElementById('profile-overlay')?.remove();
-        const uid = window.APP?.profile?.uid || '';
-        if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
-        // Реальная точка входа аптечки — глобальная функция rMedkit(),
-        // рендерящая в #p-medkit по состоянию medkitMode/medkitMemberId.
-        // MedkitIndex нигде в проекте не определён.
-        if (typeof setMedkitMode === 'function') setMedkitMode('personal');
-        if (typeof setMedkitMember === 'function') setMedkitMember(uid);
-        else if (typeof rMedkit === 'function') rMedkit();
-      }
-
       if (action === 'profile-edit') {
         const uid = t.dataset.uid;
         const profile = await MembersFirebase.getProfile(uid);

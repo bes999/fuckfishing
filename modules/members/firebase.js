@@ -51,34 +51,5 @@ const MembersFirebase = (() => {
       .onSnapshot(s => cb(s.docs.map(d => d.data())), () => {});
   }
 
-  async function getCatchStats(uid, tripId) {
-    try {
-      const s = await db.collection('trips').doc(tripId)
-        .collection('catches').where('userId','==',uid).get();
-      const catches = s.docs.map(d => d.data());
-      const total  = catches.length;
-      const weight = catches.reduce((a,c) => a + (Number(c.weight)||0), 0);
-      const record = catches.reduce((m,c) => Math.max(m, Number(c.weight)||0), 0);
-      return { total, weight: +weight.toFixed(2), record: +record.toFixed(2) };
-    } catch (_) { return { total:0, weight:0, record:0 }; }
-  }
-
-  async function getExpenseBalance(uid, tripId) {
-    try {
-      const [expSnap, membSnap] = await Promise.all([
-        db.collection('trips').doc(tripId).collection('expenses').get(),
-        db.collection('members').get()
-      ]);
-      const count = membSnap.size || 1;
-      let paid = 0, share = 0;
-      expSnap.docs.forEach(d => {
-        const e = d.data();
-        if (e.paidBy === uid) paid += Number(e.amount)||0;
-        share += (Number(e.amount)||0) / count;
-      });
-      return { paid:+paid.toFixed(2), share:+share.toFixed(2), balance:+(paid-share).toFixed(2) };
-    } catch (_) { return { paid:0, share:0, balance:0 }; }
-  }
-
-  return { getProfile, getAllMembers, updateProfile, deleteProfile, addInvite, subscribeMembers, getCatchStats, getExpenseBalance };
+  return { getProfile, getAllMembers, updateProfile, deleteProfile, addInvite, subscribeMembers };
 })();

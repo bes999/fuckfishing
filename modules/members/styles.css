@@ -107,6 +107,10 @@
 .p-name  { font-size: 18px; font-weight: 700; color: var(--label); margin-bottom: 2px; }
 .p-meta  { font-size: 12px; color: var(--label3); margin-bottom: 1px; }
 .p-nickname { font-size: 0.8em; font-weight: 500; color: var(--label3); }
+.p-nick-add {
+  font-size: 0.75em; font-weight: 600; color: var(--accent);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
 .p-badge {
   display: inline-block; margin-top: 4px;
   font-size: 11px; font-weight: 700;
@@ -114,6 +118,32 @@
 }
 .p-badge.org { background: var(--orange); color: #fff; }
 .p-badge.mem { background: var(--bg3); color: var(--label3); }
+
+/* Stat-каллауты (поездок / активный месяц) — тот же паттерн, что в Атласе */
+.p-stats {
+  display: flex; gap: 10px;
+  margin: 14px 0 4px;
+}
+.p-stat { flex: 1; text-align: center; }
+.p-stat-num {
+  font-size: 26px; font-weight: 800; letter-spacing: -.5px; line-height: 1;
+  color: var(--label);
+}
+.p-stat-num--text { font-size: 17px; letter-spacing: -.2px; }
+.p-stat-lbl { font-size: 11px; color: var(--label3); margin-top: 4px; }
+
+/* Карточка-обёртка данных — та же визуальная единица, что в остальном app */
+.p-card {
+  background: var(--bg2); border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  padding: 2px 14px;
+  margin: 14px 0;
+}
+
+.p-sec-title {
+  font-size: 11px; font-weight: 700; color: var(--label4);
+  text-transform: uppercase; letter-spacing: .5px; margin: 16px 0 7px;
+}
 
 /* Подвкладки — переиспользуем .stab из проекта */
 .p-subtabs {
@@ -150,20 +180,26 @@
   font-size: 10px; font-weight: 800;
 }
 
-/* Аптечка-кнопка */
-.p-medkit-btn {
-  display: flex; align-items: center; justify-content: space-between;
-  background: var(--accent-bg);
-  border: 1.5px solid rgba(0,122,255,.2);
-  border-radius: var(--radius-md);
-  padding: 11px 14px;
-  margin: 12px 0;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
+/* Строка настроек аккаунта (Telegram-бот и т.п.) — компактный список, а не
+   отдельная цветная кнопка (раньше выглядела так же, как "Личная аптечка",
+   что визуально путало два разных действия). */
+.p-acct-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 0; border-bottom: 0.5px solid var(--sep2);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
 }
-.p-medkit-btn-title { font-size: 14px; font-weight: 600; color: var(--accent); }
-.p-medkit-btn-sub   { font-size: 12px; color: var(--label3); margin-top: 2px; }
-.p-medkit-chevron   { font-size: 18px; color: var(--accent); opacity: .6; }
+.p-acct-row:last-child { border-bottom: none; }
+.p-acct-icon {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  background: var(--accent-bg); color: var(--accent);
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+}
+.p-acct-main  { flex: 1; min-width: 0; }
+.p-acct-title { font-size: 14px; font-weight: 600; color: var(--label); }
+.p-acct-sub   { font-size: 12px; color: var(--label3); margin-top: 1px; }
+.p-acct-chevron { font-size: 18px; color: var(--label4); flex-shrink: 0; }
+.p-acct-action  { font-size: 13px; font-weight: 600; color: var(--accent); flex-shrink: 0; }
+.p-acct-action.danger { color: var(--red); }
 
 /* Telegram-бот */
 .p-tg-unlink {
@@ -188,11 +224,7 @@
   color: var(--label3); cursor: pointer;
 }
 
-/* Экстренные контакты */
-.p-emerg-title {
-  font-size: 11px; font-weight: 700; color: var(--label4);
-  text-transform: uppercase; letter-spacing: .5px; margin: 12px 0 7px;
-}
+/* Экстренные контакты (заголовок секции — общий .p-sec-title выше) */
 .p-emerg-card {
   background: rgba(255,59,48,.06);
   border: 1px solid rgba(255,59,48,.15);
