@@ -93,10 +93,17 @@
 
 /* Header */
 .p-header {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: flex-start; gap: 12px;
   padding: 14px 0 12px;
   border-bottom: 0.5px solid var(--sep2);
 }
+.p-header-edit {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  background: var(--bg3); border: none; color: var(--label3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.p-header-edit:active { background: var(--sep2); color: var(--accent); }
 
 .p-ava-circle {
   width: 52px; height: 52px; border-radius: 50%;

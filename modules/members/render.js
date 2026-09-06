@@ -119,7 +119,7 @@ const MembersRender = (() => {
         </div>
       </div>
       <div class="profile-scroll" style="overflow-y:auto;flex:1;padding-bottom:calc(83px + env(safe-area-inset-bottom))">
-        ${_profileHeader(profile, isMe)}
+        ${_profileHeader(profile, isMe, isOrg)}
         ${_statsRow(tripsCount, topMonth)}
         ${_subtabs()}
         <div id="profile-tab-content">
@@ -140,21 +140,23 @@ const MembersRender = (() => {
     pg._profileData = { profile, isMe, isOrg };
   }
 
-  function _profileHeader(p, isMe) {
+  function _profileHeader(p, isMe, isOrg) {
     const roleLabel = p.role === 'organizer' ? 'Организатор' : 'Участник';
     const nickHtml = p.nickname
       ? ` <span class="p-nickname">«${_esc(p.nickname)}»</span>`
       : (isMe ? ` <span class="p-nick-add" data-action="profile-edit" data-uid="${p.uid}">+ ник</span>` : '');
+    const canEdit = isMe || isOrg;
     return `
       <div class="p-header">
         <div class="p-ava-circle">${UIUtils.avatarHtml(p.avatar, '🎣')}</div>
-        <div>
+        <div style="flex:1;min-width:0">
           <div class="p-name">${_esc(p.displayName)}${nickHtml}</div>
           ${p.email ? `<div class="p-meta">${_esc(p.email)}</div>` : ''}
           ${p.phone ? `<div class="p-meta">${_esc(p.phone)}</div>` : ''}
           ${_msgrBadges(p, ' style="margin-top:5px"')}
           <span class="p-badge ${p.role}">${roleLabel}</span>
         </div>
+        ${canEdit ? `<button class="p-header-edit" data-action="profile-edit" data-uid="${p.uid}"><i class="ti ti-pencil"></i></button>` : ''}
       </div>`;
   }
 
@@ -365,12 +367,12 @@ const MembersRender = (() => {
       (isMe ? `<div class="p-gear-add" data-action="gear-add">+ Добавить</div>` : '');
   }
 
+  // Кнопка "Редактировать" переехала иконкой в _profileHeader (см. ✏️
+  // рядом с аватаром) — здесь остаются только действия, которых там нет.
   function _profileActions(uid, isMe, isOrg, name) {
     return `<div class="p-actions">
-      ${isMe ? `<button class="p-btn-edit" data-action="profile-edit" data-uid="${uid}">✏️ Редактировать</button>` : ''}
       ${isMe ? `<button class="p-btn-out" data-action="auth-signout">Выйти</button>` : ''}
       ${!isMe ? `<button class="p-btn-edit" data-action="member-add-trip" data-uid="${uid}" data-name="${_esc(name)}">➕ В поездку</button>` : ''}
-      ${!isMe && isOrg ? `<button class="p-btn-edit" data-action="profile-edit" data-uid="${uid}">✏️ Редактировать</button>` : ''}
       ${!isMe && isOrg ? `<button class="p-btn-del" data-action="member-delete" data-uid="${uid}" data-name="${_esc(uid)}">🗑️ Удалить</button>` : ''}
     </div>`;
   }
