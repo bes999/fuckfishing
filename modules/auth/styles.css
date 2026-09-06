@@ -197,6 +197,19 @@
 .ob-blood-btn.sel .ob-blood-intl { color: var(--accent); }
 .ob-blood-btn.sel .ob-blood-ru   { color: var(--accent); opacity: .7; }
 
+/* Однострочные группы выбора (плавание, прививка от клеща и т.п.) —
+   тот же паттерн, что .ob-blood-grid, но без второй строки текста */
+.ob-pill-grid { display: flex; gap: 6px; margin-bottom: 14px; }
+.ob-pill-btn {
+  flex: 1; min-width: 0; padding: 9px 4px; border-radius: var(--radius-sm);
+  border: 1.5px solid var(--sep2); background: var(--bg3);
+  text-align: center; cursor: pointer; font-family: inherit;
+  font-size: 12px; font-weight: 600; color: var(--label2);
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.ob-pill-btn.sel { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
+
 /* 2-col row */
 .ob-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
 

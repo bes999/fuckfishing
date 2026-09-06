@@ -10,6 +10,8 @@ const MembersRender = (() => {
     {id:'O+',ru:'I +'},{id:'O−',ru:'I −'},
   ];
   const AVATARS = ['🎣','🤙','🐟','🦈','😎','🧔','🏕️','🌊','🦅','🐻','🍺','🥃','👾','🎯','🐠','🦑','🐙','🏔️','🎿','🚤'];
+  const SWIM_LABELS = { none: 'Не умею', weak: 'Слабо', confident: 'Уверенно', pro: 'Профи' };
+  const TICK_LABELS = { yes: 'Да', no: 'Нет', unknown: 'Не знаю' };
 
   // Официальные монохромные SVG-пути брендов (source: simple-icons /
   // Wikipedia MAX-логотип, MIT/CC0). Рендерятся одним нейтральным цветом
@@ -264,6 +266,10 @@ const MembersRender = (() => {
         ${age ? `<div class="p-row"><span class="p-row-lbl">Возраст</span><span class="p-row-val">${age}</span></div>` : ''}
         ${p.allergies ? `<div class="p-row"><span class="p-row-lbl">Аллергии</span><span class="p-row-val muted">${_esc(p.allergies)}</span></div>` : ''}
         ${p.conditions ? `<div class="p-row"><span class="p-row-lbl">Хронические</span><span class="p-row-val muted">${_esc(p.conditions)}</span></div>` : ''}
+        ${p.meds ? `<div class="p-row"><span class="p-row-lbl">Постоянные лекарства</span><span class="p-row-val muted">${_esc(p.meds)}</span></div>` : ''}
+        ${p.tickVaccine ? `<div class="p-row"><span class="p-row-lbl">Прививка от клеща</span><span class="p-row-val ${p.tickVaccine==='yes'?'green':p.tickVaccine==='no'?'red':'muted'}">${_esc(TICK_LABELS[p.tickVaccine] || '')}</span></div>` : ''}
+        ${p.swim ? `<div class="p-row"><span class="p-row-lbl">Плавание</span><span class="p-row-val">${_esc(SWIM_LABELS[p.swim] || '')}</span></div>` : ''}
+        ${p.insurance ? `<div class="p-row"><span class="p-row-lbl">Полис ОМС/ДМС</span><span class="p-row-val muted">${_esc(p.insurance)}</span></div>` : ''}
       </div>
 
       <div class="p-sec-title">Экстренные контакты</div>

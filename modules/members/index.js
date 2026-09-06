@@ -15,6 +15,17 @@ var MembersModule = (() => {
     {id:'AB+',ru:'IV +'},{id:'AB−',ru:'IV −'},
     {id:'O+',ru:'I +'},{id:'O−',ru:'I −'},
   ];
+  const SWIM_LEVELS = [
+    {id:'none', label:'Не умею'},
+    {id:'weak', label:'Слабо'},
+    {id:'confident', label:'Уверенно'},
+    {id:'pro', label:'Профи'},
+  ];
+  const TICK_OPTS = [
+    {id:'yes', label:'Да'},
+    {id:'no', label:'Нет'},
+    {id:'unknown', label:'Не знаю'},
+  ];
 
   // FIX: _esc перенесён наверх — использовался в _editTabPersonal/_editTabMedical,
   // но был объявлен внутри if-блока, где в strict mode он недоступен снаружи
@@ -158,6 +169,12 @@ var MembersModule = (() => {
         <span class="ob-blood-ru">${b.ru}</span>
        </button>`
     ).join('');
+    const swimBtns = SWIM_LEVELS.map(s =>
+      `<button class="ob-pill-btn${p.swim===s.id?' sel':''}" data-action="edit-swim" data-swim="${s.id}">${s.label}</button>`
+    ).join('');
+    const tickBtns = TICK_OPTS.map(t =>
+      `<button class="ob-pill-btn${p.tickVaccine===t.id?' sel':''}" data-action="edit-tick" data-tick="${t.id}">${t.label}</button>`
+    ).join('');
     return `
       <p class="ob-lbl" style="margin-top:0">Группа крови</p>
       <div class="ob-blood-grid">${bloodBtns}</div>
@@ -175,7 +192,17 @@ var MembersModule = (() => {
              placeholder="Пенициллин, йод..." value="${_esc(p.allergies||'')}">
       <p class="ob-lbl">Хронические заболевания</p>
       <input class="auth-input" id="edit-conditions" type="text"
-             placeholder="Необязательно" value="${_esc(p.conditions||'')}">`;
+             placeholder="Необязательно" value="${_esc(p.conditions||'')}">
+      <p class="ob-lbl">Постоянные лекарства</p>
+      <input class="auth-input" id="edit-meds" type="text"
+             placeholder="Инсулин, кроворазжижающие..." value="${_esc(p.meds||'')}">
+      <p class="ob-lbl">Прививка от клещевого энцефалита</p>
+      <div class="ob-pill-grid">${tickBtns}</div>
+      <p class="ob-lbl">Умею плавать</p>
+      <div class="ob-pill-grid">${swimBtns}</div>
+      <p class="ob-lbl">Полис ОМС/ДМС</p>
+      <input class="auth-input" id="edit-insurance" type="text"
+             placeholder="Номер полиса" value="${_esc(p.insurance||'')}">`;
   }
 
   // Пикер аватара — раньше вся сетка эмодзи всегда торчала на весь экран
@@ -299,6 +326,12 @@ var MembersModule = (() => {
       profile.weight     = document.getElementById('edit-weight')?.value.trim()     || profile.weight;
       profile.allergies  = document.getElementById('edit-allergies')?.value.trim()  || profile.allergies;
       profile.conditions = document.getElementById('edit-conditions')?.value.trim() || profile.conditions;
+      profile.meds       = document.getElementById('edit-meds')?.value.trim()       || profile.meds;
+      profile.insurance  = document.getElementById('edit-insurance')?.value.trim()  || profile.insurance;
+      const selSwim = document.querySelector('#edit-overlay .ob-pill-btn.sel[data-swim]');
+      if (selSwim) profile.swim = selSwim.dataset.swim;
+      const selTick = document.querySelector('#edit-overlay .ob-pill-btn.sel[data-tick]');
+      if (selTick) profile.tickVaccine = selTick.dataset.tick;
     }
   }
 
@@ -340,6 +373,10 @@ var MembersModule = (() => {
       weight:      profile.weight    || '',
       allergies:   profile.allergies || '',
       conditions:  profile.conditions|| '',
+      meds:        profile.meds      || '',
+      insurance:   profile.insurance || '',
+      swim:        profile.swim      || '',
+      tickVaccine: profile.tickVaccine || '',
     };
 
     await MembersFirebase.updateProfile(uid, changes);
@@ -569,6 +606,16 @@ var MembersModule = (() => {
 
       if (action === 'edit-blood') {
         document.querySelectorAll('#edit-overlay .ob-blood-btn').forEach(b => b.classList.remove('sel'));
+        t.classList.add('sel');
+      }
+
+      if (action === 'edit-swim') {
+        document.querySelectorAll('#edit-overlay [data-swim]').forEach(b => b.classList.remove('sel'));
+        t.classList.add('sel');
+      }
+
+      if (action === 'edit-tick') {
+        document.querySelectorAll('#edit-overlay [data-tick]').forEach(b => b.classList.remove('sel'));
         t.classList.add('sel');
       }
 
