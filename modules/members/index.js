@@ -346,10 +346,16 @@ var MembersModule = (() => {
   }
 
   /* ══════════════════════════════════════════════
-     ЭКСТРЕННЫЙ КОНТАКТ — шит добавления
-     (раньше было три подряд идущих prompt(), без мессенджеров)
+     ЭКСТРЕННЫЙ КОНТАКТ — шит добавления/редактирования
+     (раньше было три подряд идущих prompt(), без мессенджеров, и без
+     возможности править — только удалить и добавить заново)
   ══════════════════════════════════════════════ */
-  function _showEmergSheet() {
+  let _emergEditIdx = null;
+
+  function _showEmergSheet(idx) {
+    _emergEditIdx = (idx != null && idx >= 0) ? idx : null;
+    const existing = _emergEditIdx != null ? (window.APP?.profile?.emergency || [])[_emergEditIdx] : null;
+
     document.getElementById('emerg-overlay')?.remove();
     const overlay = document.createElement('div');
     overlay.id = 'emerg-overlay';
@@ -364,13 +370,13 @@ var MembersModule = (() => {
         </div>
         <div class="ob-scroll" style="padding-top:14px">
           <p class="ob-lbl" style="margin-top:0">Имя и кем приходится</p>
-          <input class="auth-input" id="emerg-name" type="text" placeholder="Анна, жена">
+          <input class="auth-input" id="emerg-name" type="text" placeholder="Анна, жена" value="${_esc(existing?.name || '')}">
           <p class="ob-lbl">Телефон</p>
-          <input class="auth-input" id="emerg-phone" type="tel" placeholder="+7 (___) ___-__-__">
+          <input class="auth-input" id="emerg-phone" type="tel" placeholder="+7 (___) ___-__-__" value="${_esc(existing?.phone || '')}">
           <p class="ob-lbl">Мессенджеры — необязательно</p>
-          <input class="auth-input" id="emerg-tg" type="text" placeholder="Telegram — @username">
-          <input class="auth-input" id="emerg-wa" type="tel" placeholder="WhatsApp — телефон">
-          <input class="auth-input" id="emerg-vb" type="tel" placeholder="Viber — телефон">
+          <input class="auth-input" id="emerg-wa" type="tel" placeholder="WhatsApp — телефон" value="${_esc(existing?.wa || '')}">
+          <input class="auth-input" id="emerg-tg" type="text" placeholder="Telegram — @username" value="${existing?.tg ? '@' + _esc(existing.tg) : ''}">
+          <input class="auth-input" id="emerg-max" type="tel" placeholder="MAX — телефон" value="${_esc(existing?.max || '')}">
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -383,22 +389,25 @@ var MembersModule = (() => {
       document.getElementById(name ? 'emerg-phone' : 'emerg-name')?.classList.add('field-error');
       return;
     }
-    const tg = document.getElementById('emerg-tg')?.value.trim();
-    const wa = document.getElementById('emerg-wa')?.value.trim();
-    const vb = document.getElementById('emerg-vb')?.value.trim();
+    const wa  = document.getElementById('emerg-wa')?.value.trim();
+    const tg  = document.getElementById('emerg-tg')?.value.trim();
+    const max = document.getElementById('emerg-max')?.value.trim();
 
     const contact = { name, phone };
-    if (tg) contact.tg = tg.replace(/^@/, '');
-    if (wa) contact.wa = wa;
-    if (vb) contact.vb = vb;
+    if (wa)  contact.wa  = wa;
+    if (tg)  contact.tg  = tg.replace(/^@/, '');
+    if (max) contact.max = max;
 
     const profile = window.APP?.profile;
     if (!profile) return;
-    const emerg = [...(profile.emergency || []), contact];
+    const emerg = [...(profile.emergency || [])];
+    if (_emergEditIdx != null) emerg[_emergEditIdx] = contact;
+    else emerg.push(contact);
 
     await UIUtils.withBusyButton(btn, async () => {
       await MembersFirebase.updateProfile(profile.uid, { emergency: emerg });
       profile.emergency = emerg;
+      _emergEditIdx = null;
       document.getElementById('emerg-overlay')?.remove();
       // showProfile() перерисовывает страницу целиком — раньше здесь
       // пытались достать несуществующий #profile-overlay (это класс, не id)
@@ -507,10 +516,15 @@ var MembersModule = (() => {
       }
 
       if (action === 'emerg-add') {
-        _showEmergSheet();
+        _showEmergSheet(null);
+      }
+
+      if (action === 'emerg-edit') {
+        _showEmergSheet(Number(t.dataset.idx));
       }
 
       if (action === 'emerg-sheet-cancel') {
+        _emergEditIdx = null;
         document.getElementById('emerg-overlay')?.remove();
       }
 

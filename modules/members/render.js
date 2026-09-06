@@ -202,15 +202,18 @@ const MembersRender = (() => {
           <div class="p-emerg-phone">${_esc(c.phone)}</div>
           ${_emergMsgrs(c)}
         </div>
-        ${isMe ? `<div class="p-emerg-del" data-action="emerg-del" data-idx="${i}">×</div>` : ''}
+        ${isMe ? `
+        <div class="p-emerg-actions">
+          <div class="p-emerg-edit" data-action="emerg-edit" data-idx="${i}">✏️</div>
+          <div class="p-emerg-del" data-action="emerg-del" data-idx="${i}">×</div>
+        </div>` : ''}
       </div>`).join('');
 
     // Порядок по важности: сначала медданные (нужны всегда, в первую
     // очередь в экстренной ситуации), сразу за ними — экстренные контакты
-    // (тоже про безопасность). Telegram-бот — разовая настройка, которая
-    // после привязки почти не трогается, поэтому он не отдельная секция
-    // с большой цветной кнопкой, а последняя строка в той же карточке
-    // данных, тем же по весу шрифтом, что и остальные поля.
+    // (тоже про безопасность). Telegram-бот — это про аккаунт, а не про
+    // здоровье, поэтому не смешиваем его со врачебными полями — но и не
+    // поднимаем выше контактов: разовая настройка, самая нижняя секция.
     return `
       <div class="p-card">
         <div class="p-row"><span class="p-row-lbl">Группа крови</span>${bloodHtml}</div>
@@ -218,22 +221,28 @@ const MembersRender = (() => {
         ${age ? `<div class="p-row"><span class="p-row-lbl">Возраст</span><span class="p-row-val">${age}</span></div>` : ''}
         ${p.allergies ? `<div class="p-row"><span class="p-row-lbl">Аллергии</span><span class="p-row-val muted">${_esc(p.allergies)}</span></div>` : ''}
         ${p.conditions ? `<div class="p-row"><span class="p-row-lbl">Хронические</span><span class="p-row-val muted">${_esc(p.conditions)}</span></div>` : ''}
-        ${isMe ? _tabTelegram(p) : ''}
       </div>
 
       <div class="p-sec-title">Экстренные контакты</div>
       ${emergHtml}
-      ${isMe ? `<div class="p-emerg-add" data-action="emerg-add">+ Добавить контакт</div>` : ''}`;
+      ${isMe ? `<div class="p-emerg-add" data-action="emerg-add">+ Добавить контакт</div>` : ''}
+
+      ${isMe ? `
+      <div class="p-sec-title">Аккаунт</div>
+      <div class="p-card" style="padding:2px 14px">${_tabTelegram(p)}</div>` : ''}`;
   }
 
   // Значки мессенджеров у экстренного контакта — сразу кликабельная ссылка
   // на чат, чтобы не искать номер и не переключаться в другое приложение
-  // руками в стрессовой ситуации.
+  // руками в стрессовой ситуации. MAX — исключение: у него нет ни @username,
+  // ни рабочей ссылки "открыть чат по номеру" (профильные ссылки — только
+  // непрозрачный хеш, который даёт сам пользователь через "Поделиться" в
+  // приложении), поэтому его значок не ссылка, а просто пометка "есть в MAX".
   function _emergMsgrs(c) {
     const badges = [];
-    if (c.tg) badges.push(`<a class="msgr-badge msgr-tg" href="https://t.me/${encodeURIComponent(c.tg)}" target="_blank" rel="noopener">TG</a>`);
-    if (c.wa) badges.push(`<a class="msgr-badge msgr-wa" href="https://wa.me/${encodeURIComponent(c.wa.replace(/\D/g,''))}" target="_blank" rel="noopener">WA</a>`);
-    if (c.vb) badges.push(`<a class="msgr-badge msgr-vb" href="viber://chat?number=${encodeURIComponent(c.vb.replace(/\D/g,''))}">VB</a>`);
+    if (c.wa)  badges.push(`<a class="msgr-badge msgr-wa" href="https://wa.me/${encodeURIComponent(c.wa.replace(/\D/g,''))}" target="_blank" rel="noopener">WA</a>`);
+    if (c.tg)  badges.push(`<a class="msgr-badge msgr-tg" href="https://t.me/${encodeURIComponent(c.tg)}" target="_blank" rel="noopener">TG</a>`);
+    if (c.max) badges.push(`<span class="msgr-badge msgr-max" title="Есть в MAX: ${_esc(c.max)}">MAX</span>`);
     return badges.length ? `<div class="p-emerg-msgrs">${badges.join('')}</div>` : '';
   }
 
