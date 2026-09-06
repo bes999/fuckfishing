@@ -95,7 +95,12 @@
   background: var(--overlay-bg);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
-  z-index: 400;
+  /* 400 хватало, пока класс использовался только на самом онбординге (до
+     появления #app-header/.bottomnav на экране). Теперь тот же класс
+     переиспользуется и для шитов внутри уже загруженного приложения
+     (редактирование профиля, аптечка и т.д.) — там #app-header уже 950,
+     .bottomnav уже 1000, и шит с z-index 400 оказывался у них ПОД низом. */
+  z-index: 1100;
   display: flex; align-items: flex-end;
 }
 .ob-sheet {

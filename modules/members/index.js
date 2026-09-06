@@ -22,6 +22,30 @@ var MembersModule = (() => {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
   }
 
+  // "111" в поле телефона раньше молча сохранялось — простая проверка на
+  // правдоподобную длину номера (РФ: 10 цифр без кода страны или 11 с ней).
+  function _isValidPhoneLike(v) {
+    const d = String(v || '').replace(/\D/g, '');
+    return d.length >= 10 && d.length <= 11;
+  }
+  // Реальное правило Telegram: 5-32 символа, латиница/цифры/подчёркивание,
+  // не может начинаться с цифры.
+  function _isValidTgUsername(v) {
+    return /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(String(v || '').replace(/^@/, ''));
+  }
+  // MAX не ищется по номеру — сюда вставляют ссылку/хеш из "Поделиться" в
+  // приложении, формат заранее неизвестен, поэтому проверка простая:
+  // не пробел и не совсем короткая ерунда вроде "111".
+  function _isValidMaxLink(v) {
+    const s = String(v || '').trim();
+    return s.length >= 4 && !/\s/.test(s);
+  }
+  function _flagFieldError(id) {
+    const el = document.getElementById(id);
+    el?.classList.add('field-error');
+    el?.addEventListener('input', () => el.classList.remove('field-error'), { once: true });
+  }
+
   // FIX: destroy перенесён наверх — был внутри if-блока, а возвращался снаружи
   function destroy() {
     if (_unsub) { _unsub(); _unsub = null; }
@@ -117,7 +141,14 @@ var MembersModule = (() => {
              placeholder="ДД.ММ.ГГГГ" inputmode="numeric" value="${_esc(p.birthday||'')}">
       <p class="ob-lbl">Телефон</p>
       <input class="auth-input" id="edit-phone" type="tel"
-             placeholder="+7 (___) ___-__-__" value="${_esc(p.phone||'')}">`;
+             placeholder="+7 (___) ___-__-__" value="${_esc(p.phone||'')}">
+      <p class="ob-lbl">Мессенджеры — необязательно, видно другим участникам</p>
+      <input class="auth-input" id="edit-wa" type="tel"
+             placeholder="WhatsApp — телефон" value="${_esc(p.wa||'')}">
+      <input class="auth-input" id="edit-tg" type="text"
+             placeholder="Telegram — @username" value="${p.tg ? '@' + _esc(p.tg) : ''}">
+      <input class="auth-input" id="edit-max" type="text"
+             placeholder="MAX — ссылка на профиль (Поделиться в приложении)" value="${_esc(p.max||'')}">`;
   }
 
   function _editTabMedical(p) {
@@ -258,6 +289,9 @@ var MembersModule = (() => {
       profile.birthday = document.getElementById('edit-birthday')?.value.trim() || profile.birthday;
       const ph = document.getElementById('edit-phone')?.value.trim();
       profile.phone = (ph === '+7 (' || ph === '+7') ? '' : (ph || profile.phone);
+      profile.wa  = document.getElementById('edit-wa')?.value.trim()  ?? profile.wa;
+      profile.tg  = document.getElementById('edit-tg')?.value.trim().replace(/^@/, '') ?? profile.tg;
+      profile.max = document.getElementById('edit-max')?.value.trim() ?? profile.max;
     } else {
       const selBlood = document.querySelector('#edit-overlay .ob-blood-btn.sel');
       if (selBlood) profile.bloodType = selBlood.dataset.blood;
@@ -279,12 +313,28 @@ var MembersModule = (() => {
       return;
     }
 
+    // Мессенджеры живут на вкладке "Личные" — если ошибка найдена, пока
+    // открыта вкладка "Медданные", сперва переключаемся туда, иначе
+    // подсветка встанет на несуществующий (невидимый) элемент.
+    const msgrErrors = [];
+    if (profile.wa  && !_isValidPhoneLike(profile.wa))    msgrErrors.push('edit-wa');
+    if (profile.max && !_isValidMaxLink(profile.max))     msgrErrors.push('edit-max');
+    if (profile.tg  && !_isValidTgUsername(profile.tg))   msgrErrors.push('edit-tg');
+    if (msgrErrors.length) {
+      if (_editTab !== 'personal') _switchEditTab('personal');
+      msgrErrors.forEach(_flagFieldError);
+      return;
+    }
+
     const changes = {
       displayName: profile.displayName,
       nickname:    profile.nickname  || '',
       avatar:      profile.avatar,
       birthday:    profile.birthday  || '',
       phone:       profile.phone     || '',
+      wa:          profile.wa        || '',
+      tg:          profile.tg        || '',
+      max:         profile.max       || '',
       bloodType:   profile.bloodType || '',
       height:      profile.height    || '',
       weight:      profile.weight    || '',
@@ -376,7 +426,7 @@ var MembersModule = (() => {
           <p class="ob-lbl">Мессенджеры — необязательно</p>
           <input class="auth-input" id="emerg-wa" type="tel" placeholder="WhatsApp — телефон" value="${_esc(existing?.wa || '')}">
           <input class="auth-input" id="emerg-tg" type="text" placeholder="Telegram — @username" value="${existing?.tg ? '@' + _esc(existing.tg) : ''}">
-          <input class="auth-input" id="emerg-max" type="tel" placeholder="MAX — телефон" value="${_esc(existing?.max || '')}">
+          <input class="auth-input" id="emerg-max" type="text" placeholder="MAX — ссылка на профиль (Поделиться в приложении)" value="${_esc(existing?.max || '')}">
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -385,13 +435,20 @@ var MembersModule = (() => {
   async function _saveEmergSheet(btn) {
     const name  = document.getElementById('emerg-name')?.value.trim();
     const phone = document.getElementById('emerg-phone')?.value.trim();
-    if (!name || !phone) {
-      document.getElementById(name ? 'emerg-phone' : 'emerg-name')?.classList.add('field-error');
-      return;
-    }
     const wa  = document.getElementById('emerg-wa')?.value.trim();
     const tg  = document.getElementById('emerg-tg')?.value.trim();
     const max = document.getElementById('emerg-max')?.value.trim();
+
+    const errors = [];
+    if (!name) errors.push('emerg-name');
+    if (!phone || !_isValidPhoneLike(phone)) errors.push('emerg-phone');
+    if (wa  && !_isValidPhoneLike(wa))       errors.push('emerg-wa');
+    if (max && !_isValidMaxLink(max))        errors.push('emerg-max');
+    if (tg  && !_isValidTgUsername(tg))      errors.push('emerg-tg');
+    if (errors.length) {
+      errors.forEach(_flagFieldError);
+      return;
+    }
 
     const contact = { name, phone };
     if (wa)  contact.wa  = wa;

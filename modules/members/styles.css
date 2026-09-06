@@ -61,7 +61,9 @@
   background: var(--overlay-bg);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
-  z-index: 300;
+  /* было 300 — ниже #app-header (950) и .bottomnav (1000), поэтому шит
+     заезжал под них */
+  z-index: 1100;
   display: flex; align-items: flex-end;
 }
 
@@ -215,21 +217,23 @@
 }
 .p-emerg-info {}
 .p-emerg-name  { font-size: 13px; font-weight: 700; color: var(--label); }
-.p-emerg-phone { font-size: 13px; color: var(--accent); font-weight: 600; margin-top: 2px; }
-.p-emerg-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.p-emerg-edit  { font-size: 14px; opacity: .7; cursor: pointer; padding: 0 4px; }
+.p-emerg-phone-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 3px; }
+.p-emerg-phone { font-size: 13px; color: var(--accent); font-weight: 600; }
+.p-emerg-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.p-emerg-edit  { font-size: 14px; color: var(--label3); opacity: .8; cursor: pointer; padding: 0 4px; }
 .p-emerg-del   { font-size: 20px; color: var(--red); opacity: .7; cursor: pointer; padding: 0 4px; }
 
-.p-emerg-msgrs { display: flex; gap: 6px; margin-top: 6px; }
+/* Значки мессенджеров — переиспользуются и у экстренных контактов, и на
+   карточке самого владельца профиля (см. _msgrBadges в render.js).
+   Монохромные, без цветной подложки — тот же язык, что у ti-иконок. */
+.p-msgrs { display: flex; align-items: center; gap: 10px; }
 .msgr-badge {
-  height: 22px; min-width: 22px; padding: 0 5px; border-radius: 11px;
+  width: 18px; height: 18px; flex-shrink: 0; color: var(--label3);
   display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 800; color: #fff; text-decoration: none;
   -webkit-tap-highlight-color: transparent;
 }
-.msgr-tg  { background: #2AABEE; }
-.msgr-wa  { background: #25D366; }
-.msgr-max { background: #6C5CE7; cursor: default; }
+.msgr-badge svg { width: 100%; height: 100%; display: block; }
+.msgr-badge:active { color: var(--accent); }
 .p-emerg-add {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 0; color: var(--accent);

@@ -11,6 +11,46 @@ const MembersRender = (() => {
   ];
   const AVATARS = ['🎣','🤙','🐟','🦈','😎','🧔','🏕️','🌊','🦅','🐻','🍺','🥃','👾','🎯','🐠','🦑','🐙','🏔️','🎿','🚤'];
 
+  // Официальные монохромные SVG-пути брендов (source: simple-icons /
+  // Wikipedia MAX-логотип, MIT/CC0). Рендерятся одним нейтральным цветом
+  // (currentColor) без цветной подложки — по одному стилю с остальными
+  // ti-иконками в приложении, а не отдельным ярким пятном.
+  const MSGR_ICON_WA  = 'M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z';
+  const MSGR_ICON_TG  = 'M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z';
+  const MSGR_ICON_MAX = 'M508.211 878.328c-75.007 0-109.864-10.95-170.453-54.75-38.325 49.275-159.686 87.783-164.979 21.9 0-49.456-10.95-91.248-23.36-136.873-14.782-56.21-31.572-118.807-31.572-209.508 0-216.626 177.754-379.597 388.357-379.597 210.785 0 375.947 171.001 375.947 381.604.707 207.346-166.595 376.118-373.94 377.224m3.103-571.585c-102.564-5.292-182.499 65.7-200.201 177.024-14.6 92.162 11.315 204.398 33.397 210.238 10.585 2.555 37.23-18.98 53.837-35.587a189.8 189.8 0 0 0 92.71 33.032c106.273 5.112 197.08-75.794 204.215-181.95 4.154-106.382-77.67-196.486-183.958-202.574Z';
+
+  function _msgrIcon(type) {
+    if (type === 'wa')  return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${MSGR_ICON_WA}"/></svg>`;
+    if (type === 'tg')  return `<svg viewBox="0 0 24 24" fill="currentColor"><path d="${MSGR_ICON_TG}"/></svg>`;
+    if (type === 'max') return `<svg viewBox="0 0 1000 1000" fill="currentColor"><path d="${MSGR_ICON_MAX}"/></svg>`;
+    return '';
+  }
+
+  // Значки мессенджеров — переиспользуется и для экстренных контактов, и
+  // для мессенджеров самого владельца профиля (те же три поля wa/tg/max).
+  //
+  // MAX не даёт открыть чат по номеру телефона — только по ссылке вида
+  // max.ru/u/<хеш>, которую сам человек берёт через "Поделиться" в
+  // приложении и вставляет целиком. _maxHref принимает то, что реально
+  // вставили: полный URL как есть, "max.ru/u/xxx" без протокола, либо
+  // голый хеш/ник — во всех случаях достраивает рабочую ссылку.
+  function _maxHref(v) {
+    const s = String(v || '').trim();
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^max\.ru\//i.test(s)) return 'https://' + s;
+    return 'https://max.ru/u/' + s.replace(/^\/?u\//i, '').replace(/^@/, '');
+  }
+
+  function _msgrBadges(obj, extraAttrs) {
+    if (!obj) return '';
+    const badges = [];
+    if (obj.wa)  badges.push(`<a class="msgr-badge msgr-wa" href="https://wa.me/${encodeURIComponent(obj.wa.replace(/\D/g,''))}" target="_blank" rel="noopener" aria-label="WhatsApp">${_msgrIcon('wa')}</a>`);
+    if (obj.tg)  badges.push(`<a class="msgr-badge msgr-tg" href="https://t.me/${encodeURIComponent(obj.tg)}" target="_blank" rel="noopener" aria-label="Telegram">${_msgrIcon('tg')}</a>`);
+    if (obj.max) badges.push(`<a class="msgr-badge msgr-max" href="${_esc(_maxHref(obj.max))}" target="_blank" rel="noopener" aria-label="MAX">${_msgrIcon('max')}</a>`);
+    if (!badges.length) return '';
+    return `<div class="p-msgrs"${extraAttrs || ''}>${badges.join('')}</div>`;
+  }
+
   /* ══════════════════════════════════════════════
      СПИСОК УЧАСТНИКОВ
   ══════════════════════════════════════════════ */
@@ -110,6 +150,7 @@ const MembersRender = (() => {
           <div class="p-name">${_esc(p.displayName)}${nickHtml}</div>
           ${p.email ? `<div class="p-meta">${_esc(p.email)}</div>` : ''}
           ${p.phone ? `<div class="p-meta">${_esc(p.phone)}</div>` : ''}
+          ${_msgrBadges(p, ' style="margin-top:5px"')}
           <span class="p-badge ${p.role}">${roleLabel}</span>
         </div>
       </div>`;
@@ -199,12 +240,14 @@ const MembersRender = (() => {
       <div class="p-emerg-card">
         <div class="p-emerg-info">
           <div class="p-emerg-name">${_esc(c.name)}</div>
-          <div class="p-emerg-phone">${_esc(c.phone)}</div>
-          ${_emergMsgrs(c)}
+          <div class="p-emerg-phone-row">
+            <span class="p-emerg-phone">${_esc(c.phone)}</span>
+            ${_msgrBadges(c)}
+          </div>
         </div>
         ${isMe ? `
         <div class="p-emerg-actions">
-          <div class="p-emerg-edit" data-action="emerg-edit" data-idx="${i}">✏️</div>
+          <div class="p-emerg-edit" data-action="emerg-edit" data-idx="${i}"><i class="ti ti-pencil"></i></div>
           <div class="p-emerg-del" data-action="emerg-del" data-idx="${i}">×</div>
         </div>` : ''}
       </div>`).join('');
@@ -232,19 +275,6 @@ const MembersRender = (() => {
       <div class="p-card" style="padding:2px 14px">${_tabTelegram(p)}</div>` : ''}`;
   }
 
-  // Значки мессенджеров у экстренного контакта — сразу кликабельная ссылка
-  // на чат, чтобы не искать номер и не переключаться в другое приложение
-  // руками в стрессовой ситуации. MAX — исключение: у него нет ни @username,
-  // ни рабочей ссылки "открыть чат по номеру" (профильные ссылки — только
-  // непрозрачный хеш, который даёт сам пользователь через "Поделиться" в
-  // приложении), поэтому его значок не ссылка, а просто пометка "есть в MAX".
-  function _emergMsgrs(c) {
-    const badges = [];
-    if (c.wa)  badges.push(`<a class="msgr-badge msgr-wa" href="https://wa.me/${encodeURIComponent(c.wa.replace(/\D/g,''))}" target="_blank" rel="noopener">WA</a>`);
-    if (c.tg)  badges.push(`<a class="msgr-badge msgr-tg" href="https://t.me/${encodeURIComponent(c.tg)}" target="_blank" rel="noopener">TG</a>`);
-    if (c.max) badges.push(`<span class="msgr-badge msgr-max" title="Есть в MAX: ${_esc(c.max)}">MAX</span>`);
-    return badges.length ? `<div class="p-emerg-msgrs">${badges.join('')}</div>` : '';
-  }
 
   const TG_LINK_CODE_TTL_MS = 15 * 60 * 1000;
 
