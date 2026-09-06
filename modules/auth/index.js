@@ -1,5 +1,5 @@
 'use strict';
-/* globals firebase, auth, db, AuthRender, MembersModule */
+/* globals firebase, auth, db, AuthRender, MembersModule, UIUtils */
 
 const AuthActions = (() => {
   let _user    = null;
@@ -176,7 +176,10 @@ const AuthActions = (() => {
         if (a === 'auth-google')   { signInGoogle();  return; }
         if (a === 'auth-email')    { signInEmail();   return; }
         if (a === 'auth-register') { registerEmail();  return; }
-        if (a === 'auth-signout')  { signOut();        return; }
+        if (a === 'auth-signout')  {
+          UIUtils.confirmSheet('Выйти из аккаунта?', { okLabel: 'Выйти' }).then(ok => { if (ok) signOut(); });
+          return;
+        }
         if (['ob-next','ob-back','ob-finish'].includes(a)) {
           AuthRender.handleObEvent(btn); return;
         }

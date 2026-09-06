@@ -182,6 +182,8 @@
 .p-row-val.muted { color: var(--label3); font-weight: 400; font-size: 13px; }
 .p-row-action { font-size: 12px; font-weight: 600; color: var(--accent); margin-left: 6px; cursor: pointer; }
 .p-row-action.danger { color: var(--red); }
+.p-row-danger { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.p-row-danger .p-row-lbl { font-weight: 600; }
 
 /* Кружок группы крови */
 .blood-circle {

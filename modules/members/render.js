@@ -125,7 +125,7 @@ const MembersRender = (() => {
         <div id="profile-tab-content">
           ${_tabProfile(profile, isMe)}
         </div>
-        ${_profileActions(profile.uid, isMe, isOrg, profile.displayName)}
+        ${!isMe ? _profileActions(profile.uid, isOrg, profile.displayName) : ''}
       </div>`;
 
     // Кнопка назад — на главную
@@ -280,7 +280,12 @@ const MembersRender = (() => {
 
       ${isMe ? `
       <div class="p-sec-title">Аккаунт</div>
-      <div class="p-card" style="padding:2px 14px">${_tabTelegram(p)}</div>` : ''}`;
+      <div class="p-card" style="padding:2px 14px">
+        ${_tabTelegram(p)}
+        <div class="p-row p-row-danger" data-action="auth-signout">
+          <span class="p-row-lbl" style="color:var(--red)">Выйти из аккаунта</span>
+        </div>
+      </div>` : ''}`;
   }
 
 
@@ -367,13 +372,13 @@ const MembersRender = (() => {
       (isMe ? `<div class="p-gear-add" data-action="gear-add">+ Добавить</div>` : '');
   }
 
-  // Кнопка "Редактировать" переехала иконкой в _profileHeader (см. ✏️
-  // рядом с аватаром) — здесь остаются только действия, которых там нет.
-  function _profileActions(uid, isMe, isOrg, name) {
+  // "Редактировать" — иконка в _profileHeader, "Выйти" — строка в карточке
+  // "Аккаунт" (см. _tabProfile). Тут остаются только действия организатора
+  // над чужим профилем — для isMe этот блок вообще не рендерится.
+  function _profileActions(uid, isOrg, name) {
     return `<div class="p-actions">
-      ${isMe ? `<button class="p-btn-out" data-action="auth-signout">Выйти</button>` : ''}
-      ${!isMe ? `<button class="p-btn-edit" data-action="member-add-trip" data-uid="${uid}" data-name="${_esc(name)}">➕ В поездку</button>` : ''}
-      ${!isMe && isOrg ? `<button class="p-btn-del" data-action="member-delete" data-uid="${uid}" data-name="${_esc(uid)}">🗑️ Удалить</button>` : ''}
+      <button class="p-btn-edit" data-action="member-add-trip" data-uid="${uid}" data-name="${_esc(name)}">➕ В поездку</button>
+      ${isOrg ? `<button class="p-btn-del" data-action="member-delete" data-uid="${uid}" data-name="${_esc(uid)}">🗑️ Удалить</button>` : ''}
     </div>`;
   }
 
