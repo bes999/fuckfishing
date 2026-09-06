@@ -346,6 +346,69 @@ var MembersModule = (() => {
   }
 
   /* ══════════════════════════════════════════════
+     ЭКСТРЕННЫЙ КОНТАКТ — шит добавления
+     (раньше было три подряд идущих prompt(), без мессенджеров)
+  ══════════════════════════════════════════════ */
+  function _showEmergSheet() {
+    document.getElementById('emerg-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'emerg-overlay';
+    overlay.className = 'ob-overlay';
+    overlay.innerHTML = `
+      <div class="ob-sheet">
+        <div class="ob-grab"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 12px;flex-shrink:0;border-bottom:0.5px solid var(--sep2)">
+          <button class="modal-close" data-action="emerg-sheet-cancel" style="font-size:18px">×</button>
+          <span style="font-size:17px;font-weight:700;color:var(--label)">Экстренный контакт</span>
+          <button class="save-btn" data-action="emerg-sheet-save" style="width:auto;padding:8px 16px;font-size:14px;margin:0">Сохранить</button>
+        </div>
+        <div class="ob-scroll" style="padding-top:14px">
+          <p class="ob-lbl" style="margin-top:0">Имя и кем приходится</p>
+          <input class="auth-input" id="emerg-name" type="text" placeholder="Анна, жена">
+          <p class="ob-lbl">Телефон</p>
+          <input class="auth-input" id="emerg-phone" type="tel" placeholder="+7 (___) ___-__-__">
+          <p class="ob-lbl">Мессенджеры — необязательно</p>
+          <input class="auth-input" id="emerg-tg" type="text" placeholder="Telegram — @username">
+          <input class="auth-input" id="emerg-wa" type="tel" placeholder="WhatsApp — телефон">
+          <input class="auth-input" id="emerg-vb" type="tel" placeholder="Viber — телефон">
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+
+  async function _saveEmergSheet(btn) {
+    const name  = document.getElementById('emerg-name')?.value.trim();
+    const phone = document.getElementById('emerg-phone')?.value.trim();
+    if (!name || !phone) {
+      document.getElementById(name ? 'emerg-phone' : 'emerg-name')?.classList.add('field-error');
+      return;
+    }
+    const tg = document.getElementById('emerg-tg')?.value.trim();
+    const wa = document.getElementById('emerg-wa')?.value.trim();
+    const vb = document.getElementById('emerg-vb')?.value.trim();
+
+    const contact = { name, phone };
+    if (tg) contact.tg = tg.replace(/^@/, '');
+    if (wa) contact.wa = wa;
+    if (vb) contact.vb = vb;
+
+    const profile = window.APP?.profile;
+    if (!profile) return;
+    const emerg = [...(profile.emergency || []), contact];
+
+    await UIUtils.withBusyButton(btn, async () => {
+      await MembersFirebase.updateProfile(profile.uid, { emergency: emerg });
+      profile.emergency = emerg;
+      document.getElementById('emerg-overlay')?.remove();
+      // showProfile() перерисовывает страницу целиком — раньше здесь
+      // пытались достать несуществующий #profile-overlay (это класс, не id)
+      // и обновление молча не срабатывало: контакт сохранялся в Firestore,
+      // но на экране появлялся только после повторного захода в профиль.
+      MembersRender.showProfile(profile.uid, profile.uid);
+    });
+  }
+
+  /* ══════════════════════════════════════════════
      EVENTS
   ══════════════════════════════════════════════ */
   if (!_listenerBound) {
@@ -444,17 +507,15 @@ var MembersModule = (() => {
       }
 
       if (action === 'emerg-add') {
-        const name  = prompt('Имя и кем приходится (напр. Анна, жена)');
-        if (!name?.trim()) return;
-        const phone = prompt('Телефон');
-        if (!phone?.trim()) return;
-        const profile = window.APP?.profile;
-        if (!profile) return;
-        const emerg = [...(profile.emergency||[]), {name:name.trim(), phone:phone.trim()}];
-        await MembersFirebase.updateProfile(profile.uid, {emergency:emerg});
-        profile.emergency = emerg;
-        const ov = document.getElementById('profile-overlay');
-        if (ov?._profileData) { ov._profileData.profile.emergency = emerg; MembersRender.switchTab('profile'); }
+        _showEmergSheet();
+      }
+
+      if (action === 'emerg-sheet-cancel') {
+        document.getElementById('emerg-overlay')?.remove();
+      }
+
+      if (action === 'emerg-sheet-save') {
+        await _saveEmergSheet(t);
       }
 
       if (action === 'emerg-del') {
@@ -464,8 +525,7 @@ var MembersModule = (() => {
         const emerg = (profile.emergency||[]).filter((_,i) => i!==idx);
         await MembersFirebase.updateProfile(profile.uid, {emergency:emerg});
         profile.emergency = emerg;
-        const ov = document.getElementById('profile-overlay');
-        if (ov?._profileData) { ov._profileData.profile.emergency = emerg; MembersRender.switchTab('profile'); }
+        MembersRender.showProfile(profile.uid, profile.uid);
       }
 
       if (action === 'gear-add' || action === 'gear-del') {

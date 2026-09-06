@@ -200,10 +200,17 @@ const MembersRender = (() => {
         <div class="p-emerg-info">
           <div class="p-emerg-name">${_esc(c.name)}</div>
           <div class="p-emerg-phone">${_esc(c.phone)}</div>
+          ${_emergMsgrs(c)}
         </div>
         ${isMe ? `<div class="p-emerg-del" data-action="emerg-del" data-idx="${i}">×</div>` : ''}
       </div>`).join('');
 
+    // Порядок по важности: сначала медданные (нужны всегда, в первую
+    // очередь в экстренной ситуации), сразу за ними — экстренные контакты
+    // (тоже про безопасность). Telegram-бот — разовая настройка, которая
+    // после привязки почти не трогается, поэтому он не отдельная секция
+    // с большой цветной кнопкой, а последняя строка в той же карточке
+    // данных, тем же по весу шрифтом, что и остальные поля.
     return `
       <div class="p-card">
         <div class="p-row"><span class="p-row-lbl">Группа крови</span>${bloodHtml}</div>
@@ -211,33 +218,40 @@ const MembersRender = (() => {
         ${age ? `<div class="p-row"><span class="p-row-lbl">Возраст</span><span class="p-row-val">${age}</span></div>` : ''}
         ${p.allergies ? `<div class="p-row"><span class="p-row-lbl">Аллергии</span><span class="p-row-val muted">${_esc(p.allergies)}</span></div>` : ''}
         ${p.conditions ? `<div class="p-row"><span class="p-row-lbl">Хронические</span><span class="p-row-val muted">${_esc(p.conditions)}</span></div>` : ''}
+        ${isMe ? _tabTelegram(p) : ''}
       </div>
-
-      ${isMe ? `
-      <div class="p-sec-title">Аккаунт</div>
-      <div class="p-card">${_tabTelegram(p)}</div>` : ''}
 
       <div class="p-sec-title">Экстренные контакты</div>
       ${emergHtml}
       ${isMe ? `<div class="p-emerg-add" data-action="emerg-add">+ Добавить контакт</div>` : ''}`;
   }
 
+  // Значки мессенджеров у экстренного контакта — сразу кликабельная ссылка
+  // на чат, чтобы не искать номер и не переключаться в другое приложение
+  // руками в стрессовой ситуации.
+  function _emergMsgrs(c) {
+    const badges = [];
+    if (c.tg) badges.push(`<a class="msgr-badge msgr-tg" href="https://t.me/${encodeURIComponent(c.tg)}" target="_blank" rel="noopener">TG</a>`);
+    if (c.wa) badges.push(`<a class="msgr-badge msgr-wa" href="https://wa.me/${encodeURIComponent(c.wa.replace(/\D/g,''))}" target="_blank" rel="noopener">WA</a>`);
+    if (c.vb) badges.push(`<a class="msgr-badge msgr-vb" href="viber://chat?number=${encodeURIComponent(c.vb.replace(/\D/g,''))}">VB</a>`);
+    return badges.length ? `<div class="p-emerg-msgrs">${badges.join('')}</div>` : '';
+  }
+
   const TG_LINK_CODE_TTL_MS = 15 * 60 * 1000;
 
   /* ══════════════════════════════════════════════
-     TELEGRAM-БОТ (привязка аккаунта)
+     TELEGRAM-БОТ (привязка аккаунта) — компактная строка внутри карточки
+     данных, не отдельная кнопка: привязывается один раз и почти не
+     трогается дальше, не должна конкурировать по весу с экстренными
+     контактами.
   ══════════════════════════════════════════════ */
   function _tabTelegram(p) {
     // Привязан
     if (p.telegramId) {
       return `
-      <div class="p-acct-row">
-        <div class="p-acct-icon">✈️</div>
-        <div class="p-acct-main">
-          <div class="p-acct-title">Telegram-бот</div>
-          <div class="p-acct-sub">Привязан${p.telegramUsername ? ` — @${_esc(p.telegramUsername)}` : ''}</div>
-        </div>
-        <div class="p-acct-action danger" data-action="tg-unlink">Отвязать</div>
+      <div class="p-row">
+        <span class="p-row-lbl">✈️ Telegram-бот</span>
+        <span class="p-row-val">${p.telegramUsername ? `@${_esc(p.telegramUsername)}` : 'Привязан'} <span class="p-row-action danger" data-action="tg-unlink">Отвязать</span></span>
       </div>`;
     }
 
@@ -259,13 +273,9 @@ const MembersRender = (() => {
 
     // Не привязан, кода нет (или протух)
     return `
-      <div class="p-acct-row" data-action="tg-link">
-        <div class="p-acct-icon">✈️</div>
-        <div class="p-acct-main">
-          <div class="p-acct-title">Telegram-бот</div>
-          <div class="p-acct-sub">Привязать аккаунт</div>
-        </div>
-        <div class="p-acct-chevron">›</div>
+      <div class="p-row" data-action="tg-link" style="cursor:pointer">
+        <span class="p-row-lbl">✈️ Telegram-бот</span>
+        <span class="p-row-val muted">Привязать ›</span>
       </div>`;
   }
 
