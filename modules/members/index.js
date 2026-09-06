@@ -141,13 +141,14 @@ var MembersModule = (() => {
         <div class="ob-avatar-circle" id="edit-avatar-circle">${UIUtils.avatarHtml(p.avatar, '🎣')}</div>
         <div class="ob-avatar-change">Изменить ›</div>
       </div>
-      <p class="ob-lbl">Имя</p>
-      <input class="auth-input" id="edit-name" type="text"
-             placeholder="Имя" value="${_esc(p.displayName||'')}">
-      <p class="ob-lbl">Никнейм</p>
-      <input class="auth-input" id="edit-nickname" type="text"
-             placeholder="Необязательно" value="${_esc(p.nickname||'')}">
-      <p class="ob-lbl">Дата рождения</p>
+      <p class="ob-lbl">Имя и никнейм</p>
+      <div class="ob-row2">
+        <input class="auth-input" id="edit-name" type="text"
+               placeholder="Имя" value="${_esc(p.displayName||'')}" style="margin-bottom:0">
+        <input class="auth-input" id="edit-nickname" type="text"
+               placeholder="Никнейм" value="${_esc(p.nickname||'')}" style="margin-bottom:0">
+      </div>
+      <p class="ob-lbl" style="margin-top:14px">Дата рождения</p>
       <input class="auth-input" id="edit-birthday" type="text"
              placeholder="ДД.ММ.ГГГГ" inputmode="numeric" value="${_esc(p.birthday||'')}">
       <p class="ob-lbl">Телефон</p>
