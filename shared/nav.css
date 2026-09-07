@@ -29,7 +29,7 @@
   width: calc(100% / 3);
   border-radius: 14px;
   background: var(--accent-bg);
-  transition: transform 0.28s var(--ease);
+  transition: transform var(--duration) var(--ease);
   pointer-events: none;
 }
 .bnav-pill.i1 { transform: translateX(100%); }
@@ -62,7 +62,7 @@
   stroke-width: 1.7;
   stroke-linecap: round;
   stroke-linejoin: round;
-  transition: transform 0.22s var(--spring);
+  transition: transform var(--duration) var(--spring);
   flex-shrink: 0;
 }
 .bnav.active svg { transform: scale(1.08); }

@@ -5,7 +5,7 @@
   background: var(--bg);
   display: flex; flex-direction: column;
   transform: translateX(100%);
-  transition: transform .35s var(--ease);
+  transition: transform var(--duration-slow) var(--ease);
 }
 .cover-page.visible { transform: translateX(0); }
 
@@ -77,7 +77,7 @@
 }
 /* Погода приходит асинхронно и подменяет собой пустой/старый блок — без
    этого контент телепортируется, с этим он мягко проявляется. */
-#cover-weather-block { transition: opacity 200ms var(--ease); }
+#cover-weather-block { transition: opacity var(--duration) var(--ease); }
 @starting-style { #cover-weather-block { opacity: 0; } }
 .cover-section-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -181,7 +181,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: background var(--duration-fast);
 }
 .cover-icon-btn:active { background: rgba(255,255,255,0.22); }
 
@@ -192,7 +192,7 @@
   display: flex; align-items: flex-end;
   z-index: 1200;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity var(--duration) var(--ease);
 }
 .tqp-overlay.open { opacity: 1; }
 .tqp-sheet {
@@ -203,7 +203,7 @@
   max-height: 80vh;
   overflow-y: auto;
   transform: translateY(100%);
-  transition: transform 300ms var(--spring);
+  transition: transform var(--duration-slow) var(--spring);
 }
 .tqp-overlay.open .tqp-sheet { transform: translateY(0); }
 .tqp-handle {

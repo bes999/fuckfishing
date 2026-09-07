@@ -64,7 +64,7 @@
 .prog-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--label3); margin-bottom: 5px; }
 .prog-pct { font-weight: 500; color: var(--label); }
 .bar-bg { height: 4px; background: var(--sep2); border-radius: 2px; }
-.bar-fill { height: 4px; border-radius: 2px; background: var(--green); transition: width 0.4s var(--ease); }
+.bar-fill { height: 4px; border-radius: 2px; background: var(--green); transition: width var(--duration-slow) var(--ease); }
 
 .group { background: var(--bg2); border-radius: var(--radius-md); border: 0.5px solid var(--sep2); margin-bottom: 6px; overflow: hidden; }
 .group-hd { display: flex; align-items: center; justify-content: space-between; padding: 8px 11px; background: var(--accent-bg); border-bottom: 0.5px solid var(--sep2); cursor: pointer; }
@@ -81,7 +81,7 @@
 .drug.w { border-left: 2.5px solid var(--orange); padding-left: 8px; }
 .drug.d { border-left: 2.5px solid var(--red); padding-left: 8px; }
 .drug-top { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.cc { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--sep); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s var(--spring); }
+.cc { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--sep); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all var(--duration) var(--spring); }
 .cc.done { background: var(--green); border-color: var(--green); }
 .cc svg { width: 10px; height: 10px; stroke: #fff; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
 .drug-info { flex: 1; min-width: 0; cursor: pointer; }
@@ -221,7 +221,7 @@
 .em-badge.danger { background: rgba(255,59,48,0.1); color: var(--red); }
 .em-badge.warn { background: rgba(255,149,0,0.1); color: var(--orange); }
 .em-badge.info { background: var(--accent-bg); color: var(--accent); }
-.em-arrow { font-size: 10px; color: var(--label3); transition: transform 0.2s; }
+.em-arrow { font-size: 10px; color: var(--label3); transition: transform var(--duration) var(--ease); }
 .em-card.open .em-arrow { transform: rotate(90deg); }
 .em-body { display: none; border-top: 0.5px solid var(--sep2); padding: 8px 11px 10px; }
 .em-card.open .em-body { display: block; }
@@ -255,7 +255,7 @@
   display: none;
 }
 .group .gh-arrow {
-  transition: transform 0.2s;
+  transition: transform var(--duration) var(--ease);
   display: inline-block;
 }
 .group.collapsed .drug,
@@ -266,7 +266,7 @@
 }
 .gh-arrow {
   display: inline-block;
-  transition: transform 0.2s;
+  transition: transform var(--duration) var(--ease);
 }
 .group:not(.collapsed) .gh-arrow {
   transform: rotate(90deg);
@@ -279,7 +279,7 @@
 }
 .gh-arrow {
   display: inline-block;
-  transition: transform 0.2s;
+  transition: transform var(--duration) var(--ease);
 }
 .group:not(.collapsed) .gh-arrow {
   transform: rotate(90deg);
@@ -302,7 +302,7 @@
   display: flex; align-items: flex-end;
   z-index: 1100;
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity var(--duration) var(--ease);
 }
 .mk-import-overlay.open { opacity: 1; }
 .mk-import-sheet {

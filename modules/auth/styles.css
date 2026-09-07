@@ -69,7 +69,7 @@
   font-size: 15px; font-weight: 700;
   cursor: pointer; font-family: inherit; margin-top: 2px;
   box-shadow: 0 2px 12px rgba(0,122,255,.25);
-  transition: opacity .15s, transform .15s;
+  transition: opacity var(--duration-fast), transform var(--duration-fast);
 }
 .btn-auth-primary:active { opacity: .85; transform: scale(.98); }
 
@@ -176,7 +176,7 @@
   background: var(--bg3); font-size: 20px;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
-  transition: border-color .15s, transform .1s var(--spring);
+  transition: border-color var(--duration-fast), transform var(--duration-fast) var(--spring);
 }
 .ob-av-btn.sel { border-color: var(--accent); background: var(--accent-bg); transform: scale(1.08); }
 
@@ -189,7 +189,7 @@
   border: 1.5px solid var(--sep2); background: var(--bg3);
   text-align: center; cursor: pointer; font-family: inherit;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color .15s, background .15s;
+  transition: border-color var(--duration-fast), background var(--duration-fast);
 }
 .ob-blood-btn.sel { border-color: var(--accent); background: var(--accent-bg); }
 .ob-blood-intl { display: block; font-size: 13px; font-weight: 800; color: var(--label); line-height: 1; }
@@ -206,7 +206,7 @@
   text-align: center; cursor: pointer; font-family: inherit;
   font-size: 12px; font-weight: 600; color: var(--label2);
   -webkit-tap-highlight-color: transparent;
-  transition: border-color .15s, background .15s, color .15s;
+  transition: border-color var(--duration-fast), background var(--duration-fast), color var(--duration-fast);
 }
 .ob-pill-btn.sel { border-color: var(--accent); background: var(--accent-bg); color: var(--accent); }
 
@@ -227,7 +227,7 @@
   background: var(--accent); color: #fff;
   font-size: 15px; font-weight: 700; font-family: inherit;
   cursor: pointer; box-shadow: 0 2px 12px rgba(0,122,255,.25);
-  transition: opacity .15s, transform .15s;
+  transition: opacity var(--duration-fast), transform var(--duration-fast);
 }
 .ob-btn-next:active { opacity: .85; transform: scale(.98); }
 

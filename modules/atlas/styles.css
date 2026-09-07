@@ -152,9 +152,9 @@
 }
 .atl-acc-hd:active { background: var(--bg3); }
 .atl-acc-title { font-size: 14px; font-weight: 600; color: var(--label); }
-.atl-acc-chev { font-size: 16px; color: var(--label4); transition: transform .2s; }
+.atl-acc-chev { font-size: 16px; color: var(--label4); transition: transform var(--duration) var(--ease); }
 .atl-acc-chev.open { transform: rotate(180deg); }
-.atl-acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 220ms var(--ease); }
+.atl-acc-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration) var(--ease); }
 .atl-acc-body.show { grid-template-rows: 1fr; }
 .atl-acc-body-inner {
   overflow: hidden; border-top: .5px solid var(--sep2);

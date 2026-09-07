@@ -19,7 +19,7 @@
   position: relative;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: transform .15s var(--spring), box-shadow .15s;
+  transition: transform var(--duration-fast) var(--spring), box-shadow var(--duration-fast);
 }
 .m-card:active { transform: scale(.96); box-shadow: var(--card-shadow-pressed); }
 
@@ -49,7 +49,7 @@
   border: 1.5px dashed var(--sep);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: border-color .15s;
+  transition: border-color var(--duration-fast);
 }
 .m-add-card:active { border-color: var(--accent); }
 .m-add-icon  { font-size: 20px; color: var(--label4); margin-bottom: 4px; }
@@ -179,7 +179,7 @@
   box-shadow: var(--card-shadow); text-align: center; cursor: pointer;
   white-space: nowrap; font-family: inherit; border: none;
   -webkit-tap-highlight-color: transparent;
-  transition: background .18s, color .18s;
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 .p-stab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(0,122,255,.3); }
 
@@ -304,7 +304,7 @@
   background: transparent; color: var(--accent);
   font-size: 13px; font-weight: 600; text-align: center;
   cursor: pointer; font-family: inherit;
-  transition: background .15s;
+  transition: background var(--duration-fast);
 }
 .p-btn-edit:active { background: var(--bg3); }
 .p-btn-out {

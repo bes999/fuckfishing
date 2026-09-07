@@ -41,7 +41,7 @@
   cursor: pointer;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--duration-fast), color var(--duration-fast);
 }
 .gear-tsw-i.on { background: var(--accent); color: #fff; font-weight: 600; }
 
@@ -96,7 +96,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  transition: border-color 0.15s;
+  transition: border-color var(--duration-fast);
 }
 .gear-loc-card.gear-loc-card-active { border-color: var(--accent); }
 .gear-loc-card.gear-loc-card-active .gear-loc-name { color: var(--accent); }
@@ -248,7 +248,7 @@
 .gear-cm { font-size: 10px; color: var(--label3); margin-top: 1px; }
 .gear-ctx { color: var(--label4); cursor: pointer; padding: 4px; margin-right: -4px; -webkit-tap-highlight-color: transparent; }
 .gear-ctx svg { width: 13px; height: 13px; fill: none; stroke: var(--label4); stroke-width: 1.7; stroke-linecap: round; display: block; }
-.gear-chev { font-size: 11px; color: var(--label4); margin-left: 2px; transition: transform 0.15s; user-select: none; }
+.gear-chev { font-size: 11px; color: var(--label4); margin-left: 2px; transition: transform var(--duration-fast); user-select: none; }
 
 .gear-badge-ok   { font-size: 10px; font-weight: 600; background: rgba(52,199,89,0.12); color: #1A8A3D; padding: 2px 7px; border-radius: 7px; white-space: nowrap; }
 .gear-badge-part { font-size: 10px; font-weight: 600; background: rgba(255,149,0,0.12); color: #B86800; padding: 2px 7px; border-radius: 7px; white-space: nowrap; }
@@ -311,7 +311,7 @@
   border: 1.5px solid var(--sep);
   flex-shrink: 0; margin-top: 1px;
   display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
 }
 .gear-cb.on { background: var(--green); border-color: var(--green); }
 .gear-cb.on::after {
@@ -323,7 +323,7 @@
   display: block;
 }
 .gear-ci-info { flex: 1; min-width: 0; }
-.gear-cname { font-size: 13px; color: var(--label); transition: color 0.15s; }
+.gear-cname { font-size: 13px; color: var(--label); transition: color var(--duration-fast); }
 .gear-cname.done { text-decoration: line-through; color: var(--label3); }
 .gear-csub { font-size: 11px; color: var(--label4); margin-top: 2px; }
 
@@ -336,7 +336,7 @@
   flex: 1; height: 5px;
   background: var(--sep2); border-radius: 3px; overflow: hidden;
 }
-.gear-prog-fill { height: 100%; border-radius: 3px; background: var(--green); transition: width 0.2s; }
+.gear-prog-fill { height: 100%; border-radius: 3px; background: var(--green); transition: width var(--duration) var(--ease); }
 .gear-prog-lbl { font-size: 12px; color: var(--label3); white-space: nowrap; }
 
 /* ── Карточка поездки ── */
@@ -507,7 +507,7 @@
   background: var(--bg3); color: var(--label2);
   border: 0.5px solid var(--sep2);
   cursor: pointer; -webkit-tap-highlight-color: transparent;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  transition: background var(--duration-fast), color var(--duration-fast), border-color var(--duration-fast);
 }
 .gear-chip.on {
   background: var(--accent-bg); color: var(--accent);
@@ -525,7 +525,7 @@
   display: flex; align-items: center; justify-content: center;
   border: 1.5px solid transparent;
   cursor: pointer; -webkit-tap-highlight-color: transparent;
-  transition: background 0.12s, border-color 0.12s;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
 }
 .gear-ipic svg { width: 17px; height: 17px; fill: none; stroke: var(--label2); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .gear-ipic.on { background: var(--accent-bg); border-color: var(--accent); }
@@ -569,7 +569,7 @@
   border-bottom: 0.5px solid var(--sep2);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.12s;
+  transition: background var(--duration-fast);
 }
 .gear-pick-item:last-of-type { border-bottom: none; }
 .gear-pick-item:active { background: var(--bg3); }
@@ -608,7 +608,7 @@
   border-top: 0.5px solid var(--sep2);
   cursor: pointer; font-size: 15px; color: var(--label);
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.12s;
+  transition: background var(--duration-fast);
 }
 .gear-ctx-item:active { background: var(--bg3); }
 .gear-ctx-item svg { width: 18px; height: 18px; fill: none; stroke: var(--label2); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }

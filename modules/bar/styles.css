@@ -84,7 +84,7 @@
   border-bottom: 2px solid transparent;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.15s;
+  transition: color var(--duration-fast);
 }
 
 .bar-tab.active {
@@ -106,7 +106,7 @@
   border-radius: var(--radius-md, 14px);
   border: 0.5px solid var(--sep);
   overflow: hidden;
-  transition: box-shadow 0.15s;
+  transition: box-shadow var(--duration-fast);
 }
 
 .bar-card__head {
@@ -151,7 +151,7 @@
 .bar-card__chevron {
   color: var(--label3);
   flex-shrink: 0;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform var(--duration) var(--ease);
 }
 
 .bar-card.open .bar-card__chevron { transform: rotate(180deg); }
@@ -252,7 +252,7 @@
   padding: 2px;
   font-size: 20px;
   color: var(--sep);
-  transition: color 0.1s, transform 0.1s;
+  transition: color var(--duration-fast), transform var(--duration-fast);
   -webkit-tap-highlight-color: transparent;
   line-height: 1;
 }
@@ -344,7 +344,7 @@
   flex-shrink: 0;
   color: #fff;
   font-size: 14px;
-  transition: opacity 0.15s;
+  transition: opacity var(--duration-fast);
   -webkit-tap-highlight-color: transparent;
 }
 

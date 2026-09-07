@@ -159,7 +159,7 @@
 .mn-meal {
   background: rgba(255,255,255,0.03);
   border-radius: 9px;
-  transition: background 0.15s, border 0.15s;
+  transition: background var(--duration-fast), border var(--duration-fast);
 }
 
 .mn-meal.edit-mode {

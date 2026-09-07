@@ -68,7 +68,9 @@ const AtlasData = (() => {
     {
       id: 'priobye', name: 'Приобье (Пасынково)',
       subtitle: 'Пока пусто — накопим по опыту поездок',
-      emoji: '🏞️', species: [], landmarks: [], history: '', tourism: [], rivers: [],
+      // 🏞️ (нацпарк) визуально сложнее/бледнее трёх других тайлов —
+      //🌊 проще и жирнее, к тому же по теме (Приобье — у реки Обь)
+      emoji: '🌊', species: [], landmarks: [], history: '', tourism: [], rivers: [],
     },
   ];
 

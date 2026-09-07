@@ -34,7 +34,7 @@
   border-radius: 50%;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.15s;
+  transition: background var(--duration-fast);
 }
 .sf-back:active { background: rgba(255,255,255,0.15); }
 
