@@ -44,14 +44,17 @@
 .member-tab.active .member-name { color: var(--accent); font-weight: 500; }
 .member-prog { font-size: 9px; color: var(--label4); }
 
-.filter-row { display: flex; align-items: center; gap: 5px; margin-bottom: 8px; padding: 7px 10px; background: var(--bg2); border-radius: var(--radius-md); border: 0.5px solid var(--sep2); }
-.sb { display: flex; align-items: center; gap: 4px; padding: 4px 7px; background: var(--bg3); border-radius: var(--radius-sm); border: 0.5px solid var(--sep2); flex-shrink: 0; }
-.si { width: 12px; height: 12px; stroke: var(--label3); fill: none; stroke-width: 2; stroke-linecap: round; }
-.si-i { border: none; background: transparent; font-size: 11px; color: var(--label); width: 52px; outline: none; }
-.vd { width: 0.5px; height: 18px; background: var(--sep); flex-shrink: 0; }
-.fi { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; min-width: 0; }
+/* Явное деление 2/3 (поиск) : 1/3 (статус) через grid, а не "растёт, если
+   осталось место" — раньше это то давало 50/50, то статус сжимался до
+   контента и всё "гуляло" в зависимости от текста. */
+.filter-row { display: grid; grid-template-columns: 2fr auto 1fr; align-items: center; gap: 8px; margin-bottom: 8px; padding: 7px 10px; background: var(--bg2); border-radius: var(--radius-md); border: 0.5px solid var(--sep2); }
+.sb { display: flex; align-items: center; gap: 4px; padding: 4px 7px; background: var(--bg3); border-radius: var(--radius-sm); border: 0.5px solid var(--sep2); min-width: 0; }
+.si { width: 12px; height: 12px; stroke: var(--label3); fill: none; stroke-width: 2; stroke-linecap: round; flex-shrink: 0; }
+.si-i { border: none; background: transparent; font-size: 11px; color: var(--label); width: 100%; min-width: 0; outline: none; }
+.vd { width: 0.5px; height: 18px; background: var(--sep); }
+.fi { display: flex; align-items: center; gap: 3px; min-width: 0; }
 .fl { font-size: 10px; color: var(--label3); white-space: nowrap; flex-shrink: 0; }
-.fs { border: none; background: transparent; font-size: 11px; color: var(--label); font-family: inherit; outline: none; flex: 0 0 auto; min-width: 0; cursor: pointer; padding: 0; }
+.fs { border: none; background: transparent; font-size: 11px; color: var(--label); font-family: inherit; outline: none; flex: 1; min-width: 0; cursor: pointer; padding: 0; }
 
 .view-toggle { display: flex; gap: 4px; margin-bottom: 8px; }
 .vt { flex: 1; padding: 6px; text-align: center; font-size: 11px; border-radius: var(--radius-sm); border: 0.5px solid var(--sep); background: var(--bg2); color: var(--label3); cursor: pointer; }
@@ -242,7 +245,9 @@
      (тот же вес селектора, этот файл подключается позже) — контент упирался
      в нижнее меню. Возвращаем безопасный отступ явно. */
   padding-bottom: calc(83px + env(safe-area-inset-bottom));
-  max-width: 420px; margin: 0 auto;
+  /* было max-width:420px — единственная страница во всём приложении с
+     таким потолком, у остальных модулей (Закупка/Меню/...) его нет вовсе,
+     поэтому Аптечка выглядела у́же всех остальных без всякой причины. */
 }
 .group.collapsed .drug,
 .group.collapsed .add-drug-row,

@@ -69,7 +69,7 @@ var medkitFilters = { search: '', slot: '', status: '' };
 
 function rMedkitFilters(mode) {
   var h = '<div class="filter-row">';
-  h += '<div class="sb" style="flex:1"><svg class="si" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
+  h += '<div class="sb"><svg class="si" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
   h += '<input class="si-i" id="medkitSearchInput" style="width:100%" placeholder="Поиск препарата..." value="' + escHtml(medkitFilters.search) + '" oninput="medkitSearchInput(this.value)">';
   h += '</div>';
   h += '<div class="vd"></div>';
@@ -559,7 +559,7 @@ function rMedkitBySlots(mode, memberId) {
 
 function rMedkitReference() {
   var h = '<div class="filter-row">';
-  h += '<div class="sb" style="flex:1"><svg class="si" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
+  h += '<div class="sb"><svg class="si" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
   h += '<input class="si-i" placeholder="Поиск ситуации..." oninput="filterEmergency(this.value)"></div>';
   h += '<div class="vd"></div>';
   h += '<div class="fi"><span class="fl">Тип</span><select class="fs" onchange="filterEmergencyType(this.value)">';
