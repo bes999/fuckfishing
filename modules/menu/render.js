@@ -315,8 +315,19 @@ const MenuRender = (() => {
         const { day, meal, type } = btn.dataset;
         const slot = MenuState.addSlot(_tripId, day, meal, type);
         overlay.remove();
-        if (slot) _showPicker(day, meal, slot.id, type);
-        else _rerenderDay(day);
+        if (slot) {
+          // Новый слот существует только локально, пока не пуш нём days —
+          // если сразу выбрать блюдо, оно уйдёт узкой записью в slotItems
+          // (см. saveSlotItem), а сам слот в серверном days так и не
+          // появится. Следующий же снапшот из Firestore (в т.ч. эхо этой
+          // самой узкой записи) перетрёт локальный days старым — выбор
+          // тихо исчезнет. Поэтому создание слота — полноценный saveDays,
+          // прямо как remove-slot, а не только точечная правка.
+          _syncFirebase();
+          _showPicker(day, meal, slot.id, type);
+        } else {
+          _rerenderDay(day);
+        }
       });
     });
   }

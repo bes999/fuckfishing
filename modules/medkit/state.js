@@ -198,13 +198,23 @@ function isGroupOpen(groupId) {
 // триггер живёт в самой строке (шеврон), а открытость держим в памяти тем же
 // способом, что и medkitOpenGroups — не персистим в localStorage, это внутри
 // одной сессии просмотра, не настройка.
+//
+// Ключ включает mode+memberId, а не только itemId: один и тот же id
+// препарата (paracetamol и т.п.) существует и в "Общей", и в личной
+// аптечке каждого участника — без этого разворот одного препарата у
+// себя "просачивался" бы в чужую личную аптечку или в "Общую" при
+// переключении вкладки/участника в свитчере.
 var medkitOpenDrugCards = {};
 var medkitOpenDrugInfo = {};
 
+function _drugStateKey(itemId) {
+  return medkitMode + '|' + (medkitMode === 'personal' ? medkitMemberId : '') + '|' + itemId;
+}
+
 function isDrugCardOpen(itemId) {
-  return !!medkitOpenDrugCards[itemId];
+  return !!medkitOpenDrugCards[_drugStateKey(itemId)];
 }
 
 function isDrugInfoOpen(itemId) {
-  return !!medkitOpenDrugInfo[itemId];
+  return !!medkitOpenDrugInfo[_drugStateKey(itemId)];
 }

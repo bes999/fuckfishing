@@ -314,7 +314,8 @@ function toggleMedkitGroupCollapse(groupId) {
 }
 
 function toggleMedkitDrugCard(itemId) {
-  medkitOpenDrugCards[itemId] = !medkitOpenDrugCards[itemId];
+  var key = _drugStateKey(itemId);
+  medkitOpenDrugCards[key] = !medkitOpenDrugCards[key];
   var el = document.querySelector('[data-drug="' + itemId + '"]');
   if (!el) return;
   var open = isDrugCardOpen(itemId);
@@ -325,7 +326,8 @@ function toggleMedkitDrugCard(itemId) {
 
 function toggleMedkitDrugInfo(itemId, event) {
   if (event) event.stopPropagation();
-  medkitOpenDrugInfo[itemId] = !medkitOpenDrugInfo[itemId];
+  var key = _drugStateKey(itemId);
+  medkitOpenDrugInfo[key] = !medkitOpenDrugInfo[key];
   var card = document.querySelector('[data-drug="' + itemId + '"] .drug-card');
   if (!card) return;
   var open = isDrugInfoOpen(itemId);
