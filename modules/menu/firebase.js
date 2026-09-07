@@ -11,7 +11,7 @@ const MenuFirebase = (() => {
       _unsubscribe = db.collection(COLLECTION).doc(tripId)
         .onSnapshot(snap => {
           if (snap.exists && snap.data().days) {
-            MenuState.setFromFirebase(tripId, snap.data().days);
+            MenuState.setFromFirebase(tripId, snap.data().days, snap.data().slotItems || {});
             onUpdate();
           }
         }, () => {});
@@ -28,5 +28,18 @@ const MenuFirebase = (() => {
     } catch (_) {}
   }
 
-  return { subscribe, unsubscribe, saveDays };
+  // Отдельное узкое поле для конкретной позиции — та же гонка, что была в
+  // Закупке: несколько человек одновременно выбирают разные блюда в разные
+  // слоты, а saveDays() выше перезаписывает ВЕСЬ days целиком, так что
+  // второе почти одновременное сохранение тихо стирает выбор из первого.
+  // slot.id уже глобально уникален в пределах поездки (см. MenuState.addSlot),
+  // так что плоская мапа по нему безопасна — Firestore мёржит вложенные
+  // map-поля при merge:true, запись одного ключа не задевает остальные.
+  async function saveSlotItem(tripId, slotId, item) {
+    try {
+      await db.collection(COLLECTION).doc(tripId).set({ slotItems: { [slotId]: item } }, { merge: true });
+    } catch (_) {}
+  }
+
+  return { subscribe, unsubscribe, saveDays, saveSlotItem };
 })();

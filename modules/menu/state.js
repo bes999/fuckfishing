@@ -83,9 +83,23 @@ const MenuState = (() => {
     return slot;
   }
 
-  // Заменить все данные из Firebase
-  function setFromFirebase(tripId, days) {
+  // Заменить все данные из Firebase — slotItemsMap (плоское поле slot.id →
+  // item) накладывается поверх days ПОСЛЕ, так же как bought-мапа в
+  // Закупке: узкие точечные записи всегда должны побеждать над тем, что
+  // могло прийти в самом days (который мог отстать на один снапшот).
+  function setFromFirebase(tripId, days, slotItemsMap) {
     if (!_data[tripId]) _data[tripId] = {};
+    if (slotItemsMap) {
+      days.forEach(day => {
+        Object.values(day.meals).forEach(meal => {
+          meal.slots.forEach(slot => {
+            if (Object.prototype.hasOwnProperty.call(slotItemsMap, slot.id)) {
+              slot.item = slotItemsMap[slot.id];
+            }
+          });
+        });
+      });
+    }
     _data[tripId].days = days;
     _save();
   }

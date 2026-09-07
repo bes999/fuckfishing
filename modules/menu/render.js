@@ -264,10 +264,11 @@ const MenuRender = (() => {
         el.addEventListener('click', () => {
           UIUtils.withBusyButton(el, () => {
             const { day, meal, slot, itemId, itemName, itemSource } = el.dataset;
-            MenuState.updateSlot(_tripId, day, meal, slot, {
-              id: itemId, name: itemName, source: itemSource
-            });
-            _syncFirebase();
+            const item = { id: itemId, name: itemName, source: itemSource };
+            // Точечная запись только этого слота, а не всего _syncFirebase() —
+            // см. MenuFirebase.saveSlotItem про гонку при одновременном выборе.
+            MenuState.updateSlot(_tripId, day, meal, slot, item);
+            MenuFirebase.saveSlotItem(_tripId, slot, item);
             overlay.remove();
             _rerenderDay(day);
           });
