@@ -91,6 +91,18 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Аптечка рендерится инлайн прямо сюда (см. switchTab('medkit') в
+   modules/members/index.js — #p-medkit-inline получает id="p-medkit" на
+   время вкладки). У #p-medkit есть свой padding (10px по бокам, отступ
+   сверху под фиксированный header отдельной страницы, 83px снизу под
+   нижнее меню) — рассчитанный для полноэкранной страницы. Внутри профиля
+   этот отступ складывается с уже имеющимся padding у .profile-scroll —
+   контент становится заметно уже, чем на самой странице Аптечки. Зануляем
+   паддинг у вложенного #p-medkit, полагаясь целиком на отступы профиля. */
+.profile-scroll #p-medkit {
+  padding: 0;
+}
+
 /* Header */
 .p-header {
   display: flex; align-items: flex-start; gap: 12px;
