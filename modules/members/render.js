@@ -101,9 +101,6 @@ const MembersRender = (() => {
     const pg = document.getElementById('p-members');
     if (!pg) return;
 
-    const tripsCount = _tripsForProfile(profile.uid).length;
-    const topMonth   = _topFishingMonth(profile);
-
     pg.innerHTML = `
       <div class="topbar" style="display:flex;align-items:center;gap:12px;padding-top:14px">
         <button data-action="profile-back"
@@ -120,7 +117,6 @@ const MembersRender = (() => {
       </div>
       <div class="profile-scroll" style="overflow-y:auto;flex:1;padding-bottom:calc(83px + env(safe-area-inset-bottom))">
         ${_profileHeader(profile, isMe, isOrg)}
-        ${_statsRow(tripsCount, topMonth)}
         ${_subtabs()}
         <div id="profile-tab-content">
           ${_tabProfile(profile, isMe)}
@@ -174,6 +170,10 @@ const MembersRender = (() => {
       .filter(t => !t.private || (t.memberIds || []).includes(viewerUid));
   }
 
+  // _topFishingMonth/_statsRow — временно не вызываются (пользователь
+  // попросил убрать stat-каллауты "N поездок"/"активный месяц" с карточки
+  // профиля), оставлены как есть на случай, если решим вернуть в другом виде.
+  //
   // Уловы матчатся по полю member (свободный текст, выбирается в форме
   // Улова из списка участников поездки) против имени/ника профиля — прямой
   // uid-связи там нет, это ближайшее доступное сопоставление.
@@ -280,9 +280,10 @@ const MembersRender = (() => {
 
       ${isMe ? `
       <div class="p-sec-title">Аккаунт</div>
-      <div class="p-card" style="padding:2px 14px">
-        ${_tabTelegram(p)}
-        <div class="p-row p-row-danger" data-action="auth-signout">
+      <div class="p-card" style="padding:2px 14px">${_tabTelegram(p)}</div>
+
+      <div class="p-card p-card--signout" style="padding:2px 14px" data-action="auth-signout">
+        <div class="p-row p-row-danger">
           <span class="p-row-lbl" style="color:var(--red)">Выйти из аккаунта</span>
         </div>
       </div>` : ''}`;
