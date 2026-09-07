@@ -71,9 +71,9 @@
 .gh-left { display: flex; align-items: center; gap: 7px; }
 .gh-arrow { font-size: 9px; color: var(--label3); }
 .gh-title { font-size: 11px; font-weight: 500; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; }
-.gh-count { font-size: 10px; color: var(--label3); background: var(--bg3); padding: 1px 6px; border-radius: 6px; border: 0.5px solid var(--sep2); }
+.gh-count { font-size: 10px; color: var(--label3); background: var(--bg3); padding: 1px 6px; border-radius: 8px; border: 0.5px solid var(--sep2); }
 .gh-right { display: flex; align-items: center; gap: 5px; }
-.gh-btn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 6px; border: 0.5px solid var(--sep2); background: var(--bg2); cursor: pointer; }
+.gh-btn { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 0.5px solid var(--sep2); background: var(--bg2); cursor: pointer; }
 .gh-btn svg { width: 12px; height: 12px; stroke: var(--label3); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
 .drug { padding: 9px 11px; border-bottom: 0.5px solid var(--sep2); }
@@ -92,10 +92,10 @@
 .dl .warn { color: var(--orange); }
 .dl .danger { color: var(--red); }
 .drug-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
-.sp { font-size: 10px; padding: 2px 6px; border-radius: 7px; font-weight: 500; }
+.sp { font-size: 10px; padding: 2px 6px; border-radius: 8px; font-weight: 500; }
 .sp-warn { background: rgba(255,149,0,0.15); color: var(--orange); }
 .sp-danger { background: rgba(255,59,48,0.12); color: var(--red); }
-.hide-btn { font-size: 10px; color: var(--label3); background: var(--bg3); border: 0.5px solid var(--sep2); padding: 2px 6px; border-radius: 6px; cursor: pointer; }
+.hide-btn { font-size: 10px; color: var(--label3); background: var(--bg3); border: 0.5px solid var(--sep2); padding: 2px 6px; border-radius: 8px; cursor: pointer; }
 .chev { font-size: 15px; color: var(--label4); cursor: pointer; flex-shrink: 0; padding: 2px; }
 
 /* Карточка препарата — раньше <details>/<summary>, теперь обычный div,
@@ -139,18 +139,18 @@
 .optional-group { background: var(--bg2); border-radius: var(--radius-md); border: 0.5px dashed var(--sep); margin-bottom: 6px; overflow: hidden; }
 .optional-hd { display: flex; align-items: center; justify-content: space-between; padding: 9px 12px; }
 .opt-title { font-size: 12px; color: var(--label3); }
-.enable-btn { font-size: 10px; color: var(--accent); background: var(--accent-bg); border: 0.5px solid var(--accent); padding: 3px 9px; border-radius: 6px; cursor: pointer; }
+.enable-btn { font-size: 10px; color: var(--accent); background: var(--accent-bg); border: 0.5px solid var(--accent); padding: 3px 9px; border-radius: 8px; cursor: pointer; }
 
 .hidden-section { background: var(--bg2); border-radius: var(--radius-md); border: 0.5px dashed var(--sep); margin-bottom: 6px; overflow: hidden; }
 .hidden-hd { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; cursor: pointer; }
 .hidden-title { font-size: 11px; color: var(--label3); display: flex; align-items: center; gap: 6px; }
-.hidden-count { font-size: 10px; background: var(--bg3); padding: 1px 6px; border-radius: 6px; border: 0.5px solid var(--sep2); color: var(--label3); }
+.hidden-count { font-size: 10px; background: var(--bg3); padding: 1px 6px; border-radius: 8px; border: 0.5px solid var(--sep2); color: var(--label3); }
 .hidden-body { border-top: 0.5px solid var(--sep2); }
 .hidden-item { display: flex; align-items: center; justify-content: space-between; padding: 7px 12px; border-bottom: 0.5px solid var(--sep2); }
 .hidden-item:last-child { border-bottom: none; }
 .hi-name { font-size: 12px; color: var(--label3); }
 .hi-group { font-size: 10px; color: var(--label4); margin-top: 1px; }
-.restore-btn { font-size: 10px; color: var(--accent); background: var(--accent-bg); border: 0.5px solid var(--accent); padding: 2px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.restore-btn { font-size: 10px; color: var(--accent); background: var(--accent-bg); border: 0.5px solid var(--accent); padding: 2px 8px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
 
 .add-cat { display: flex; align-items: center; gap: 7px; padding: 9px 12px; background: var(--bg2); border-radius: var(--radius-md); border: 0.5px dashed var(--sep); margin-bottom: 6px; cursor: pointer; }
 .add-cat-icon { width: 20px; height: 20px; background: var(--bg3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: var(--label3); flex-shrink: 0; }
@@ -162,7 +162,7 @@
 .stack-hd-svg { width: 13px; height: 13px; stroke: var(--label3); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 .stack-hd-title { font-size: 12px; font-weight: 500; color: var(--label3); }
 .stack-hd-r { display: flex; align-items: center; gap: 7px; }
-.hide-link { font-size: 10px; color: var(--label3); border: 0.5px solid var(--sep2); padding: 2px 7px; border-radius: 6px; cursor: pointer; background: var(--bg3); }
+.hide-link { font-size: 10px; color: var(--label3); border: 0.5px solid var(--sep2); padding: 2px 7px; border-radius: 8px; cursor: pointer; background: var(--bg3); }
 .stack-arrow { font-size: 10px; color: var(--label3); }
 .stack-body { border-top: 0.5px solid var(--sep2); }
 .slot-label { font-size: 10px; font-weight: 500; color: var(--accent); text-transform: uppercase; letter-spacing: 0.05em; padding: 5px 11px 3px; background: var(--accent-bg); border-bottom: 0.5px solid var(--sep2); }
@@ -233,7 +233,7 @@
 .em-step-text b { font-weight: 500; color: var(--red); }
 .em-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 8px; border-top: 0.5px solid var(--sep2); margin-top: 6px; }
 .em-drugs { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
-.em-drug-tag { font-size: 10px; padding: 2px 7px; border-radius: 6px; background: var(--accent-bg); color: var(--accent); }
+.em-drug-tag { font-size: 10px; padding: 2px 7px; border-radius: 8px; background: var(--accent-bg); color: var(--accent); }
 .call112 { font-size: 11px; font-weight: 500; color: #fff; padding: 4px 10px; border-radius: 8px; background: var(--red); cursor: pointer; white-space: nowrap; text-decoration: none; }
 
 /* Страница обёртка — своя ID-специфичность перебивает общий .page{padding-top}
@@ -336,7 +336,7 @@
 .mk-import-tabs {
   display: flex; gap: 6px;
   background: var(--bg3);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 3px;
   margin-bottom: 16px;
 }
@@ -361,7 +361,7 @@
   width: 100%;
   background: var(--bg3);
   border: 0.5px solid var(--sep);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   color: var(--label);
   font-size: 14px;
@@ -373,7 +373,7 @@
   min-height: 110px;
   background: var(--bg3);
   border: 0.5px solid var(--sep);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   color: var(--label);
   font-size: 14px;
