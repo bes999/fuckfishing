@@ -338,7 +338,7 @@
   display: flex; align-items: center; gap: 6px;
   width: 100%;
   background: none; border: none;
-  color: var(--red, #ff453a);
+  color: var(--red);
   font-size: 13px; font-weight: 600;
   padding: 10px 0;
   cursor: pointer;

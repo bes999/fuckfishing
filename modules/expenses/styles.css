@@ -138,7 +138,7 @@
   color: var(--label3); font-size: 14px;
   transition: color var(--duration-fast);
 }
-.exp-entry__btn--del:hover { color: #ff453a; }
+.exp-entry__btn--del:hover { color: var(--red); }
 
 /* Section label */
 .exp-sec-label {
@@ -178,8 +178,8 @@
 .exp-person__name  { font-size: 14px; font-weight: 600; color: var(--label); }
 .exp-person__meta  { font-size: 11px; color: var(--label3); margin-top: 2px; }
 .exp-person__diff  { font-size: 15px; font-weight: 700; white-space: nowrap; }
-.exp-person__diff--pos { color: #30d158; }
-.exp-person__diff--neg { color: #ff453a; }
+.exp-person__diff--pos { color: var(--green); }
+.exp-person__diff--neg { color: var(--red); }
 
 /* Transfers */
 .exp-transfer-row {
@@ -359,8 +359,8 @@
   transition: background var(--duration-fast), border-color var(--duration-fast);
 }
 .exp-checkbox.checked {
-  background: #30d158;
-  border-color: #30d158;
+  background: var(--green);
+  border-color: var(--green);
 }
 .exp-checkbox.checked::after {
   content: '';
@@ -408,7 +408,7 @@
   border: none; background: transparent;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  color: #ff453a; font-size: 14px;
+  color: var(--red); font-size: 14px;
   border-radius: 50%;
 }
 .exp-cat-add-row {

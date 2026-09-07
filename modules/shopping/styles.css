@@ -63,7 +63,7 @@
 
 .sh-progress-fill {
   height: 100%;
-  background: #34c759;
+  background: var(--green);
   border-radius: 2px;
   transition: width var(--duration) var(--ease);
 }
@@ -108,7 +108,7 @@
 .sh-cat__icon i { font-size: 13px; color: var(--label3); }
 .sh-cat__title { flex: 1; font-size: 14px; font-weight: 500; color: var(--label); }
 .sh-cat__count { font-size: 12px; color: var(--label3); }
-.sh-cat__count.done { color: #34c759; font-weight: 600; }
+.sh-cat__count.done { color: var(--green); font-weight: 600; }
 .sh-cat__chev { color: var(--label3); font-size: 15px; }
 
 .sh-cat__body { border-top: 0.5px solid var(--sep); }
@@ -139,8 +139,8 @@
 }
 
 .sh-checkbox.checked {
-  background: #34c759;
-  border-color: #34c759;
+  background: var(--green);
+  border-color: var(--green);
 }
 
 .sh-checkbox.checked i { font-size: 11px; color: #fff; }
@@ -197,7 +197,7 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-.sh-del:active { color: #ff453a; }
+.sh-del:active { color: var(--red); }
 
 /* Add item */
 .sh-add-item {

@@ -91,7 +91,7 @@
   color: #533F03;
   line-height: 1.5;
 }
-[data-theme="dark"] .sf-warn-text { color: #FFD60A; }
+[data-theme="dark"] .sf-warn-text { color: var(--yellow); }
 
 /* Section label */
 .sf-sec-label {

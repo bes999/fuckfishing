@@ -119,8 +119,8 @@
 .cover-money-name { font-size: 14px; font-weight: 600; flex: 1; }
 .cover-money-meta { font-size: 12px; color: var(--label3); }
 .cover-money-diff { font-size: 14px; font-weight: 700; white-space: nowrap; }
-.cover-money-diff--pos { color: #30d158; }
-.cover-money-diff--neg { color: #ff453a; }
+.cover-money-diff--pos { color: var(--green); }
+.cover-money-diff--neg { color: var(--red); }
 .cover-money-transfers { padding: 10px 16px 4px; }
 .cover-money-transfer { font-size: 13px; color: var(--label2); padding: 4px 0; }
 

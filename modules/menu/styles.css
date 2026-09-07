@@ -113,8 +113,8 @@
   flex-shrink: 0;
 }
 
-.mn-day-num.done    { background: rgba(52,199,89,0.15);  color: #34c759; }
-.mn-day-num.partial { background: rgba(255,159,10,0.15); color: #ff9f0a; }
+.mn-day-num.done    { background: rgba(52,199,89,0.15);  color: var(--green); }
+.mn-day-num.partial { background: rgba(255,159,10,0.15); color: var(--orange); }
 .mn-day-num.empty   { background: rgba(255,255,255,0.06); color: var(--label3); }
 
 .mn-day-info { flex: 1; min-width: 0; }
@@ -142,8 +142,8 @@
   border-radius: 50%;
   background: var(--sep);
 }
-.mn-dot.filled  { background: #34c759; }
-.mn-dot.partial { background: #ff9f0a; }
+.mn-dot.filled  { background: var(--green); }
+.mn-dot.partial { background: var(--orange); }
 
 .mn-chev { color: var(--label3); font-size: 15px; }
 
@@ -251,10 +251,10 @@
   flex: 1;
 }
 
-.mn-slot-tag.filled-green  { background: rgba(52,199,89,0.1);  color: #34c759; }
+.mn-slot-tag.filled-green  { background: rgba(52,199,89,0.1);  color: var(--green); }
 .mn-slot-tag.filled-blue   { background: rgba(10,132,255,0.1); color: #4da3ff; }
-.mn-slot-tag.filled-orange { background: rgba(255,159,10,0.1); color: #ff9f0a; }
-.mn-slot-tag.filled-red    { background: rgba(255,69,58,0.1);  color: #ff453a; }
+.mn-slot-tag.filled-orange { background: rgba(255,159,10,0.1); color: var(--orange); }
+.mn-slot-tag.filled-red    { background: rgba(255,69,58,0.1);  color: var(--red); }
 
 .mn-slot-tag.view-empty {
   background: rgba(255,255,255,0.04);
@@ -281,7 +281,7 @@
   padding: 0 2px;
 }
 
-.mn-slot-del:active { color: #ff453a; }
+.mn-slot-del:active { color: var(--red); }
 
 .mn-add-slot {
   display: flex;
