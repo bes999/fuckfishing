@@ -49,9 +49,9 @@
 .si { width: 12px; height: 12px; stroke: var(--label3); fill: none; stroke-width: 2; stroke-linecap: round; }
 .si-i { border: none; background: transparent; font-size: 11px; color: var(--label); width: 52px; outline: none; }
 .vd { width: 0.5px; height: 18px; background: var(--sep); flex-shrink: 0; }
-.fi { display: flex; align-items: center; gap: 3px; flex: 1; min-width: 0; }
+.fi { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; min-width: 0; }
 .fl { font-size: 10px; color: var(--label3); white-space: nowrap; flex-shrink: 0; }
-.fs { border: none; background: transparent; font-size: 11px; color: var(--label); font-family: inherit; outline: none; flex: 1; min-width: 0; cursor: pointer; padding: 0; }
+.fs { border: none; background: transparent; font-size: 11px; color: var(--label); font-family: inherit; outline: none; flex: 0 0 auto; min-width: 0; cursor: pointer; padding: 0; }
 
 .view-toggle { display: flex; gap: 4px; margin-bottom: 8px; }
 .vt { flex: 1; padding: 6px; text-align: center; font-size: 11px; border-radius: var(--radius-sm); border: 0.5px solid var(--sep); background: var(--bg2); color: var(--label3); cursor: pointer; }
