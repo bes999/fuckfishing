@@ -191,3 +191,20 @@ function toggleGroupOpen(groupId) {
 function isGroupOpen(groupId) {
   return !!medkitOpenGroups[groupId];
 }
+
+// Разворот карточки конкретного препарата (поля было/осталось/место и т.п.)
+// и вложенный внутри неё разворот справки — раньше это был <details>/<summary>
+// со своей строкой-ссылкой "Карточка препарата" под каждым препаратом; теперь
+// триггер живёт в самой строке (шеврон), а открытость держим в памяти тем же
+// способом, что и medkitOpenGroups — не персистим в localStorage, это внутри
+// одной сессии просмотра, не настройка.
+var medkitOpenDrugCards = {};
+var medkitOpenDrugInfo = {};
+
+function isDrugCardOpen(itemId) {
+  return !!medkitOpenDrugCards[itemId];
+}
+
+function isDrugInfoOpen(itemId) {
+  return !!medkitOpenDrugInfo[itemId];
+}

@@ -81,20 +81,24 @@
 .cc { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--sep); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s var(--spring); }
 .cc.done { background: var(--green); border-color: var(--green); }
 .cc svg { width: 10px; height: 10px; stroke: #fff; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-.drug-info { flex: 1; min-width: 0; }
+.drug-info { flex: 1; min-width: 0; cursor: pointer; }
 .dn { font-size: 13px; color: var(--label); line-height: 1.2; }
-.dl { font-size: 10px; color: var(--label3); margin-top: 2px; }
+.dl { font-size: 11px; color: var(--label3); margin-top: 2px; line-height: 1.4; }
+.dl .dl-sep { margin: 0 4px; color: var(--label4); }
+.dl .muted { color: var(--label4); }
+.dl .warn { color: var(--orange); }
+.dl .danger { color: var(--red); }
 .drug-right { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
 .sp { font-size: 10px; padding: 2px 6px; border-radius: 7px; font-weight: 500; }
 .sp-warn { background: rgba(255,149,0,0.15); color: var(--orange); }
 .sp-danger { background: rgba(255,59,48,0.12); color: var(--red); }
 .hide-btn { font-size: 10px; color: var(--label3); background: var(--bg3); border: 0.5px solid var(--sep2); padding: 2px 6px; border-radius: 6px; cursor: pointer; }
-.drug-meta { display: flex; gap: 5px; margin-top: 5px; margin-left: 26px; flex-wrap: wrap; }
-.mt { font-size: 10px; color: var(--label3); background: var(--bg3); padding: 2px 6px; border-radius: 5px; border: 0.5px solid var(--sep2); }
-.mt.warn { background: rgba(255,149,0,0.1); color: var(--orange); border-color: rgba(255,149,0,0.2); }
-.mt.danger { background: rgba(255,59,48,0.08); color: var(--red); border-color: rgba(255,59,48,0.2); }
+.chev { font-size: 15px; color: var(--label4); cursor: pointer; flex-shrink: 0; padding: 2px; }
 
-.drug-card { padding: 6px 11px 10px; border-top: 0.5px solid var(--sep2); }
+/* Карточка препарата — раньше <details>/<summary>, теперь обычный div,
+   открытость держит .card-open на .drug (см. toggleMedkitDrugCard) */
+.drug-card { display: none; padding: 6px 11px 10px; border-top: 0.5px solid var(--sep2); }
+.drug.card-open .drug-card { display: block; }
 .row4 { display: grid; grid-template-columns: repeat(4,1fr); border-bottom: 0.5px solid var(--sep2); }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 0.5px solid var(--sep2); }
 .cell { display: flex; flex-direction: column; padding: 7px 8px; gap: 3px; }
@@ -113,7 +117,10 @@
 .dot-warn { background: var(--orange); }
 .dot-danger { background: var(--red); }
 .dot-yellow { background: var(--yellow); }
-.info-section { padding: 7px 0 4px; }
+.info-toggle { display: flex; align-items: center; gap: 5px; padding: 8px 0 2px; color: var(--accent); font-size: 12px; font-weight: 500; cursor: pointer; }
+.info-toggle .ti { font-size: 13px; }
+.info-section { display: none; padding: 7px 0 4px; }
+.drug-card.info-open .info-section { display: block; }
 .info-row { display: flex; gap: 8px; padding: 4px 0; border-bottom: 0.5px solid var(--sep2); }
 .info-row:last-child { border-bottom: none; padding-bottom: 0; }
 .ir-lbl { font-size: 10px; color: var(--label3); min-width: 82px; flex-shrink: 0; padding-top: 1px; }

@@ -188,10 +188,10 @@ if (isOptional && !isGroupEnabled(mode, memberId, group.id)) {
     if (isOptional && group.id !== 'supplements') {
     h += '<span class="hide-btn" style="color:var(--red);border-color:#F7C1C1" onclick="disableMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\')">отключить</span>';
    }
-    h += '<div class="gh-btn" onclick="toggleMedkitAddRow(\'' + group.id + '\')">';
+    h += '<div class="gh-btn" title="Добавить препарат" onclick="toggleMedkitAddRow(\'' + group.id + '\')">';
     h += '<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>';
-    h += '<div class="gh-btn" onclick="hideMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\',event)">';
-    h += '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></div>';
+    h += '<div class="gh-btn" title="Скрыть категорию" onclick="hideMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\',event)">';
+    h += '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line x1="3" y1="21" x2="21" y2="3"/></svg></div>';
     h += '</div></div>';
 
     h += '<div class="group-body">';
@@ -233,20 +233,14 @@ function rMedkitDrugItem(mode, memberId, item, isCustom) {
   var color = getMedkitItemColor(status);
   var statusLabel = getMedkitStatusLabel(status);
   var info = MEDKIT_INFO[item.id] || null;
+  var cardOpen = isDrugCardOpen(item.id);
 
-  var cls = 'drug' + (color === 'danger' ? ' d' : color === 'warn' ? ' w' : '');
-  var h = '<div class="' + cls + '">';
+  var cls = 'drug' + (color === 'danger' ? ' d' : color === 'warn' ? ' w' : '') + (cardOpen ? ' card-open' : '');
+  var h = '<div class="' + cls + '" data-drug="' + item.id + '">';
   h += '<div class="drug-top">';
   h += '<div class="cc' + (itemState.checked ? ' done' : '') + '" onclick="toggleMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',event)">';
   if (itemState.checked) h += '<svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>';
   h += '</div>';
-  h += '<div class="drug-info"><div class="dn">' + escHtml(item.name) + '</div>';
-  if (info && info.label) h += '<div class="dl">' + escHtml(info.label) + '</div>';
-  h += '</div>';
-  h += '<div class="drug-right">';
-  if (statusLabel) h += '<span class="sp sp-' + color + '">' + statusLabel + '</span>';
-  h += '<span class="hide-btn" onclick="hideMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',event)">скрыть</span>';
-  h += '</div></div>';
 
   var slot = itemState.slot ? getSlotById(mode, itemState.slot) : null;
   var leftInfo = '';
@@ -258,18 +252,33 @@ function rMedkitDrugItem(mode, memberId, item, isCustom) {
       if (!isNaN(servings) && isFinite(servings)) leftInfo += ' · ~' + servings + ' приём';
     }
   }
-
-  h += '<div class="drug-meta">';
-  h += '<span class="mt">' + (slot ? escHtml(slot.label) : 'Не указано') + '</span>';
+  // Раньше подзаголовок (info.label) и место/остаток/срок жили на трёх
+  // разных строках (drug-info + отдельный drug-meta) — теперь одна строка
+  // через точки, максимум переносится на вторую, но не гарантированно
+  // занимает 2-3 строки на КАЖДЫЙ препарат.
+  var metaBits = [];
+  if (info && info.label) metaBits.push('<span>' + escHtml(info.label) + '</span>');
+  metaBits.push('<span' + (slot ? '' : ' class="muted"') + '>' + (slot ? escHtml(slot.label) : 'не указано') + '</span>');
   if (leftInfo) {
-    var mtClass = color === 'warn' ? ' warn' : color === 'danger' ? ' danger' : '';
-    h += '<span class="mt' + mtClass + '">' + escHtml(leftInfo) + '</span>';
+    var mtClass = color === 'warn' ? ' class="warn"' : color === 'danger' ? ' class="danger"' : '';
+    metaBits.push('<span' + mtClass + '>' + escHtml(leftInfo) + '</span>');
   }
   if (itemState.expiry) {
-    var expiryClass = (status.expiry === 'expired' || status.expiry === 'critical') ? ' danger' : '';
-    h += '<span class="mt' + expiryClass + '">срок ' + escHtml(itemState.expiry) + '</span>';
+    var expiryClass = (status.expiry === 'expired' || status.expiry === 'critical') ? ' class="danger"' : '';
+    metaBits.push('<span' + expiryClass + '>срок ' + escHtml(itemState.expiry) + '</span>');
   }
+
+  h += '<div class="drug-info" onclick="toggleMedkitDrugCard(\'' + item.id + '\')">';
+  h += '<div class="dn">' + escHtml(item.name) + '</div>';
+  h += '<div class="dl">' + metaBits.join('<span class="dl-sep">·</span>') + '</div>';
   h += '</div>';
+
+  h += '<div class="drug-right">';
+  if (statusLabel) h += '<span class="sp sp-' + color + '">' + statusLabel + '</span>';
+  h += '<span class="hide-btn" onclick="hideMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',event)">скрыть</span>';
+  h += '<i class="ti ti-chevron-' + (cardOpen ? 'down' : 'right') + ' chev" aria-hidden="true" onclick="toggleMedkitDrugCard(\'' + item.id + '\')"></i>';
+  h += '</div></div>';
+
   h += rMedkitDrugCard(mode, memberId, item, itemState, info, status);
   h += '</div>';
   return h;
@@ -280,7 +289,8 @@ function rMedkitDrugCard(mode, memberId, item, itemState, info, status) {
   var slots = getSlotsFor(mode);
   var units = ['', 'таб', 'капс', 'амп', 'мл', 'мг', 'г', 'шт', 'фл', 'тюб', 'саше', 'пак'];
 
-  var h = '<details class="drug-card"><summary style="cursor:pointer;font-size:12px;font-weight:500;color:var(--accent);padding:6px 0 4px">Карточка препарата</summary>';
+  var infoOpen = isDrugInfoOpen(item.id);
+  var h = '<div class="drug-card' + (infoOpen ? ' info-open' : '') + '">';
 
   h += '<div class="row4">';
   h += '<div class="cell"><span class="cl">Было</span><input class="ci" value="' + escHtml(itemState.total || '') + '" placeholder="—" onchange="updateMedkitTotal(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)"></div>';
@@ -315,6 +325,9 @@ function rMedkitDrugCard(mode, memberId, item, itemState, info, status) {
   }
 
   if (info) {
+    h += '<div class="info-toggle" onclick="toggleMedkitDrugInfo(\'' + item.id + '\',event)">';
+    h += '<i class="ti ti-chevron-' + (infoOpen ? 'down' : 'right') + '" aria-hidden="true"></i>';
+    h += '<span>Справка о препарате</span></div>';
     h += '<div class="info-section">';
     if (info.purpose)  h += '<div class="info-row"><span class="ir-lbl">Для чего</span><span class="ir-val">' + escHtml(info.purpose) + '</span></div>';
     if (info.symptoms) h += '<div class="info-row"><span class="ir-lbl">При симптомах</span><span class="ir-val">' + escHtml(info.symptoms) + '</span></div>';
@@ -358,7 +371,7 @@ function rMedkitDrugCard(mode, memberId, item, itemState, info, status) {
     }
   }
 
-  h += '</details>';
+  h += '</div>';
   return h;
 }
 function rMedkitHidden(mode, memberId) {

@@ -12,12 +12,17 @@ function _canEditMedkit(mode, memberId) {
 }
 
 // --- Обновление мета-строки препарата без перерисовки ---
+// Строка (.dl) и статус-угол (.drug-right) собираются тем же способом, что
+// и в rMedkitDrugItem — держать в двух местах identично важно, иначе после
+// правки поля в открытой карточке шеврон/статус в шапке разъедутся с тем,
+// что реально в состоянии.
 function updateMedkitMeta(mode, memberId, itemId) {
   var itemState = getMedkitItem(mode, memberId, itemId);
   var status = getMedkitItemStatus(itemState);
   var color = getMedkitItemColor(status);
   var statusLabel = getMedkitStatusLabel(status);
   var slot = itemState.slot ? getSlotById(mode, itemState.slot) : null;
+  var info = MEDKIT_INFO[itemId] || null;
 
   var leftInfo = '';
   if (itemState.left && itemState.unit) {
@@ -36,28 +41,32 @@ function updateMedkitMeta(mode, memberId, itemId) {
     var onclickAttr = cc.getAttribute('onclick') || '';
     if (onclickAttr.indexOf(itemId) < 0) continue;
 
-    var meta = drugs[i].querySelector('.drug-meta');
-    if (meta) {
-      var h = '<span class="mt">' + (slot ? slot.label : 'Не указано') + '</span>';
+    var dl = drugs[i].querySelector('.dl');
+    if (dl) {
+      var bits = [];
+      if (info && info.label) bits.push('<span>' + info.label + '</span>');
+      bits.push('<span' + (slot ? '' : ' class="muted"') + '>' + (slot ? slot.label : 'не указано') + '</span>');
       if (leftInfo) {
-        var mtClass = color === 'warn' ? ' warn' : color === 'danger' ? ' danger' : '';
-        h += '<span class="mt' + mtClass + '">' + leftInfo + '</span>';
+        var mtClass = color === 'warn' ? ' class="warn"' : color === 'danger' ? ' class="danger"' : '';
+        bits.push('<span' + mtClass + '>' + leftInfo + '</span>');
       }
       if (itemState.expiry) {
-        var expiryClass = (status.expiry === 'expired' || status.expiry === 'critical') ? ' danger' : '';
-        h += '<span class="mt' + expiryClass + '">срок ' + itemState.expiry + '</span>';
+        var expiryClass = (status.expiry === 'expired' || status.expiry === 'critical') ? ' class="danger"' : '';
+        bits.push('<span' + expiryClass + '>срок ' + itemState.expiry + '</span>');
       }
-      meta.innerHTML = h;
+      dl.innerHTML = bits.join('<span class="dl-sep">·</span>');
     }
 
+    var wasOpen = isDrugCardOpen(itemId);
     var right = drugs[i].querySelector('.drug-right');
     if (right) {
       var hideBtn = right.querySelector('.hide-btn');
       var hideBtnHtml = hideBtn ? hideBtn.outerHTML : '';
-      right.innerHTML = (statusLabel ? '<span class="sp sp-' + color + '">' + statusLabel + '</span>' : '') + hideBtnHtml;
+      var chevHtml = '<i class="ti ti-chevron-' + (wasOpen ? 'down' : 'right') + ' chev" aria-hidden="true" onclick="toggleMedkitDrugCard(\'' + itemId + '\')"></i>';
+      right.innerHTML = (statusLabel ? '<span class="sp sp-' + color + '">' + statusLabel + '</span>' : '') + hideBtnHtml + chevHtml;
     }
 
-    drugs[i].className = 'drug' + (color === 'danger' ? ' d' : color === 'warn' ? ' w' : '');
+    drugs[i].className = 'drug' + (color === 'danger' ? ' d' : color === 'warn' ? ' w' : '') + (wasOpen ? ' card-open' : '');
     break;
   }
 }
@@ -302,6 +311,27 @@ function toggleMedkitGroupCollapse(groupId) {
   } else {
     group.classList.add('collapsed');
   }
+}
+
+function toggleMedkitDrugCard(itemId) {
+  medkitOpenDrugCards[itemId] = !medkitOpenDrugCards[itemId];
+  var el = document.querySelector('[data-drug="' + itemId + '"]');
+  if (!el) return;
+  var open = isDrugCardOpen(itemId);
+  el.classList.toggle('card-open', open);
+  var chev = el.querySelector('.drug-right .chev');
+  if (chev) { chev.classList.toggle('ti-chevron-down', open); chev.classList.toggle('ti-chevron-right', !open); }
+}
+
+function toggleMedkitDrugInfo(itemId, event) {
+  if (event) event.stopPropagation();
+  medkitOpenDrugInfo[itemId] = !medkitOpenDrugInfo[itemId];
+  var card = document.querySelector('[data-drug="' + itemId + '"] .drug-card');
+  if (!card) return;
+  var open = isDrugInfoOpen(itemId);
+  card.classList.toggle('info-open', open);
+  var chev = card.querySelector('.info-toggle .ti');
+  if (chev) { chev.classList.toggle('ti-chevron-down', open); chev.classList.toggle('ti-chevron-right', !open); }
 }
 
 function toggleMedkitAddRow(groupId) {
