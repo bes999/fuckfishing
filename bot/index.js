@@ -24,6 +24,7 @@ const Shopping = await import('./src/shopping.js');
 const { parseDateFlexible } = await import('./src/dates.js');
 const { escapeHtml, formatMoney, formatDateRu, MAIN_MENU, MENU_LABELS } = await import('./src/ui.js');
 const AI = await import('./src/ai.js');
+const { checkReminders } = await import('./src/reminders.js');
 
 const WEB_URL = process.env.WEB_URL || 'https://plan.fuckfishing.ru';
 
@@ -798,6 +799,15 @@ bot.catch((err) => {
 
 process.once('SIGINT', () => bot.stop());
 process.once('SIGTERM', () => bot.stop());
+
+// ── Напоминалки по расписанию ──────────────────────────────────
+// Раз в час достаточно — напоминания привязаны к дате (день), не ко
+// времени суток, частый опрос ничего не даёт, только лишние чтения.
+const REMINDER_CHECK_MS = 60 * 60 * 1000;
+setInterval(() => {
+  checkReminders(bot).catch((err) => console.error('reminders: ошибка проверки:', err));
+}, REMINDER_CHECK_MS);
+checkReminders(bot).catch((err) => console.error('reminders: ошибка проверки:', err));
 
 bot
   .start({
