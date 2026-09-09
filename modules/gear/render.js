@@ -60,22 +60,209 @@ const GearRender = (() => {
 
     return _tripSwitcher('template', tripList)
       + _statsBar(template.items, template.categories)
-      + (isMe ? _locationsSection(template.locations, template.items) : '')
+      + (isMe ? _locationsSection(template.locations, template.items, false) : '')
+      + (isMe && template.items.length ? '<div class="gear-pick-entry" data-action="gear-pick-mode-enter">'
+        + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'
+        + ' Собрать список для поездки</div>' : '')
       + _categoriesSection(template, isMe, false, []);
   }
 
-  function tabTrip(snap, checkedIds, tripList, activeTripId) {
+  /* ── Режим выбора вещей для конкретной поездки ──
+     Ходишь по всему шаблону, отмечаешь галочками, что берёшь именно в эту
+     поездку — итоговый список заменяет (если уже был) список выбранной
+     поездки целиком. */
+  function pickView(template, selectedIds) {
+    var header = '<div class="gear-pick-hd">'
+      + '<div class="gear-pick-hd-cancel" data-action="gear-pick-mode-cancel">Отмена</div>'
+      + '<div class="gear-pick-hd-title">Выбери вещи</div>'
+      + '<div style="width:52px"></div>'
+      + '</div>';
+
+    var catsHtml = template.categories.map(function(cat, idx) {
+      var catItems = template.items.filter(function(i) { return i.categoryId === cat.id; });
+      if (!catItems.length) return '';
+      return _catCardPick(cat, catItems, _catColor(idx), selectedIds);
+    }).join('');
+
+    var doneBar = '<div class="gear-pick-donebar" data-action="gear-pick-done">Готово'
+      + (selectedIds.length ? ' <span class="gear-pick-donecount">('+selectedIds.length+')</span>' : '')
+      + '</div>';
+
+    return header + catsHtml + '<div style="height:8px"></div>' + doneBar;
+  }
+
+  function _catCardPick(cat, items, colorClass, selectedIds) {
+    var done = items.filter(function(i) { return selectedIds.indexOf(i.id) >= 0; }).length;
+    var badgeClass = done && done === items.length ? 'gear-badge-ok' : 'gear-badge-part';
+
+    var itemsHtml = items.map(function(item) {
+      var isSel = selectedIds.indexOf(item.id) >= 0;
+      return '<div class="gear-check-item" data-action="gear-pick-toggle-item" data-itemid="'+_esc(item.id)+'">'
+        + '<div class="gear-cb'+(isSel?' on':'')+'"></div>'
+        + '<div class="gear-ci-info">'
+        + '<div class="gear-cname'+(isSel?' done':'')+'">'+_esc(item.name)+'</div>'
+        + (item.weight ? '<div class="gear-csub">'+_esc(item.weight)+' г</div>' : '')
+        + '</div></div>';
+    }).join('');
+
+    return '<div class="gear-cat" data-catid="'+_esc(cat.id)+'">'
+      + '<div class="gear-ch" data-action="gear-cat-toggle" data-catid="'+_esc(cat.id)+'">'
+      + '<div class="gear-ci '+colorClass+'">'+_svg(cat.iconIdx != null ? cat.iconIdx : 0)+'</div>'
+      + '<div class="gear-cn2"><div class="gear-cn">'+_esc(cat.name)+'</div></div>'
+      + '<div class="'+badgeClass+'" data-cat-badge="'+_esc(cat.id)+'">'+done+'/'+items.length+'</div>'
+      + '<div class="gear-chev">›</div>'
+      + '</div>'
+      + '<div class="gear-cat-body" id="gear-cat-body-'+_esc(cat.id)+'" style="display:none">'
+      + itemsHtml + '</div></div>';
+  }
+
+  function sheetPickTrip(trips, existingIds) {
+    var rows = trips.map(function(t) {
+      var already = existingIds.indexOf(t.id) >= 0;
+      return '<div class="gear-pick-item" data-action="gear-pick-trip-selected" data-tripid="'+_esc(t.id)+'" data-tripname="'+_esc(t.name)+'">'
+        + '<div class="gear-pick-info"><div class="gear-pick-name">'+_esc(t.name)+'</div>'
+        + (already ? '<div class="gear-pick-meta">Уже есть список — будет заменён</div>' : '')
+        + '</div></div>';
+    }).join('');
+
+    return '<div class="gear-sheet-overlay" id="gear-triptarget-sheet">'
+      + '<div class="gear-sheet gear-sheet-sm">'
+      + '<div class="gear-sheet-grab"></div>'
+      + '<div class="gear-sheet-header">'
+      + '<div class="gear-sheet-cancel" data-action="gear-sheet-close">Отмена</div>'
+      + '<div class="gear-sheet-title">Для какой поездки?</div>'
+      + '<div style="width:52px"></div>'
+      + '</div>'
+      + (trips.length ? rows : '<div class="gear-pick-hint">Нет доступных поездок.</div>')
+      + '</div></div>';
+  }
+
+  function tabTrip(snap, checkedIds, tripList, activeTripId, scope, shared, sharedChecked) {
+    var switcher = _tripSwitcher(activeTripId, tripList) + _scopeSwitcher(scope);
+
+    if (scope === 'shared') {
+      return switcher + _sharedView(shared, sharedChecked || []);
+    }
+
     if (!snap) {
-      return _tripSwitcher(activeTripId, tripList) + '<div class="gear-trip-empty">'
+      return switcher + '<div class="gear-trip-empty">'
         + '<div class="gear-trip-empty-icon">'+ _svg(0, 26) +'</div>'
         + '<div class="gear-trip-empty-t">Снаряга не взята в поездку</div>'
         + '<div class="gear-trip-empty-s">Открой обложку поездки и нажми на иконку снаряги</div>'
         + '</div>';
     }
-    return _tripSwitcher(activeTripId, tripList)
+    return switcher
       + _tripCard(snap)
+      + '<div class="gear-sync-btn" data-action="gear-trip-sync">'
+      +   '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/></svg>'
+      +   ' Обновить из шаблона'
+      + '</div>'
       + _progressBar(checkedIds, snap.items)
+      + (snap.locations && snap.locations.length ? _locationsSection(snap.locations, snap.items, true) : '')
       + _categoriesSection(snap, false, true, checkedIds);
+  }
+
+  function _scopeSwitcher(scope) {
+    return '<div class="gear-scope-sw">'
+      + '<div class="gear-scope-i'+(scope!=='shared'?' on':'')+'" data-action="gear-scope-switch" data-scope="personal">Моё</div>'
+      + '<div class="gear-scope-i'+(scope==='shared'?' on':'')+'" data-action="gear-scope-switch" data-scope="shared">Общее</div>'
+      + '</div>';
+  }
+
+  function _sharedView(shared, checkedIds) {
+    var items = (shared && shared.items) || [];
+    var cats  = (shared && shared.categories) || [];
+
+    var header = '<div class="gear-sec-hd"><div class="gear-sec-t">Общее снаряжение</div>'
+      + '<div class="gear-sec-a" data-action="gear-shared-cat-add"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Категория</div></div>';
+
+    if (!cats.length && !items.length) {
+      return header + '<div class="gear-empty">'
+        + '<div class="gear-empty-ic">'+ _svg(4, 28) +'</div>'
+        + '<div class="gear-empty-t">Общий список пуст</div>'
+        + '<div class="gear-empty-s">Сюда добавляют вещи на всю группу — палатка, горелка, канистра. Видно и редактируется всеми участниками поездки.</div>'
+        + '<button class="gear-empty-btn" data-action="gear-shared-cat-add">Создать категорию</button>'
+        + '</div>';
+    }
+
+    var catsHtml = cats.map(function(cat, idx) {
+      var catItems = items.filter(function(i) { return i.categoryId === cat.id; });
+      return _catCardShared(cat, catItems, _catColor(idx), checkedIds);
+    }).join('');
+
+    return header + catsHtml;
+  }
+
+  function _catCardShared(cat, items, colorClass, checkedIds) {
+    var done  = items.filter(function(i) { return checkedIds.indexOf(i.id) >= 0; }).length;
+    var total = items.length;
+    var badgeClass = total && done === total ? 'gear-badge-ok' : 'gear-badge-part';
+
+    var itemsHtml = items.map(function(item) {
+      var isChecked = checkedIds.indexOf(item.id) >= 0;
+      return '<div class="gear-check-item" data-action="gear-shared-item-check" data-itemid="'+_esc(item.id)+'">'
+        + '<div class="gear-cb'+(isChecked?' on':'')+'"></div>'
+        + '<div class="gear-ci-info">'
+        + '<div class="gear-cname'+(isChecked?' done':'')+'">'+_esc(item.name)+'</div>'
+        + (item.owner ? '<div class="gear-csub">Берёт: '+_esc(item.owner)+'</div>' : '')
+        + '</div>'
+        + '<div class="gear-gdel" data-action="gear-shared-item-del" data-itemid="'+_esc(item.id)+'">×</div>'
+        + '</div>';
+    }).join('');
+
+    return '<div class="gear-cat" data-catid="'+_esc(cat.id)+'">'
+      + '<div class="gear-ch" data-action="gear-cat-toggle" data-catid="'+_esc(cat.id)+'">'
+      + '<div class="gear-ci '+colorClass+'">'+_svg(cat.iconIdx != null ? cat.iconIdx : 0)+'</div>'
+      + '<div class="gear-cn2"><div class="gear-cn">'+_esc(cat.name)+'</div></div>'
+      + '<div class="'+badgeClass+'" data-cat-badge="'+_esc(cat.id)+'">'+done+'/'+total+'</div>'
+      + '<div class="gear-chev">›</div>'
+      + '</div>'
+      + '<div class="gear-cat-body" id="gear-cat-body-'+_esc(cat.id)+'" style="display:none">'
+      + itemsHtml
+      + '<div class="gear-gi-add" data-action="gear-shared-item-add" data-catid="'+_esc(cat.id)+'">'
+      +   '<div class="gear-gai"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>'
+      +   '<div class="gear-gal">Добавить предмет</div></div>'
+      + '</div></div>';
+  }
+
+  function sheetAddSharedCategory() {
+    return '<div class="gear-sheet-overlay" id="gear-cat-sheet">'
+      + '<div class="gear-sheet">'
+      + '<div class="gear-sheet-grab"></div>'
+      + '<div class="gear-sheet-header">'
+      + '<div class="gear-sheet-cancel" data-action="gear-sheet-close">Отмена</div>'
+      + '<div class="gear-sheet-title">Новая категория</div>'
+      + '<div class="gear-sheet-done" data-action="gear-shared-cat-save">Готово</div>'
+      + '</div>'
+      + '<div class="gear-sheet-body">'
+      + '<div class="gear-field-group"><div class="gear-field-lbl">Название</div>'
+      + '<div class="gear-field-row" style="border-top:none">'
+      + '<input class="gear-fi" id="gear-shared-cat-name" type="text" placeholder="Например, Лагерь">'
+      + '</div></div>'
+      + '<button class="gear-btn-primary" data-action="gear-shared-cat-save">Создать категорию</button>'
+      + '</div></div></div>';
+  }
+
+  function sheetAddSharedItem() {
+    return '<div class="gear-sheet-overlay" id="gear-item-sheet">'
+      + '<div class="gear-sheet">'
+      + '<div class="gear-sheet-grab"></div>'
+      + '<div class="gear-sheet-header">'
+      + '<div class="gear-sheet-cancel" data-action="gear-sheet-close">Отмена</div>'
+      + '<div class="gear-sheet-title">Новый предмет</div>'
+      + '<div class="gear-sheet-done" data-action="gear-shared-item-save">Готово</div>'
+      + '</div>'
+      + '<div class="gear-sheet-body">'
+      + '<div class="gear-field-group"><div class="gear-field-lbl">Название</div>'
+      + '<div class="gear-field-row" style="border-top:none">'
+      + '<input class="gear-fi" id="gear-shared-item-name" type="text" placeholder="Что нужно на группу?">'
+      + '</div></div>'
+      + '<div class="gear-field-group"><div class="gear-field-lbl">Кто берёт</div>'
+      + '<div class="gear-field-row" style="border-top:none">'
+      + '<input class="gear-fi" id="gear-shared-item-owner" type="text" placeholder="необязательно">'
+      + '</div></div>'
+      + '<button class="gear-btn-primary" data-action="gear-shared-item-save">Добавить</button>'
+      + '</div></div></div>';
   }
 
   function _emptyState() {
@@ -109,7 +296,7 @@ const GearRender = (() => {
       + '</div>';
   }
 
-  function _locationsSection(locations, items) {
+  function _locationsSection(locations, items, tripMode) {
     function _wFmt(g) {
       var n = Number(g) || 0;
       if (!n) return '';
@@ -147,9 +334,9 @@ const GearRender = (() => {
       var wTotal = _wFmt(totalG)  || '—';
 
       return '<div class="gear-loc-card" data-action="gear-loc-expand" data-locid="'+_esc(loc.id)+'">'
-        + '<div class="gear-loc-pencil" data-action="gear-loc-edit" data-locid="'+_esc(loc.id)+'">'
+        + (tripMode ? '' : '<div class="gear-loc-pencil" data-action="gear-loc-edit" data-locid="'+_esc(loc.id)+'">'
         +   '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
-        + '</div>'
+        + '</div>')
         + '<div class="gear-loc-ic">'+_svg(loc.iconIdx != null ? loc.iconIdx : 1)+'</div>'
         + '<div class="gear-loc-name">'+_esc(loc.name)+'</div>'
         + (metaStr ? '<div class="gear-loc-meta">'+metaStr+'</div>' : '<div class="gear-loc-meta"> </div>')
@@ -164,24 +351,27 @@ const GearRender = (() => {
 
     return '<div class="gear-sec-hd">'
       + '<div class="gear-sec-t">Места хранения</div>'
-      + '<div class="gear-sec-a" data-action="gear-loc-add"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Место</div>'
+      + (tripMode ? '' : '<div class="gear-sec-a" data-action="gear-loc-add"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Место</div>')
       + '</div>'
       + '<div class="gear-loc-row">'
       + cards
-      + '<div class="gear-loc-add" data-action="gear-loc-add">'
+      + (tripMode ? '' : '<div class="gear-loc-add" data-action="gear-loc-add">'
       + '<div class="gear-loc-add-ic"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>'
       + '<div class="gear-loc-add-lbl">Новое место</div>'
-      + '</div></div>'
+      + '</div>')
+      + '</div>'
       + '<div id="gear-nested-panel"></div>';
   }
 
-  function nestedPanel(parentLoc, locations, items) {
+  function nestedPanel(parentLoc, locations, items, tripMode) {
     function _wFmt(g) {
       var n = Number(g) || 0;
       if (!n) return '';
       return n >= 1000 ? (n/1000).toFixed(1)+' кг' : n+' г';
     }
-    var children = locations.filter(function(l) { return l.parentId === parentLoc.id; });
+    var children    = locations.filter(function(l) { return l.parentId === parentLoc.id; });
+    var directItems = items.filter(function(i) { return i.locationId === parentLoc.id; });
+
     var rows = children.map(function(loc) {
       var locItems = items.filter(function(i) { return i.locationId === loc.id; });
       var contentG = locItems.reduce(function(s,i) { return s+(Number(i.weight)||0); }, 0);
@@ -196,9 +386,16 @@ const GearRender = (() => {
         +   '<div class="gear-nested-meta">'+meta+'</div>'
         + '</div>'
         + '<div class="gear-nested-w">'+wTotal+'</div>'
-        + '<div class="gear-nested-pencil" data-action="gear-loc-edit" data-locid="'+_esc(loc.id)+'">'
+        + (tripMode ? '' : '<div class="gear-nested-pencil" data-action="gear-loc-edit" data-locid="'+_esc(loc.id)+'">'
         +   '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>'
-        + '</div>'
+        + '</div>')
+        + '</div>';
+    }).join('');
+
+    var directItemsHtml = directItems.map(function(item) {
+      return '<div class="gear-nested-direct-item">'
+        + '<div class="gear-nested-direct-name">'+_esc(item.name)+'</div>'
+        + (item.weight ? '<div class="gear-nested-direct-w">'+_wFmt(item.weight)+'</div>' : '')
         + '</div>';
     }).join('');
 
@@ -208,10 +405,12 @@ const GearRender = (() => {
       +   '<div class="gear-nested-close" data-action="gear-loc-collapse">×</div>'
       + '</div>'
       + rows
-      + '<div class="gear-nested-add" data-action="gear-loc-add-child" data-parentid="'+_esc(parentLoc.id)+'">'
+      + (directItemsHtml ? '<div class="gear-nested-direct-hd">Предметы</div>' + directItemsHtml : '')
+      + (!rows && !directItemsHtml ? '<div class="gear-nested-empty">Пока пусто</div>' : '')
+      + (tripMode ? '' : '<div class="gear-nested-add" data-action="gear-loc-add-child" data-parentid="'+_esc(parentLoc.id)+'">'
       +   '<div class="gear-nested-add-ic"><svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>'
       +   '<div class="gear-nested-add-lbl">Добавить место внутри</div>'
-      + '</div>'
+      + '</div>')
       + '</div>';
   }
 
@@ -226,7 +425,7 @@ const GearRender = (() => {
     var catsHtml = template.categories.map(function(cat, idx) {
       var catItems = template.items.filter(function(i) { return i.categoryId === cat.id; });
       var colorClass = _catColor(idx);
-      if (tripMode) return _catCardTrip(cat, catItems, colorClass, checkedIds);
+      if (tripMode) return _catCardTrip(cat, catItems, template.locations || [], colorClass, checkedIds);
       return _catCardTemplate(cat, catItems, template.locations || [], colorClass, isMe);
     }).join('');
 
@@ -279,19 +478,24 @@ const GearRender = (() => {
       + '</div></div>';
   }
 
-  function _catCardTrip(cat, items, colorClass, checkedIds) {
+  function _catCardTrip(cat, items, locations, colorClass, checkedIds) {
     var done  = items.filter(function(i) { return checkedIds.indexOf(i.id) >= 0; }).length;
     var total = items.length;
     var badgeClass = done === total ? 'gear-badge-ok' : 'gear-badge-part';
 
     var itemsHtml = items.map(function(item) {
       var isChecked = checkedIds.indexOf(item.id) >= 0;
+      var loc = item.locationId ? locations.find(function(l) { return l.id === item.locationId; }) : null;
       return '<div class="gear-check-item" data-action="gear-item-check" data-itemid="'+_esc(item.id)+'">'
         + '<div class="gear-cb'+(isChecked?' on':'')+'"></div>'
         + '<div class="gear-ci-info">'
         + '<div class="gear-cname'+(isChecked?' done':'')+'">'+_esc(item.name)+'</div>'
         + (item.weight ? '<div class="gear-csub">'+_esc(item.weight)+' г</div>' : '')
-        + '</div></div>';
+        + '</div>'
+        + '<div class="gear-check-loctag'+(loc?'':' gear-check-loctag-empty')+'" data-action="gear-trip-item-loc-pick" data-itemid="'+_esc(item.id)+'">'
+        + (loc ? _esc(loc.name) : 'Место')
+        + '</div>'
+        + '</div>';
     }).join('');
 
     return '<div class="gear-cat" data-catid="'+_esc(cat.id)+'">'
@@ -558,9 +762,10 @@ const GearRender = (() => {
   }
 
   return {
-    tabMain, tabTrip,
+    tabMain, tabTrip, pickView,
     sheetAddLocation, sheetAddCategory, sheetAddItem,
     sheetPickLocation, sheetCategoryMenu, sheetImportText,
+    sheetAddSharedCategory, sheetAddSharedItem, sheetPickTrip,
     nestedPanel,
     PRESET_ICONS,
     _esc

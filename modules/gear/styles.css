@@ -45,6 +45,127 @@
 }
 .gear-tsw-i.on { background: var(--accent); color: #fff; font-weight: 600; }
 
+/* ── Переключатель "Моё / Общее" внутри вкладки поездки ── */
+.gear-scope-sw {
+  display: flex;
+  gap: 4px;
+  background: var(--bg2);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  margin-bottom: 12px;
+  box-shadow: var(--card-shadow);
+}
+.gear-scope-i {
+  flex: 1;
+  text-align: center;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--label3);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--duration-fast), color var(--duration-fast);
+}
+.gear-scope-i.on { background: var(--accent); color: #fff; }
+
+/* ── Кнопка "Обновить из шаблона" ── */
+.gear-sync-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg2);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--card-shadow);
+  -webkit-tap-highlight-color: transparent;
+}
+.gear-sync-btn:active { opacity: 0.7; }
+.gear-sync-btn svg { flex-shrink: 0; }
+
+/* ── Предметы напрямую в месте хранения (внутри развёрнутой панели) ── */
+.gear-nested-direct-hd {
+  padding: 8px 12px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--label4);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.gear-nested-direct-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  border-bottom: 0.5px solid var(--sep2);
+}
+.gear-nested-direct-item:last-of-type { border-bottom: none; }
+.gear-nested-direct-name { font-size: 12px; color: var(--label2); }
+.gear-nested-direct-w { font-size: 11px; color: var(--label4); }
+.gear-nested-empty {
+  padding: 14px 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--label4);
+}
+
+/* ── Вход в режим "Собрать список для поездки" ── */
+.gear-pick-entry {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  margin-bottom: 12px;
+  border-radius: var(--radius-md);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.gear-pick-entry:active { opacity: 0.7; }
+
+/* ── Режим выбора: заголовок и нижняя панель "Готово" ── */
+.gear-pick-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 12px;
+}
+.gear-pick-hd-cancel {
+  font-size: 14px;
+  color: var(--label3);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.gear-pick-hd-title { font-size: 15px; font-weight: 700; color: var(--label); }
+
+.gear-pick-donebar {
+  position: sticky;
+  bottom: 12px;
+  margin-top: 12px;
+  padding: 13px;
+  text-align: center;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  -webkit-tap-highlight-color: transparent;
+}
+.gear-pick-donebar:active { opacity: 0.85; }
+.gear-pick-donecount { opacity: 0.85; font-weight: 600; }
+
 /* ── Заголовок секции ── */
 .gear-sec-hd {
   display: flex;
@@ -326,6 +447,22 @@
 .gear-cname { font-size: 13px; color: var(--label); transition: color var(--duration-fast); }
 .gear-cname.done { text-decoration: line-through; color: var(--label3); }
 .gear-csub { font-size: 11px; color: var(--label4); margin-top: 2px; }
+
+.gear-check-loctag {
+  flex-shrink: 0;
+  max-width: 96px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  background: var(--bg3);
+  color: var(--label2);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.gear-check-loctag-empty { color: var(--label4); border: 1px dashed var(--sep2); background: transparent; }
 
 /* ── Прогресс ── */
 .gear-prog-wrap {

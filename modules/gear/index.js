@@ -1,5 +1,5 @@
 'use strict';
-/* globals GearData, GearRender */
+/* globals GearData, GearRender, TripsData */
 
 const GearModule = (() => {
   var _uid        = null;
@@ -8,6 +8,12 @@ const GearModule = (() => {
   var _template   = null;
   var _activeTrip = 'template';
   var _tripList   = [];
+  var _scope      = 'personal'; // 'personal' | 'shared' — только для вкладок поездки
+  var _sharedData = null;       // загруженный общий список текущей поездки
+  var _sharedAddCatId = null;   // категория, в которую добавляем предмет (шит)
+  var _pickMode     = false;    // режим "собрать список для поездки" (внутри Шаблона)
+  var _pickSelected = [];       // id отмеченных предметов в этом режиме
+  var _tripLocPickItemId = null; // какому предмету поездки назначаем место (пикер)
 
   /* ── Инициализация ──
      openTrip — необязательный id поездки, на вкладку которой сразу открыться
@@ -19,18 +25,69 @@ const GearModule = (() => {
     await GearData.ensureLoaded(uid);
     _tripList   = GearData.getTripList(uid);
     _activeTrip = (openTrip && GearData.hasTripSnapshot(openTrip)) ? openTrip : 'template';
-    _template   = await GearData.load(uid);
+    try {
+      _template = await GearData.load(uid);
+    } catch (err) {
+      console.error('GearModule.init: не удалось загрузить снаряжение', err);
+      if (_container) {
+        _container.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--label3)">Не удалось загрузить снаряжение. Проверь соединение и открой вкладку заново.</div>';
+      }
+      return;
+    }
     _render();
+  }
+
+  // Собирает урезанный шаблон только из отмеченных предметов — плюс их
+  // категории и цепочку мест хранения (включая родителей, иначе вложенный
+  // "Несессер" останется без "Баула", в котором он лежит).
+  function _buildPickedTemplate(template, selectedIds) {
+    var selSet = {};
+    selectedIds.forEach(function(id) { selSet[id] = true; });
+
+    var items = template.items.filter(function(i) { return selSet[i.id]; });
+
+    var catSet = {};
+    items.forEach(function(i) { if (i.categoryId) catSet[i.categoryId] = true; });
+    var categories = template.categories.filter(function(c) { return catSet[c.id]; });
+
+    var locSet = {};
+    items.forEach(function(i) { if (i.locationId) locSet[i.locationId] = true; });
+    var changed = true;
+    while (changed) {
+      changed = false;
+      template.locations.forEach(function(l) {
+        if (locSet[l.id] && l.parentId && !locSet[l.parentId]) { locSet[l.parentId] = true; changed = true; }
+      });
+    }
+    var locations = template.locations.filter(function(l) { return locSet[l.id]; });
+
+    return { locations: locations, categories: categories, items: items };
   }
 
   function _render() {
     if (!_container) return;
-    if (_activeTrip === 'template') {
+    if (_pickMode) {
+      _container.innerHTML = GearRender.pickView(_template, _pickSelected);
+    } else if (_activeTrip === 'template') {
       _container.innerHTML = GearRender.tabMain(_template, _tripList, _isMe);
+    } else if (_scope === 'shared') {
+      var sharedChecked = (_sharedData && _sharedData.checked) || [];
+      _container.innerHTML = GearRender.tabTrip(null, [], _tripList, _activeTrip, 'shared', _sharedData, sharedChecked);
     } else {
       var snap    = GearData.getTripSnapshot(_uid, _activeTrip);
       var checked = GearData.getChecked(_uid, _activeTrip);
-      _container.innerHTML = GearRender.tabTrip(snap, checked, _tripList, _activeTrip);
+      _container.innerHTML = GearRender.tabTrip(snap, checked, _tripList, _activeTrip, 'personal');
+    }
+  }
+
+  async function _saveShared() {
+    if (!_sharedData) return;
+    var tripName = (_tripList.find(function(t) { return t.id === _activeTrip; }) || {}).name || '';
+    try {
+      await GearData.saveShared(_activeTrip, tripName, _sharedData.categories, _sharedData.items);
+    } catch (err) {
+      console.error('GearModule._saveShared: не удалось сохранить общий список', err);
+      alert('Не удалось сохранить общий список. Проверь соединение и попробуй ещё раз.');
     }
   }
 
@@ -50,7 +107,7 @@ const GearModule = (() => {
     }
   }
 
-  var _SHEET_IDS = ['gear-loc-sheet','gear-cat-sheet','gear-item-sheet','gear-pick-sheet','gear-ctx-sheet','gear-import-sheet'];
+  var _SHEET_IDS = ['gear-loc-sheet','gear-cat-sheet','gear-item-sheet','gear-pick-sheet','gear-ctx-sheet','gear-import-sheet','gear-triptarget-sheet'];
 
   function _closeAllSheets() {
     _SHEET_IDS.forEach(function(id) { var el = document.getElementById(id); if (el) el.remove(); });
@@ -154,6 +211,51 @@ const GearModule = (() => {
     /* ── Переключатель поездок ── */
     if (action === 'gear-trip-switch') {
       _activeTrip = t.dataset.trip;
+      _scope = 'personal';
+      _sharedData = null;
+      _renderAndRestore();
+      return;
+    }
+
+    /* ── Переключатель "Моё / Общее" внутри поездки ── */
+    if (action === 'gear-scope-switch') {
+      var newScope = t.dataset.scope;
+      if (newScope === _scope) return;
+      _scope = newScope;
+      if (_scope === 'shared' && (!_sharedData || _sharedData.tripId !== _activeTrip)) {
+        try {
+          _sharedData = await GearData.loadShared(_activeTrip);
+        } catch (err) {
+          console.error('GearData.loadShared:', err);
+          _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
+        }
+      }
+      _renderAndRestore();
+      return;
+    }
+
+    /* ── Обновить личный список поездки из шаблона ── */
+    if (action === 'gear-trip-sync') {
+      if (_activeTrip === 'template') return;
+      try {
+        var result = await GearData.syncTripFromTemplate(_uid, _activeTrip, _template);
+        if (result) {
+          var addedTotal = result.locations + result.categories + result.items;
+          if (addedTotal) {
+            var parts = [];
+            if (result.categories) parts.push(result.categories + ' кат.');
+            if (result.items)      parts.push(result.items + ' предм.');
+            if (result.locations)  parts.push(result.locations + ' мест');
+            alert('Добавлено из шаблона: ' + parts.join(', '));
+          } else {
+            alert('Список поездки уже совпадает с шаблоном.');
+          }
+        }
+      } catch (err) {
+        console.error('GearData.syncTripFromTemplate:', err);
+        alert('Не удалось обновить из шаблона. Проверь соединение и попробуй ещё раз.');
+        return;
+      }
       _renderAndRestore();
       return;
     }
@@ -176,14 +278,17 @@ const GearModule = (() => {
     if (action === 'gear-loc-expand') {
       e.stopPropagation();
       var locId = t.dataset.locid;
-      var loc   = _template.locations.find(function(l) { return l.id === locId; });
-      if (!loc) return;
-      var children = _template.locations.filter(function(l) { return l.parentId === locId; });
-      if (!children.length) {
-        // Нет вложенных — открываем редактирование
-        if (_isMe) _openSheet(GearRender.sheetAddLocation(_template, locId));
-        return;
+      var isTripView   = _activeTrip !== 'template';
+      var activeLocs, activeItems;
+      if (isTripView) {
+        var snapForLoc = GearData.getTripSnapshot(_uid, _activeTrip);
+        if (!snapForLoc) return;
+        activeLocs = snapForLoc.locations; activeItems = snapForLoc.items;
+      } else {
+        activeLocs = _template.locations; activeItems = _template.items;
       }
+      var loc = activeLocs.find(function(l) { return l.id === locId; });
+      if (!loc) return;
       var panel  = document.getElementById('gear-nested-panel');
       var isOpen = panel && panel.dataset.openId === locId;
       // Убираем активный класс со всех карточек
@@ -196,7 +301,7 @@ const GearModule = (() => {
       }
       t.classList.add('gear-loc-card-active');
       if (panel) {
-        panel.innerHTML = GearRender.nestedPanel(loc, _template.locations, _template.items);
+        panel.innerHTML = GearRender.nestedPanel(loc, activeLocs, activeItems, isTripView);
         panel.dataset.openId = locId;
       }
       return;
@@ -255,9 +360,37 @@ const GearModule = (() => {
       return;
     }
 
+    /* ── Назначить место хранения вещи прямо внутри поездки ── */
+    if (action === 'gear-trip-item-loc-pick') {
+      if (_activeTrip === 'template' || _scope === 'shared') return;
+      var snapForPick = GearData.getTripSnapshot(_uid, _activeTrip);
+      if (!snapForPick) return;
+      var itemForPick = snapForPick.items.find(function(i) { return i.id === t.dataset.itemid; });
+      _tripLocPickItemId = t.dataset.itemid;
+      _openSheet(GearRender.sheetPickLocation(snapForPick.locations, itemForPick ? (itemForPick.locationId || '') : '', 'trip-item-loc'));
+      return;
+    }
+
     if (action === 'gear-loc-picked') {
       var locId   = t.dataset.locid;
       var trigger = t.dataset.trigger;
+
+      if (trigger === 'trip-item-loc') {
+        _closeAllSheets();
+        var snapForSave = GearData.getTripSnapshot(_uid, _activeTrip);
+        if (snapForSave && _tripLocPickItemId) {
+          var itemToUpdate = snapForSave.items.find(function(i) { return i.id === _tripLocPickItemId; });
+          if (itemToUpdate) itemToUpdate.locationId = locId;
+          GearData.updateTripSnapshotItems(_uid, _activeTrip, snapForSave.items).catch(function(err) {
+            console.error('GearData.updateTripSnapshotItems:', err);
+            alert('Не удалось сохранить место хранения. Проверь соединение.');
+          });
+        }
+        _tripLocPickItemId = null;
+        _renderAndRestore();
+        return;
+      }
+
       _closeSheet('gear-pick-sheet');  // закрываем ТОЛЬКО пикер, не всё
       var loc = _template.locations.find(function(l) { return l.id === locId; });
       var locName = loc ? _esc(loc.name) : '';
@@ -491,6 +624,157 @@ const GearModule = (() => {
       _closeAllSheets();
       await _save();
       _renderAndRestore();
+      return;
+    }
+
+    /* ═════════════ ВЫБОР ВЕЩЕЙ ДЛЯ ПОЕЗДКИ (из Шаблона) ═════════════ */
+
+    if (action === 'gear-pick-mode-enter') {
+      if (!_isMe) return;
+      _pickMode = true;
+      _pickSelected = [];
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-pick-mode-cancel') {
+      _pickMode = false;
+      _pickSelected = [];
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-pick-toggle-item') {
+      var pItemId = t.dataset.itemid;
+      var pIdx = _pickSelected.indexOf(pItemId);
+      if (pIdx >= 0) _pickSelected.splice(pIdx, 1); else _pickSelected.push(pItemId);
+      var pNowOn = _pickSelected.indexOf(pItemId) >= 0;
+
+      var pcb = t.querySelector('.gear-cb');
+      var pcn = t.querySelector('.gear-cname');
+      if (pcb) pcb.classList.toggle('on', pNowOn);
+      if (pcn) pcn.classList.toggle('done', pNowOn);
+
+      var pCatEl = t.closest('.gear-cat');
+      if (pCatEl) {
+        var pCatId    = pCatEl.dataset.catid;
+        var pCatItems = _template.items.filter(function(i) { return i.categoryId === pCatId; });
+        var pCatDone  = pCatItems.filter(function(i) { return _pickSelected.indexOf(i.id) >= 0; }).length;
+        var pBadge = pCatEl.querySelector('[data-cat-badge]');
+        if (pBadge) {
+          pBadge.textContent = pCatDone + '/' + pCatItems.length;
+          pBadge.className   = (pCatItems.length && pCatDone === pCatItems.length) ? 'gear-badge-ok' : 'gear-badge-part';
+        }
+      }
+
+      var pDoneBar = _container ? _container.querySelector('.gear-pick-donebar') : null;
+      if (pDoneBar) {
+        pDoneBar.innerHTML = 'Готово' + (_pickSelected.length ? ' <span class="gear-pick-donecount">(' + _pickSelected.length + ')</span>' : '');
+      }
+      return;
+    }
+
+    if (action === 'gear-pick-done') {
+      if (!_pickSelected.length) { alert('Отметь хотя бы одну вещь.'); return; }
+      var myTrips = (typeof TripsData !== 'undefined') ? TripsData.getMine(_uid) : [];
+      var existingIds = _tripList.map(function(t2) { return t2.id; });
+      _openSheet(GearRender.sheetPickTrip(myTrips, existingIds));
+      return;
+    }
+
+    if (action === 'gear-pick-trip-selected') {
+      var targetTripId   = t.dataset.tripid;
+      var targetTripName = t.dataset.tripname;
+      _closeAllSheets();
+      var payload = _buildPickedTemplate(_template, _pickSelected);
+      try {
+        await GearData.saveTripSnapshot(_uid, targetTripId, targetTripName, payload);
+      } catch (err) {
+        console.error('GearData.saveTripSnapshot:', err);
+        alert('Не удалось сохранить список поездки. Проверь соединение и попробуй ещё раз.');
+        return;
+      }
+      _pickMode = false;
+      _pickSelected = [];
+      _tripList   = GearData.getTripList(_uid);
+      _activeTrip = targetTripId;
+      _scope      = 'personal';
+      _renderAndRestore();
+      return;
+    }
+
+    /* ═════════════ ОБЩЕЕ СНАРЯЖЕНИЕ (на поездку, видно всем) ═════════════ */
+
+    if (action === 'gear-shared-cat-add') {
+      if (!_sharedData) _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
+      _openSheet(GearRender.sheetAddSharedCategory());
+      return;
+    }
+
+    if (action === 'gear-shared-cat-save') {
+      var scName = (document.getElementById('gear-shared-cat-name') || {value:''}).value.trim();
+      if (!scName) { var scn = document.getElementById('gear-shared-cat-name'); if (scn) scn.focus(); return; }
+      if (!_sharedData) _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
+      _sharedData.categories.push({ id: GearData.uid(), name: scName, iconIdx: 0 });
+      _closeAllSheets();
+      await _saveShared();
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-shared-item-add') {
+      _sharedAddCatId = t.dataset.catid;
+      _openSheet(GearRender.sheetAddSharedItem());
+      return;
+    }
+
+    if (action === 'gear-shared-item-save') {
+      var siName  = (document.getElementById('gear-shared-item-name')  || {value:''}).value.trim();
+      var siOwner = (document.getElementById('gear-shared-item-owner') || {value:''}).value.trim();
+      if (!siName) { var sin = document.getElementById('gear-shared-item-name'); if (sin) sin.focus(); return; }
+      if (!_sharedData) _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
+      _sharedData.items.push({ id: GearData.uid(), name: siName, owner: siOwner, categoryId: _sharedAddCatId });
+      _closeAllSheets();
+      await _saveShared();
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-shared-item-del') {
+      if (!_sharedData) return;
+      var sDelId = t.dataset.itemid;
+      _sharedData.items = _sharedData.items.filter(function(i) { return i.id !== sDelId; });
+      await _saveShared();
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-shared-item-check') {
+      if (!_sharedData) return;
+      var sciId     = t.dataset.itemid;
+      var sChecked  = _sharedData.checked || [];
+      var sIdx      = sChecked.indexOf(sciId);
+      if (sIdx >= 0) sChecked.splice(sIdx, 1); else sChecked.push(sciId);
+      _sharedData.checked = sChecked;
+      GearData.setSharedChecked(_activeTrip, sChecked);
+
+      var nowOn = sChecked.indexOf(sciId) >= 0;
+      var scb  = t.querySelector('.gear-cb');
+      var scn2 = t.querySelector('.gear-cname');
+      if (scb)  scb.classList.toggle('on', nowOn);
+      if (scn2) scn2.classList.toggle('done', nowOn);
+
+      var catEl2 = t.closest('.gear-cat');
+      if (catEl2 && _sharedData) {
+        var sCatId    = catEl2.dataset.catid;
+        var sCatItems = _sharedData.items.filter(function(i) { return i.categoryId === sCatId; });
+        var sCatDone  = sCatItems.filter(function(i) { return sChecked.indexOf(i.id) >= 0; }).length;
+        var sBadge = catEl2.querySelector('[data-cat-badge]');
+        if (sBadge) {
+          sBadge.textContent = sCatDone + '/' + sCatItems.length;
+          sBadge.className   = (sCatItems.length && sCatDone === sCatItems.length) ? 'gear-badge-ok' : 'gear-badge-part';
+        }
+      }
       return;
     }
 

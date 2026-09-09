@@ -126,6 +126,14 @@ service cloud.firestore {
       allow update, delete: if isMember() && resource.data.uid == request.auth.uid;
     }
 
+    // Общий (групповой) список снаряги на поездку — один документ на
+    // поездку (id = tripId), в отличие от личных списков выше. Правит
+    // любой участник, как Меню/Закупки — это совместный список, а не
+    // персональный.
+    match /gear_trip_shared/{tripId} {
+      allow read, write: if isMember();
+    }
+
     match /{document=**} { allow read, write: if false; }
   }
 }
