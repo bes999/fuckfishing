@@ -60,11 +60,19 @@ const GearRender = (() => {
 
     return _tripSwitcher('template', tripList)
       + _statsBar(template.items, template.categories)
-      + (isMe ? _locationsSection(template.locations, template.items, false) : '')
       + (isMe && template.items.length ? '<div class="gear-pick-entry" data-action="gear-pick-mode-enter">'
         + '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>'
         + ' Собрать список для поездки</div>' : '')
       + _categoriesSection(template, isMe, false, []);
+  }
+
+  /* ── "Мои места" — каталог физических мест хранения (баулы, рюкзаки) ──
+     Не привязан ни к Шаблону вещей, ни к конкретной поездке: создаётся
+     один раз, переиспользуется. Хранится там же, где раньше жили места
+     Шаблона (template.locations) — просто больше не привязан к вещам. */
+  function tabCatalog(template, tripList, isMe) {
+    return _tripSwitcher('catalog', tripList)
+      + _locationsSection(template.locations || [], [], !isMe);
   }
 
   /* ── Режим выбора вещей для конкретной поездки ──
@@ -89,6 +97,40 @@ const GearRender = (() => {
       + '</div>';
 
     return header + catsHtml + '<div style="height:8px"></div>' + doneBar;
+  }
+
+  /* ── Шаг 2 сбора списка: какие места (из каталога "Мои места") берём
+     в эту конкретную поездку. Необязательный — можно нажать "Готово" и
+     с нулём выбранных, назначить места вещам уже потом, внутри поездки. */
+  function pickLocationsView(locations, selectedIds) {
+    var header = '<div class="gear-pick-hd">'
+      + '<div class="gear-pick-hd-cancel" data-action="gear-pick-back-to-items">Назад</div>'
+      + '<div class="gear-pick-hd-title">Какие места берём?</div>'
+      + '<div style="width:52px"></div>'
+      + '</div>';
+
+    if (!locations.length) {
+      var empty = '<div class="gear-empty">'
+        + '<div class="gear-empty-t">В каталоге пока нет мест</div>'
+        + '<div class="gear-empty-s">Можно пропустить этот шаг и назначить места вещам прямо в поездке.</div>'
+        + '</div>';
+      var doneBarEmpty = '<div class="gear-pick-donebar" data-action="gear-pick-locations-done">Готово</div>';
+      return header + empty + '<div style="height:8px"></div>' + doneBarEmpty;
+    }
+
+    var itemsHtml = locations.filter(function(l) { return !l.parentId; }).map(function(loc) {
+      var isSel = selectedIds.indexOf(loc.id) >= 0;
+      return '<div class="gear-check-item" data-action="gear-pick-toggle-location" data-locid="'+_esc(loc.id)+'">'
+        + '<div class="gear-cb'+(isSel?' on':'')+'"></div>'
+        + '<div class="gear-ci-info"><div class="gear-cname'+(isSel?' done':'')+'">'+_esc(loc.name)+'</div></div>'
+        + '</div>';
+    }).join('');
+
+    var doneBar = '<div class="gear-pick-donebar" data-action="gear-pick-locations-done">Готово'
+      + (selectedIds.length ? ' <span class="gear-pick-donecount">('+selectedIds.length+')</span>' : '')
+      + '</div>';
+
+    return header + '<div class="gear-cat">' + itemsHtml + '</div>' + '<div style="height:8px"></div>' + doneBar;
   }
 
   function _catCardPick(cat, items, colorClass, selectedIds) {
@@ -276,8 +318,7 @@ const GearRender = (() => {
   }
 
   function _tripSwitcher(activeId, tripList) {
-    if (!tripList.length) return '';
-    var tabs = [{id:'template', name:'Шаблон'}].concat(tripList);
+    var tabs = [{id:'template', name:'Шаблон'}, {id:'catalog', name:'Мои места'}].concat(tripList);
     return '<div class="gear-tsw">'
       + tabs.map(function(t) {
           return '<div class="gear-tsw-i'+(activeId===t.id?' on':'')+'" data-action="gear-trip-switch" data-trip="'+_esc(t.id)+'">'+_esc(t.name)+'</div>';
@@ -426,23 +467,21 @@ const GearRender = (() => {
       var catItems = template.items.filter(function(i) { return i.categoryId === cat.id; });
       var colorClass = _catColor(idx);
       if (tripMode) return _catCardTrip(cat, catItems, template.locations || [], colorClass, checkedIds);
-      return _catCardTemplate(cat, catItems, template.locations || [], colorClass, isMe);
+      return _catCardTemplate(cat, catItems, colorClass, isMe);
     }).join('');
 
     return header + catsHtml;
   }
 
-  function _catCardTemplate(cat, items, locations, colorClass, isMe) {
+  function _catCardTemplate(cat, items, colorClass, isMe) {
     var totalG = items.reduce(function(s,i) { return s + (Number(i.weight)||0); }, 0);
     var metaParts = [items.length + ' пред.'];
     if (totalG) metaParts.push(_wStr(totalG));
     var meta = metaParts.join(' · ');
 
     var itemsHtml = items.map(function(item) {
-      var loc = item.locationId ? locations.find(function(l) { return l.id === item.locationId; }) : null;
       var tags = '';
       if (item.weight) tags += '<div class="gear-tag"><svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><path d="M12 6v6l4 2"/></svg>'+_esc(item.weight)+' г</div>';
-      if (loc) tags += '<div class="gear-tag"><svg viewBox="0 0 24 24" width="8" height="8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M9 4a3 3 0 006 0"/><path d="M5 8h14a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9a2 2 0 012-2z"/></svg>'+_esc(loc.name)+'</div>';
       return '<div class="gear-gi" data-action="gear-item-edit" data-itemid="'+_esc(item.id)+'">'
         + '<div class="gear-gd"></div>'
         + '<div class="gear-gi-info"><div class="gear-gname">'+_esc(item.name)+'</div>'
@@ -632,14 +671,6 @@ const GearRender = (() => {
       return '<div class="gear-chip'+(c.id === catId ? ' on':'')+'" data-action="gear-chip-cat" data-catid="'+_esc(c.id)+'">'+_esc(c.name)+'</div>';
     }).join('');
 
-    var locDisplay = '';
-    var locId      = '';
-    if (item && item.locationId) {
-      var loc = template.locations.find(function(l) { return l.id === item.locationId; });
-      locDisplay = loc ? _esc(loc.name) : '';
-      locId = item.locationId;
-    }
-
     var catName = (template.categories.find(function(c) { return c.id === catId; }) || {}).name || 'категорию';
 
     return '<div class="gear-sheet-overlay" id="gear-item-sheet">'
@@ -663,14 +694,6 @@ const GearRender = (() => {
       + '<div class="gear-field-row" style="border-top:none"><div class="gear-field-label">Вес</div>'
       + '<input class="gear-fi gear-fi-sm" id="gear-item-weight" type="number" inputmode="numeric" placeholder="—" value="'+_esc(item && item.weight ? item.weight : '')+'">'
       + '<div class="gear-field-unit">г</div></div>'
-      + '<div class="gear-field-row gear-pick-trigger" data-action="gear-item-loc-pick">'
-      + '<div class="gear-field-label">Хранение</div>'
-      + '<div class="gear-field-val" id="gear-item-loc-display">'
-      + (locDisplay ? locDisplay : '<span class="gear-field-ph">Не указано</span>')
-      + '</div>'
-      + '<input type="hidden" id="gear-item-locid" value="'+_esc(locId)+'">'
-      + '<div class="gear-field-chev">›</div>'
-      + '</div>'
       + '<div class="gear-field-row"><div class="gear-field-label">Заметка</div>'
       + '<input class="gear-fi" id="gear-item-note" type="text" placeholder="необязательно" value="'+_esc(item && item.note ? item.note : '')+'">'
       + '</div></div>'
@@ -762,7 +785,7 @@ const GearRender = (() => {
   }
 
   return {
-    tabMain, tabTrip, pickView,
+    tabMain, tabTrip, tabCatalog, pickView, pickLocationsView,
     sheetAddLocation, sheetAddCategory, sheetAddItem,
     sheetPickLocation, sheetCategoryMenu, sheetImportText,
     sheetAddSharedCategory, sheetAddSharedItem, sheetPickTrip,

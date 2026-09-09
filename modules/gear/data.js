@@ -96,15 +96,15 @@ const GearData = (() => {
 
   /* ── Обновить личный список поездки из актуального шаблона ──
      В отличие от saveTripSnapshot (полная замена + сброс checked), это
-     ДОБАВЛЯЕТ новые места/категории/предметы из шаблона, не трогая то, что
-     уже есть в списке поездки — ни пользовательские правки, ни отметки
-     "взял". Безопасно жать сколько угодно раз. */
+     ДОБАВЛЯЕТ новые категории/предметы из шаблона, не трогая то, что уже
+     есть в списке поездки — ни пользовательские правки, ни отметки "взял".
+     Места сюда не входят: они теперь отдельный каталог ("Мои места"), не
+     привязанный к вещам шаблона — какие места едут в поездку решается
+     явно при сборе списка, синк их не трогает. Безопасно жать сколько
+     угодно раз. */
   async function syncTripFromTemplate(uid, tripId, template) {
     const snap = _snapshots[tripId];
     if (!snap) return null;
-
-    const existingLocIds = new Set(snap.locations.map(l => l.id));
-    const newLocations = (template.locations || []).filter(l => !existingLocIds.has(l.id));
 
     const existingCatIds = new Set(snap.categories.map(c => c.id));
     const newCategories = (template.categories || []).filter(c => !existingCatIds.has(c.id));
@@ -112,16 +112,15 @@ const GearData = (() => {
     const existingItemIds = new Set(snap.items.map(i => i.id));
     const newItems = (template.items || []).filter(i => !existingItemIds.has(i.id));
 
-    snap.locations  = snap.locations.concat(newLocations);
     snap.categories = snap.categories.concat(newCategories);
     snap.items      = snap.items.concat(newItems);
 
     await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId)).set({
-      locations: snap.locations, categories: snap.categories, items: snap.items,
+      categories: snap.categories, items: snap.items,
       updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     }, { merge: true });
 
-    return { locations: newLocations.length, categories: newCategories.length, items: newItems.length };
+    return { categories: newCategories.length, items: newItems.length };
   }
 
   /* ── Узкое обновление предметов личного списка поездки ──

@@ -12,7 +12,9 @@ const GearModule = (() => {
   var _sharedData = null;       // загруженный общий список текущей поездки
   var _sharedAddCatId = null;   // категория, в которую добавляем предмет (шит)
   var _pickMode     = false;    // режим "собрать список для поездки" (внутри Шаблона)
-  var _pickSelected = [];       // id отмеченных предметов в этом режиме
+  var _pickStep     = 'items';  // 'items' | 'locations' — два шага режима сбора
+  var _pickSelected = [];       // id отмеченных предметов
+  var _pickSelectedLocations = []; // id отмеченных мест (из каталога)
   var _tripLocPickItemId = null; // какому предмету поездки назначаем место (пикер)
 
   /* ── Инициализация ──
@@ -40,7 +42,7 @@ const GearModule = (() => {
   // Собирает урезанный шаблон только из отмеченных предметов — плюс их
   // категории и цепочку мест хранения (включая родителей, иначе вложенный
   // "Несессер" останется без "Баула", в котором он лежит).
-  function _buildPickedTemplate(template, selectedIds) {
+  function _buildPickedTemplate(template, selectedIds, selectedLocationIds) {
     var selSet = {};
     selectedIds.forEach(function(id) { selSet[id] = true; });
 
@@ -50,16 +52,19 @@ const GearModule = (() => {
     items.forEach(function(i) { if (i.categoryId) catSet[i.categoryId] = true; });
     var categories = template.categories.filter(function(c) { return catSet[c.id]; });
 
+    // Места — то, что явно отметили на втором шаге, плюс цепочка родителей
+    // (если внутри выбранного места есть вложенное, родитель должен поехать
+    // с ним, иначе вложенность потеряется).
     var locSet = {};
-    items.forEach(function(i) { if (i.locationId) locSet[i.locationId] = true; });
+    (selectedLocationIds || []).forEach(function(id) { locSet[id] = true; });
     var changed = true;
     while (changed) {
       changed = false;
-      template.locations.forEach(function(l) {
+      (template.locations || []).forEach(function(l) {
         if (locSet[l.id] && l.parentId && !locSet[l.parentId]) { locSet[l.parentId] = true; changed = true; }
       });
     }
-    var locations = template.locations.filter(function(l) { return locSet[l.id]; });
+    var locations = (template.locations || []).filter(function(l) { return locSet[l.id]; });
 
     return { locations: locations, categories: categories, items: items };
   }
@@ -67,9 +72,15 @@ const GearModule = (() => {
   function _render() {
     if (!_container) return;
     if (_pickMode) {
-      _container.innerHTML = GearRender.pickView(_template, _pickSelected);
+      if (_pickStep === 'locations') {
+        _container.innerHTML = GearRender.pickLocationsView(_template.locations || [], _pickSelectedLocations);
+      } else {
+        _container.innerHTML = GearRender.pickView(_template, _pickSelected);
+      }
     } else if (_activeTrip === 'template') {
       _container.innerHTML = GearRender.tabMain(_template, _tripList, _isMe);
+    } else if (_activeTrip === 'catalog') {
+      _container.innerHTML = GearRender.tabCatalog(_template, _tripList, _isMe);
     } else if (_scope === 'shared') {
       var sharedChecked = (_sharedData && _sharedData.checked) || [];
       _container.innerHTML = GearRender.tabTrip(null, [], _tripList, _activeTrip, 'shared', _sharedData, sharedChecked);
@@ -240,12 +251,11 @@ const GearModule = (() => {
       try {
         var result = await GearData.syncTripFromTemplate(_uid, _activeTrip, _template);
         if (result) {
-          var addedTotal = result.locations + result.categories + result.items;
+          var addedTotal = result.categories + result.items;
           if (addedTotal) {
             var parts = [];
             if (result.categories) parts.push(result.categories + ' кат.');
             if (result.items)      parts.push(result.items + ' предм.');
-            if (result.locations)  parts.push(result.locations + ' мест');
             alert('Добавлено из шаблона: ' + parts.join(', '));
           } else {
             alert('Список поездки уже совпадает с шаблоном.');
@@ -278,7 +288,7 @@ const GearModule = (() => {
     if (action === 'gear-loc-expand') {
       e.stopPropagation();
       var locId = t.dataset.locid;
-      var isTripView   = _activeTrip !== 'template';
+      var isTripView = _activeTrip !== 'template' && _activeTrip !== 'catalog';
       var activeLocs, activeItems;
       if (isTripView) {
         var snapForLoc = GearData.getTripSnapshot(_uid, _activeTrip);
@@ -354,12 +364,6 @@ const GearModule = (() => {
       return;
     }
 
-    if (action === 'gear-item-loc-pick') {
-      var curLocId = (document.getElementById('gear-item-locid') || {}).value || '';
-      _openSubSheet(GearRender.sheetPickLocation(_template.locations, curLocId, 'item-loc'));
-      return;
-    }
-
     /* ── Назначить место хранения вещи прямо внутри поездки ── */
     if (action === 'gear-trip-item-loc-pick') {
       if (_activeTrip === 'template' || _scope === 'shared') return;
@@ -400,11 +404,6 @@ const GearModule = (() => {
         var disp = document.getElementById('gear-loc-parent-display');
         if (inp)  inp.value = locId;
         if (disp) disp.innerHTML = locName ? locName : '<span class="gear-field-ph">Не указано</span>';
-      } else if (trigger === 'item-loc') {
-        var inp2  = document.getElementById('gear-item-locid');
-        var disp2 = document.getElementById('gear-item-loc-display');
-        if (inp2)  inp2.value = locId;
-        if (disp2) disp2.innerHTML = locName ? locName : '<span class="gear-field-ph">Не указано</span>';
       }
       return;
     }
@@ -600,17 +599,16 @@ const GearModule = (() => {
 
       var iCatId  = (document.getElementById('gear-item-catid')  || {value:''}).value;
       var iWeight = (document.getElementById('gear-item-weight') || {value:''}).value.trim();
-      var iLocId  = (document.getElementById('gear-item-locid')  || {value:''}).value;
       var iNote   = (document.getElementById('gear-item-note')   || {value:''}).value.trim();
 
       if (saveItemEid) {
         var editItem = _template.items.find(function(i) { return i.id === saveItemEid; });
         if (editItem) {
           editItem.name = itemName; editItem.categoryId = iCatId;
-          editItem.weight = iWeight; editItem.locationId = iLocId; editItem.note = iNote;
+          editItem.weight = iWeight; editItem.note = iNote;
         }
       } else {
-        _template.items.push({ id: GearData.uid(), name: itemName, categoryId: iCatId, weight: iWeight, locationId: iLocId, note: iNote });
+        _template.items.push({ id: GearData.uid(), name: itemName, categoryId: iCatId, weight: iWeight, note: iNote });
       }
       _closeAllSheets();
       await _save();
@@ -632,14 +630,24 @@ const GearModule = (() => {
     if (action === 'gear-pick-mode-enter') {
       if (!_isMe) return;
       _pickMode = true;
+      _pickStep = 'items';
       _pickSelected = [];
+      _pickSelectedLocations = [];
       _renderAndRestore();
       return;
     }
 
     if (action === 'gear-pick-mode-cancel') {
       _pickMode = false;
+      _pickStep = 'items';
       _pickSelected = [];
+      _pickSelectedLocations = [];
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-pick-back-to-items') {
+      _pickStep = 'items';
       _renderAndRestore();
       return;
     }
@@ -676,6 +684,26 @@ const GearModule = (() => {
 
     if (action === 'gear-pick-done') {
       if (!_pickSelected.length) { alert('Отметь хотя бы одну вещь.'); return; }
+      _pickStep = 'locations';
+      _renderAndRestore();
+      return;
+    }
+
+    if (action === 'gear-pick-toggle-location') {
+      var plId = t.dataset.locid;
+      var plIdx = _pickSelectedLocations.indexOf(plId);
+      if (plIdx >= 0) _pickSelectedLocations.splice(plIdx, 1); else _pickSelectedLocations.push(plId);
+      var plNowOn = _pickSelectedLocations.indexOf(plId) >= 0;
+      var plcb = t.querySelector('.gear-cb');
+      if (plcb) plcb.classList.toggle('on', plNowOn);
+      var plDoneBar = _container ? _container.querySelector('.gear-pick-donebar') : null;
+      if (plDoneBar) {
+        plDoneBar.innerHTML = 'Готово' + (_pickSelectedLocations.length ? ' <span class="gear-pick-donecount">(' + _pickSelectedLocations.length + ')</span>' : '');
+      }
+      return;
+    }
+
+    if (action === 'gear-pick-locations-done') {
       var myTrips = (typeof TripsData !== 'undefined') ? TripsData.getMine(_uid) : [];
       var existingIds = _tripList.map(function(t2) { return t2.id; });
       _openSheet(GearRender.sheetPickTrip(myTrips, existingIds));
@@ -686,7 +714,7 @@ const GearModule = (() => {
       var targetTripId   = t.dataset.tripid;
       var targetTripName = t.dataset.tripname;
       _closeAllSheets();
-      var payload = _buildPickedTemplate(_template, _pickSelected);
+      var payload = _buildPickedTemplate(_template, _pickSelected, _pickSelectedLocations);
       try {
         await GearData.saveTripSnapshot(_uid, targetTripId, targetTripName, payload);
       } catch (err) {
@@ -695,7 +723,9 @@ const GearModule = (() => {
         return;
       }
       _pickMode = false;
+      _pickStep = 'items';
       _pickSelected = [];
+      _pickSelectedLocations = [];
       _tripList   = GearData.getTripList(_uid);
       _activeTrip = targetTripId;
       _scope      = 'personal';
@@ -852,7 +882,11 @@ const GearModule = (() => {
     if (source === 'blank') {
       tmpl = { locations: [], categories: [], items: [] };
     } else if (source === 'template') {
-      tmpl = await GearData.load(uid);
+      var loaded = await GearData.load(uid);
+      // Места — отдельный каталог, не копируются автоматом целиком: какие
+      // места едут в эту поездку решается явно (см. "Собрать список для
+      // поездки" в самом Шаблоне).
+      tmpl = { locations: [], categories: loaded.categories, items: loaded.items };
     } else {
       var srcSnap = GearData.getTripSnapshot(uid, source);
       tmpl = srcSnap
