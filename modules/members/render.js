@@ -463,8 +463,17 @@ const MembersRender = (() => {
           <button class="action-btn" data-action="invite-allow-email">Разрешить регистрацию</button>
           <div class="invite-email-status" id="invite-email-status"></div>
 
-          <div class="invite-url">${_esc(url)}</div>
-          <button class="action-btn" data-action="invite-copy">📋 Скопировать ссылку</button>
+          <div class="invite-url-field">
+            <span class="invite-url-text">${_esc(url)}</span>
+            <button class="invite-url-copy" data-action="invite-copy" title="Скопировать ссылку">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </button>
+          </div>
+
+          <div class="invite-qr-wrap">
+            <img class="invite-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}" alt="QR-код приглашения" width="150" height="150">
+          </div>
+
           <button class="picker-cancel" data-action="invite-close">Закрыть</button>
         </div>
       </div>`;
@@ -476,7 +485,10 @@ const MembersRender = (() => {
       if (a === 'invite-copy') {
         navigator.clipboard?.writeText(url).catch(()=>{});
         const btn = overlay.querySelector('[data-action="invite-copy"]');
-        if (btn) { btn.textContent = '✓ Скопировано'; setTimeout(() => overlay.remove(), 1000); }
+        if (btn) {
+          btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+          btn.classList.add('copied');
+        }
       }
       if (a === 'invite-allow-email') {
         const input  = overlay.querySelector('#invite-email-input');

@@ -17,6 +17,75 @@ const TripCoverIndex = (() => {
   let _tripId = null;
   let _guideHandler = null;
 
+  // ── Кэш имён реальных участников (для отметки "гость" на чипах) ──
+  // trip.participants — просто строки-имена, без пометки, кто из них
+  // реальный зарегистрированный аккаунт, а кто вписан вручную (гость,
+  // см. TripsData.addParticipant без uid). Единственный способ отличить —
+  // сверить со списком реальных профилей по displayName; тянем его один
+  // раз и кэшируем, а обложка дорисовывается, когда список придёт (чтобы
+  // не блокировать первый рендер сетевым запросом).
+  let _memberNameSet = null;
+  let _memberNamePromise = null;
+  function _ensureMemberNames() {
+    if (_memberNamePromise) return _memberNamePromise;
+    _memberNamePromise = (typeof MembersFirebase !== 'undefined' ? MembersFirebase.getAllMembers() : Promise.resolve([]))
+      .then(members => {
+        _memberNameSet = new Set(members.map(m => String(m.displayName || '').trim().toLowerCase()).filter(Boolean));
+      })
+      .catch(() => { _memberNameSet = new Set(); });
+    return _memberNamePromise;
+  }
+  function _isGuestName(name) {
+    if (!_memberNameSet) return false; // ещё не загрузили — пока не помечаем никого
+    return !_memberNameSet.has(String(name || '').trim().toLowerCase());
+  }
+
+  // Добавить гостя без аккаунта — просто имя, попадает в participants
+  // (см. TripsData.addParticipant), в хэдкаунт и списки участников, но
+  // не в memberIds и не может залогиниться.
+  function _showAddGuestSheet() {
+    document.getElementById('guest-add-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'profile-overlay';
+    overlay.id = 'guest-add-overlay';
+    overlay.innerHTML = `
+      <div class="profile-sheet">
+        <div class="profile-grab"></div>
+        <div class="profile-scroll">
+          <div class="modal-title" style="margin-bottom:8px">Добавить гостя</div>
+          <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
+            Для тех, кто не будет пользоваться приложением — просто имя, без регистрации. Попадёт в участников и счётчики.
+          </p>
+          <input type="text" class="invite-email-input" id="guest-name-input" placeholder="Имя гостя" autocomplete="off">
+          <div class="sheet-actions-row">
+            <button class="picker-cancel" data-action="guest-add-close">Отмена</button>
+            <button class="action-btn" data-action="guest-add-save">Добавить</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#guest-name-input')?.focus();
+    overlay.addEventListener('click', async e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const a = e.target.closest('[data-action]')?.dataset.action;
+      if (a === 'guest-add-close') { overlay.remove(); return; }
+      if (a === 'guest-add-save') {
+        const input = overlay.querySelector('#guest-name-input');
+        const name = input?.value.trim();
+        if (!name) { input?.focus(); return; }
+        try {
+          await TripsData.addParticipant(_tripId, { name });
+        } catch (err) {
+          console.error('addParticipant:', err);
+          alert('Не удалось добавить гостя. Проверь соединение и попробуй ещё раз.');
+          return;
+        }
+        overlay.remove();
+        show(_tripId);
+      }
+    });
+  }
+
   // Табы внутри Гида — Инфо (маршрут/погода/Windy, всегда первым, не
   // настраивается) плюс разделы поездки, которые раньше были достижимы
   // только через выезжающее меню. Каждый рендерит свой уже готовый
@@ -81,6 +150,22 @@ const TripCoverIndex = (() => {
     prefetchDone.then(() => {
       _renderCover(trip);
       _maybeRefreshWeather(trip);
+    });
+
+    // Догружаем список реальных участников (для метки "гость" на чипах) —
+    // не блокируя первый рендер; когда придёт, перерисовываем обложку
+    // ещё раз, если пользователь всё ещё на этой же поездке.
+    _ensureMemberNames().then(() => {
+      // _renderCover пересоздаёt #trip-cover с нуля (remove + новый
+      // appendChild) — если в этот момент открыт любой шит (пригласить,
+      // добавить гостя, редактирование), он окажется в DOM раньше свежего
+      // #trip-cover и с тем же z-index молча уедет под него. Поэтому не
+      // перерисовываем, пока открыт .profile-overlay — бейдж "гость"
+      // просто дорисуется при следующем обычном рендере.
+      if (_tripId === tripId && !document.querySelector('.profile-overlay')) {
+        const fresh = TripsData.getById(tripId);
+        if (fresh) _renderCover(fresh);
+      }
     });
   }
 
@@ -363,10 +448,7 @@ const TripCoverIndex = (() => {
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
-          <button class="cover-icon-btn" id="coverInvite" title="Пригласить">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
-          </button>
-          <button class="cover-icon-btn" id="coverAddGuest" title="Добавить гостя (без аккаунта)">
+          <button class="cover-icon-btn" id="coverAddPeople" title="Добавить участника">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
           </button>
           <button class="cover-icon-btn" id="coverGear" title="Снаряга">
@@ -397,8 +479,9 @@ const TripCoverIndex = (() => {
   }
 
   function _hero(t, emoji, dates, location) {
-    const parts = (t.participants || []).map(p =>
-      `<div class="cover-part-chip">${_esc(p)}</div>`).join('');
+    const parts = (t.participants || []).map(p => _isGuestName(p)
+      ? `<div class="cover-part-chip cover-part-chip--guest">${_esc(p)} <span class="cover-part-guest-tag">гость</span></div>`
+      : `<div class="cover-part-chip">${_esc(p)}</div>`).join('');
 
     return `
       <div class="cover-hero">
@@ -901,51 +984,43 @@ const TripCoverIndex = (() => {
   function _bind(el, trip) {
     el.querySelector('#coverBack')?.addEventListener('click', hide);
 
-    // Пригласить в эту поездку
-    el.querySelector('#coverInvite')?.addEventListener('click', () => {
-      if (typeof MembersRender !== 'undefined') MembersRender.showInvite(_tripId, trip.name);
-    });
-
-    // Добавить гостя без аккаунта — просто имя, попадает в participants
-    // (см. TripsData.addParticipant), в хэдкаунт и списки участников, но
-    // не в memberIds и не может залогиниться.
-    el.querySelector('#coverAddGuest')?.addEventListener('click', () => {
-      document.getElementById('guest-add-overlay')?.remove();
+    // Добавить участника — выбор между приглашением по ссылке (реальный
+    // аккаунт) и гостем без аккаунта (просто имя, через TripsData.addParticipant).
+    el.querySelector('#coverAddPeople')?.addEventListener('click', () => {
+      document.getElementById('addpeople-overlay')?.remove();
       const overlay = document.createElement('div');
       overlay.className = 'profile-overlay';
-      overlay.id = 'guest-add-overlay';
+      overlay.id = 'addpeople-overlay';
       overlay.innerHTML = `
         <div class="profile-sheet">
           <div class="profile-grab"></div>
           <div class="profile-scroll">
-            <div class="modal-title" style="margin-bottom:8px">Добавить гостя</div>
-            <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
-              Для тех, кто не будет пользоваться приложением — просто имя, без регистрации. Попадёт в участников и счётчики.
-            </p>
-            <input type="text" class="invite-email-input" id="guest-name-input" placeholder="Имя гостя" autocomplete="off">
-            <button class="action-btn" data-action="guest-add-save">Добавить</button>
-            <button class="picker-cancel" data-action="guest-add-close">Отмена</button>
+            <div class="modal-title" style="margin-bottom:14px">Добавить участника</div>
+            <button class="addpeople-opt" data-action="addpeople-invite">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7h3a5 5 0 015 5 5 5 0 01-5 5h-3m-6 0H6a5 5 0 01-5-5 5 5 0 015-5h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+              <span><b>Пригласить по ссылке</b><br>Войдёт через Google или email, попадёт в эту поездку</span>
+            </button>
+            <button class="addpeople-opt" data-action="addpeople-guest">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+              <span><b>Добавить гостя</b><br>Без аккаунта — просто имя, для тех, кто не пользуется приложением</span>
+            </button>
+            <button class="picker-cancel" data-action="addpeople-close">Отмена</button>
           </div>
         </div>`;
       document.body.appendChild(overlay);
-      overlay.querySelector('#guest-name-input')?.focus();
-      overlay.addEventListener('click', async e => {
+      overlay.addEventListener('click', e => {
         if (e.target === overlay) { overlay.remove(); return; }
         const a = e.target.closest('[data-action]')?.dataset.action;
-        if (a === 'guest-add-close') { overlay.remove(); return; }
-        if (a === 'guest-add-save') {
-          const input = overlay.querySelector('#guest-name-input');
-          const name = input?.value.trim();
-          if (!name) { input?.focus(); return; }
-          try {
-            await TripsData.addParticipant(_tripId, { name });
-          } catch (err) {
-            console.error('addParticipant:', err);
-            alert('Не удалось добавить гостя. Проверь соединение и попробуй ещё раз.');
-            return;
-          }
+        if (a === 'addpeople-close') { overlay.remove(); return; }
+        if (a === 'addpeople-invite') {
           overlay.remove();
-          show(_tripId);
+          if (typeof MembersRender !== 'undefined') MembersRender.showInvite(_tripId, trip.name);
+          return;
+        }
+        if (a === 'addpeople-guest') {
+          overlay.remove();
+          _showAddGuestSheet();
+          return;
         }
       });
     });

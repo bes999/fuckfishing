@@ -65,3 +65,22 @@
 .cs-btn-danger:active { opacity: 0.85; }
 .cs-btn-primary { background: var(--accent); color: #fff; }
 .cs-btn-primary:active { opacity: 0.85; }
+
+/* ===== ОБЩИЕ КНОПКИ ДЛЯ .profile-sheet-ШИТОВ (приглашение, гость и т.п.) ===== */
+.action-btn {
+  width: 100%; border: none; border-radius: var(--radius-md);
+  padding: 13px; font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  background: var(--accent); color: #fff; margin-bottom: 10px;
+}
+.action-btn:active { opacity: 0.85; }
+.picker-cancel {
+  width: 100%; border: none; border-radius: var(--radius-md);
+  padding: 13px; font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  background: var(--bg3); color: var(--label);
+}
+.picker-cancel:active { background: var(--bg4); }
+.sheet-actions-row { display: flex; gap: 8px; }
+.sheet-actions-row .action-btn,
+.sheet-actions-row .picker-cancel { margin-bottom: 0; }

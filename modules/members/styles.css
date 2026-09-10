@@ -325,10 +325,29 @@
 }
 
 /* Invite sheet */
-.invite-url {
+.invite-url-field {
+  display: flex; align-items: center; gap: 8px;
   background: var(--bg3); border-radius: var(--radius-md);
-  padding: 12px 14px; margin-bottom: 14px;
-  font-size: 13px; color: var(--label); word-break: break-all;
+  padding: 12px 8px 12px 14px; margin-bottom: 14px;
+}
+.invite-url-text {
+  flex: 1; min-width: 0;
+  font-size: 13px; color: var(--label);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.invite-url-copy {
+  flex-shrink: 0; width: 30px; height: 30px; border-radius: var(--radius-sm);
+  background: var(--bg4); border: none; color: var(--label2); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.invite-url-copy:active { opacity: 0.7; }
+.invite-url-copy.copied { color: var(--green); }
+.invite-qr-wrap {
+  display: flex; justify-content: center; padding: 4px 0 18px;
+}
+.invite-qr {
+  width: 150px; height: 150px; border-radius: var(--radius-sm);
+  background: #fff; padding: 8px;
 }
 .invite-email-label {
   font-size: 12px; font-weight: 600; color: var(--label3);

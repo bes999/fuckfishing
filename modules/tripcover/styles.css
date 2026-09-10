@@ -51,6 +51,27 @@
   padding: 4px 11px; font-size: 12px; font-weight: 500;
   border: .5px solid var(--sep);
 }
+.cover-part-chip--guest {
+  background: transparent;
+  border-style: dashed;
+  color: var(--label3);
+}
+.cover-part-guest-tag {
+  font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--label4);
+}
+
+/* Выбор способа добавления участника (по ссылке / гость без аккаунта) */
+.addpeople-opt {
+  width: 100%; display: flex; align-items: flex-start; gap: 12px;
+  text-align: left; background: var(--bg3); border: .5px solid var(--sep);
+  border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 10px;
+  color: var(--label); font-family: inherit; cursor: pointer;
+}
+.addpeople-opt:active { background: var(--bg4); }
+.addpeople-opt svg { flex-shrink: 0; margin-top: 2px; color: var(--accent); }
+.addpeople-opt span { font-size: 13px; color: var(--label3); line-height: 1.4; }
+.addpeople-opt span b { display: block; font-size: 15px; font-weight: 600; color: var(--label); margin-bottom: 2px; }
 
 /* Countdown */
 .cover-countdown {
