@@ -283,6 +283,19 @@
 
 .mn-slot-del:active { color: var(--red); }
 
+.mn-slot-cart {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  color: var(--label3);
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mn-slot-cart:active { background: var(--bg3); color: var(--label); }
+.mn-slot-cart.done { color: var(--green); width: auto; padding: 0 6px; gap: 3px; }
+
 .mn-add-slot {
   display: flex;
   align-items: center;

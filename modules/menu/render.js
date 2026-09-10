@@ -157,6 +157,12 @@ const MenuRender = (() => {
     const color = type?.color || 'blue';
 
     if (slot.item) {
+      // Корзина — закинуть ингредиенты этого блюда в Закупку — только вне
+      // режима редактирования (там место занято крестиком удаления, и это
+      // явно два разных действия — не путать местами).
+      const cartBtn = !isEdit
+        ? `<span class="mn-slot-cart" data-action="push-shopping" data-itemid="${slot.item.id}" data-source="${slot.item.source||''}" data-name="${slot.item.name}" title="Добавить ингредиенты в закупку"><i class="ti ti-shopping-cart" aria-hidden="true"></i></span>`
+        : '';
       return `
         <div class="mn-slot">
           <span class="mn-slot-label">${label}</span>
@@ -165,6 +171,7 @@ const MenuRender = (() => {
             <span class="mn-slot-txt">${slot.item.name}</span>
             ${isEdit ? `<span class="mn-slot-del" data-action="remove-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}">×</span>` : ''}
           </div>
+          ${cartBtn}
         </div>`;
     }
 
@@ -390,6 +397,12 @@ const MenuRender = (() => {
         _showTypePicker(target.dataset.day, target.dataset.meal);
         return;
       }
+
+      if (action === 'push-shopping') {
+        e.stopPropagation();
+        _pushIngredientsToShopping(target, target.dataset.itemid, target.dataset.source, target.dataset.name);
+        return;
+      }
     };
 
     _el.querySelector('#mn-back') && _el.querySelector('#mn-back').addEventListener('click', function() {
@@ -405,6 +418,63 @@ const MenuRender = (() => {
     if (container) container.innerHTML = _renderDays();
     const todayEl = _el ? _el.querySelector('#mn-today') : null;
     if (todayEl) todayEl.innerHTML = _todayBlock();
+  }
+
+  // Ингредиенты блюда по его source/id — те же каталоги, откуда слот
+  // вообще заполняется (см. MenuData.getItemsForSlot). Белок сам по себе
+  // и есть один ингредиент — рецепта для него нет и не нужно.
+  function _ingredientsForItem(itemId, source, fallbackName) {
+    let recipe = null;
+    if (source === 'recipes' && typeof RecipesData !== 'undefined') {
+      recipe = RecipesData.getRecipeById(itemId);
+    } else if (source === 'recipes_custom' && typeof RecipesState !== 'undefined') {
+      recipe = RecipesState.getCustomRecipeById(itemId);
+    } else if (source === 'bar' && typeof BarData !== 'undefined') {
+      recipe = BarData.getCocktailById(itemId);
+    } else if (source === 'proteins') {
+      return [{ name: fallbackName, qty: '' }];
+    }
+    return (recipe && recipe.ingredients && recipe.ingredients.length) ? recipe.ingredients : [];
+  }
+
+  // Закидывает ингредиенты блюда в Закупку этой же поездки — своя
+  // категория "Из меню", дедуп по имени (без учёта регистра) против ВСЕХ
+  // категорий, не только этой, чтобы не плодить то, что уже кто-то вписал
+  // руками. Полный overwrite categories — тот же паттерн, что и у
+  // остальных мутаций в самом модуле Закупки (см. shopping/render.js:_sync).
+  async function _pushIngredientsToShopping(btn, itemId, source, name) {
+    if (typeof ShoppingState === 'undefined' || typeof ShoppingFirebase === 'undefined') return;
+    const ingredients = _ingredientsForItem(itemId, source, name);
+    if (!ingredients.length) {
+      alert('У этого блюда пока нет списка ингредиентов — добавь их в Рецептах, и в следующий раз подтянутся сюда.');
+      return;
+    }
+
+    ShoppingState.load();
+    const cats = ShoppingState.getCategories(_tripId);
+    let cat = cats.find(c => c.title === 'Из меню');
+    if (!cat) cat = ShoppingState.addCategory(_tripId, 'Из меню');
+
+    const existingNames = new Set();
+    cats.forEach(c => c.items.forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
+
+    let added = 0;
+    ingredients.forEach(ing => {
+      const key = String(ing.name || '').trim().toLowerCase();
+      if (!key || existingNames.has(key)) return;
+      ShoppingState.addItem(_tripId, cat.id, ing.name, ing.qty || '');
+      existingNames.add(key);
+      added++;
+    });
+
+    if (added) await ShoppingFirebase.save(_tripId, ShoppingState.getCategories(_tripId));
+
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = added ? `<i class="ti ti-check" aria-hidden="true"></i> ${added}` : '✓ уже есть';
+      btn.classList.add('done');
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('done'); }, 1500);
+    }
   }
 
   function _syncFirebase() {
