@@ -9,7 +9,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'fish_salted',
-          name: 'Малосольная сима',
+          name: 'Малосольная рыба',
           sub: '8-12 ч без огня',
           time: '15 мин актив.',
           ingredients: [
@@ -35,7 +35,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_riet',
-          name: 'Риет из симы',
+          name: 'Риет из рыбы',
           sub: 'Лучший завтрак',
           time: '20 мин',
           ingredients: [
@@ -60,7 +60,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_he',
-          name: 'Хе из симы',
+          name: 'Хе из рыбы',
           sub: 'Корейское, острое',
           time: '40 мин',
           ingredients: [
@@ -100,7 +100,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_pelmeni',
-          name: 'Пельмени из симы на сочнях',
+          name: 'Пельмени из рыбы на сочнях',
           sub: null,
           time: '45 мин',
           ingredients: [
@@ -307,7 +307,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'main_carbonara',
-          name: 'Карбонара из симы',
+          name: 'Карбонара с бужениной',
           sub: 'Вместо гуанчиале — буженина',
           time: '25 мин',
           ingredients: [
@@ -322,7 +322,7 @@ const RecipesData = (() => {
         },
         {
           id: 'main_fettuccine',
-          name: 'Феттучини с симой',
+          name: 'Феттучини с рыбой',
           sub: null,
           time: '25 мин',
           ingredients: [
@@ -335,7 +335,7 @@ const RecipesData = (() => {
         },
         {
           id: 'main_grill',
-          name: 'Стейки симы на решётке',
+          name: 'Рыбные стейки на решётке',
           sub: 'Классика костра',
           time: '20 мин',
           ingredients: [
@@ -434,7 +434,7 @@ const RecipesData = (() => {
             { name: 'Масло сливочное', qty: '50 г' },
             { name: 'Укроп', qty: 'по вкусу' },
           ],
-          method: 'Хлеб + масло + малосольная сима + укроп. Икра сверху если есть.',
+          method: 'Хлеб + масло + малосольная рыба + укроп. Икра сверху если есть.',
           serveWith: null
         },
         {
@@ -447,7 +447,7 @@ const RecipesData = (() => {
             { name: 'Каперсы', qty: '1 ст.л.' },
             { name: 'Лимон', qty: 'по вкусу' },
           ],
-          method: 'Хлеб подсушить на сковороде. Риет из симы + каперсы + лимон.',
+          method: 'Хлеб подсушить на сковороде. Риет из рыбы + каперсы + лимон.',
           serveWith: null
         },
       ]

@@ -33,7 +33,7 @@ const MenuData = (() => {
     { id: 'pr_stew_beef',    name: 'Тушёнка говяжья',    hint: 'Классика' },
     { id: 'pr_stew_pork',    name: 'Тушёнка свиная',     hint: null },
     { id: 'pr_eggs',         name: 'Яйца варёные',        hint: null },
-    { id: 'pr_fish_fillet',  name: 'Филе симы',           hint: 'Свежая' },
+    { id: 'pr_fish_fillet',  name: 'Филе рыбы',           hint: 'Свежая' },
     { id: 'pr_sausage',      name: 'Колбаса/сосиски',     hint: null },
     { id: 'pr_cheese',       name: 'Сыр',                 hint: null },
     { id: 'pr_crab',         name: 'Краб',                hint: 'Если повезёт' },
