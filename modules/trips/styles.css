@@ -255,8 +255,11 @@
   display: flex; align-items: center; gap: 5px;
   background: var(--accent-bg); border: .5px solid rgba(10,132,255,.2);
   color: var(--accent); border-radius: 20px; padding: 5px 10px;
-  font-size: 13px; font-weight: 500; cursor: pointer;
+  font-size: 13px; font-weight: 500;
 }
+.part-chip-sel [data-part-rename-idx] { cursor: pointer; }
+.part-chip-x { cursor: pointer; opacity: .6; }
+.part-chip-x:active { opacity: 1; }
 .part-chip-add {
   display: flex; align-items: center; gap: 5px;
   background: var(--bg2); border: .5px solid var(--sep);

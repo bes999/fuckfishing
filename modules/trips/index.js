@@ -460,13 +460,18 @@ const TripsIndex = (() => {
   // Поле "Участники" — чипы уже выбранных + кнопка открыть пикер
   // зарегистрированных участников + текстовое поле для гостей без
   // аккаунта (гости — { name, uid: null }, не попадают в memberIds).
+  // Тап по имени — переименовать (ник на эту поездку, не трогает
+  // displayName аккаунта); тап по × — убрать из участников.
   function _participantsField() {
     return `
       <div class="field-group" style="margin-bottom:8px">
         <div class="field-label">Участники</div>
         <div class="parts-wrap" id="partsList">
           ${(_draft.participants || []).map((p,i) => `
-            <div class="part-chip-sel" data-part-idx="${i}">${_esc(p.name)} ×</div>`).join('')}
+            <div class="part-chip-sel">
+              <span data-part-rename-idx="${i}">${_esc(p.name)}</span>
+              <span data-part-idx="${i}" class="part-chip-x"> ×</span>
+            </div>`).join('')}
           <div class="part-chip-add" id="partPickBtn">+ из списка</div>
           <input class="field-input" id="f-participant" type="text"
                  placeholder="Или впиши имя гостя..." style="width:auto;flex:1;min-width:120px">
@@ -720,6 +725,22 @@ const TripsIndex = (() => {
     overlay.querySelectorAll('[data-part-idx]').forEach(chip => {
       chip.addEventListener('click', () => {
         _draft.participants.splice(parseInt(chip.dataset.partIdx), 1);
+        _refreshCreate();
+      });
+    });
+
+    // Переименовать — ник на эту конкретную поездку, не трогает displayName
+    // аккаунта (если это зарегистрированный участник, а не гость).
+    overlay.querySelectorAll('[data-part-rename-idx]').forEach(nameEl => {
+      nameEl.addEventListener('click', () => {
+        const idx = parseInt(nameEl.dataset.partRenameIdx);
+        const p = _draft.participants[idx];
+        if (!p) return;
+        const next = prompt('Как показывать в этой поездке:', p.name);
+        if (next === null) return;
+        const trimmed = next.trim();
+        if (!trimmed) return;
+        p.name = trimmed;
         _refreshCreate();
       });
     });
