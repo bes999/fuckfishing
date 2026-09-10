@@ -25,7 +25,7 @@ const TripsData = (() => {
           { name: 'р. Лангери', region: 'Сахалинская обл.' },
           { name: 'р. Буюклинка', region: 'Сахалинская обл.' }
         ],
-        participants: ['Дмитрий', 'Андрей', 'Сергей'],
+        participants: [{ name: 'Дмитрий', uid: null }, { name: 'Андрей', uid: null }, { name: 'Сергей', uid: null }],
         status: 'upcoming',
         rating: null,
         fish: [],
@@ -48,7 +48,7 @@ const TripsData = (() => {
         startDate: '2026-03-15',
         endDate: '2026-03-15',
         rivers: [{ name: 'р. Ока', region: 'Московская обл.' }],
-        participants: ['Дмитрий', 'Андрей'],
+        participants: [{ name: 'Дмитрий', uid: null }, { name: 'Андрей', uid: null }],
         status: 'done',
         rating: 7,
         fish: [
@@ -67,7 +67,7 @@ const TripsData = (() => {
         startDate: '2026-02-08',
         endDate: '2026-02-08',
         rivers: [{ name: 'Оз. Сенеж', region: 'Московская обл.' }],
-        participants: ['Дмитрий'],
+        participants: [{ name: 'Дмитрий', uid: null }],
         status: 'done',
         rating: 6,
         fish: [{ species: 'Окунь', count: 12 }],
@@ -83,7 +83,7 @@ const TripsData = (() => {
         startDate: '2025-11-01',
         endDate: '2025-11-14',
         rivers: [{ name: 'р. Кемь', region: 'Карелия' }],
-        participants: ['Дмитрий', 'Андрей'],
+        participants: [{ name: 'Дмитрий', uid: null }, { name: 'Андрей', uid: null }],
         status: 'done',
         rating: 8,
         fish: [
@@ -102,7 +102,7 @@ const TripsData = (() => {
         startDate: '2025-08-18',
         endDate: '2025-08-19',
         rivers: [{ name: 'р. Угра', region: 'Калужская обл.' }],
-        participants: ['Дмитрий'],
+        participants: [{ name: 'Дмитрий', uid: null }],
         status: 'done',
         rating: 9,
         fish: [
@@ -197,8 +197,8 @@ const TripsData = (() => {
     const memberIds = trip.memberIds || [];
     if (uid && memberIds.includes(uid)) return Promise.resolve(trip);
 
-    const nameAlreadyListed = name && participants.some(p => p.toLowerCase() === name.toLowerCase());
-    const newParticipants = (nameAlreadyListed || !name) ? participants : [...participants, name];
+    const nameAlreadyListed = name && participants.some(p => p.name.toLowerCase() === name.toLowerCase());
+    const newParticipants = (nameAlreadyListed || !name) ? participants : [...participants, { name, uid: uid || null }];
     const newMemberIds = uid ? [...new Set([...memberIds, uid])] : memberIds;
 
     return TripsFirebase.updateTrip(tripId, { participants: newParticipants, memberIds: newMemberIds });

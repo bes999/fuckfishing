@@ -121,7 +121,7 @@ const TripsRender = (() => {
     const icon  = t.type === 'expedition' ? (t.status === 'done' ? '🌲' : '🏔') : _seasonIcon(t.startDate);
     const iconCls = t.type === 'expedition' ? 'exp' : 'fish';
     const dates = _dateRange(t.startDate, t.endDate);
-    const parts = t.participants ? t.participants.join(' · ') : '';
+    const parts = t.participants ? t.participants.map(p => p.name).join(' · ') : '';
     // trip.fish не пишется с переезда уловов в Firestore-подколлекцию —
     // реальная разбивка по видам берётся из глобального кэша уловов.
     const fishList = typeof CatchesState !== 'undefined' ? CatchesState.speciesForTrip(t.id).list : [];

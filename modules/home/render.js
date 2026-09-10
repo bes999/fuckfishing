@@ -132,7 +132,7 @@ const HomeRender = (() => {
     const days = Math.ceil((new Date(trip.startDate) - new Date()) / 86400000);
     const daysStr = days > 0 ? days : '🎣';
     const dates = _formatDateRange(trip.startDate, trip.endDate);
-    const parts = (trip.participants || []).join(' · ');
+    const parts = (trip.participants || []).map(p => p.name).join(' · ');
 
     let readinessHtml = '';
     if (trip.readiness) {
@@ -319,7 +319,7 @@ const HomeRender = (() => {
           </div>
           ${t.participants && t.participants.length ? `
           <div class="exp-parts">
-            ${t.participants.map(p => `<div class="part-tag">${_esc(p)}</div>`).join('')}
+            ${t.participants.map(p => `<div class="part-tag">${_esc(p.name)}</div>`).join('')}
           </div>` : ''}
         </div>
         ${bottom}

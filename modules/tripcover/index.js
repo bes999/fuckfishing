@@ -17,30 +17,7 @@ const TripCoverIndex = (() => {
   let _tripId = null;
   let _guideHandler = null;
 
-  // ── Кэш имён реальных участников (для отметки "гость" на чипах) ──
-  // trip.participants — просто строки-имена, без пометки, кто из них
-  // реальный зарегистрированный аккаунт, а кто вписан вручную (гость,
-  // см. TripsData.addParticipant без uid). Единственный способ отличить —
-  // сверить со списком реальных профилей по displayName; тянем его один
-  // раз и кэшируем, а обложка дорисовывается, когда список придёт (чтобы
-  // не блокировать первый рендер сетевым запросом).
-  let _memberNameSet = null;
-  let _memberNamePromise = null;
-  function _ensureMemberNames() {
-    if (_memberNamePromise) return _memberNamePromise;
-    _memberNamePromise = (typeof MembersFirebase !== 'undefined' ? MembersFirebase.getAllMembers() : Promise.resolve([]))
-      .then(members => {
-        _memberNameSet = new Set(members.map(m => String(m.displayName || '').trim().toLowerCase()).filter(Boolean));
-      })
-      .catch(() => { _memberNameSet = new Set(); });
-    return _memberNamePromise;
-  }
-  function _isGuestName(name) {
-    if (!_memberNameSet) return false; // ещё не загрузили — пока не помечаем никого
-    return !_memberNameSet.has(String(name || '').trim().toLowerCase());
-  }
-
-  // Добавить гостя без аккаунта — просто имя, попадает в participants
+  // Добавить гостя без аккаунта — { name, uid: null } в participants
   // (см. TripsData.addParticipant), в хэдкаунт и списки участников, но
   // не в memberIds и не может залогиниться.
   function _showAddGuestSheet() {
@@ -150,22 +127,6 @@ const TripCoverIndex = (() => {
     prefetchDone.then(() => {
       _renderCover(trip);
       _maybeRefreshWeather(trip);
-    });
-
-    // Догружаем список реальных участников (для метки "гость" на чипах) —
-    // не блокируя первый рендер; когда придёт, перерисовываем обложку
-    // ещё раз, если пользователь всё ещё на этой же поездке.
-    _ensureMemberNames().then(() => {
-      // _renderCover пересоздаёt #trip-cover с нуля (remove + новый
-      // appendChild) — если в этот момент открыт любой шит (пригласить,
-      // добавить гостя, редактирование), он окажется в DOM раньше свежего
-      // #trip-cover и с тем же z-index молча уедет под него. Поэтому не
-      // перерисовываем, пока открыт .profile-overlay — бейдж "гость"
-      // просто дорисуется при следующем обычном рендере.
-      if (_tripId === tripId && !document.querySelector('.profile-overlay')) {
-        const fresh = TripsData.getById(tripId);
-        if (fresh) _renderCover(fresh);
-      }
     });
   }
 
@@ -479,9 +440,9 @@ const TripCoverIndex = (() => {
   }
 
   function _hero(t, emoji, dates, location) {
-    const parts = (t.participants || []).map(p => _isGuestName(p)
-      ? `<div class="cover-part-chip cover-part-chip--guest">${_esc(p)} <span class="cover-part-guest-tag">гость</span></div>`
-      : `<div class="cover-part-chip">${_esc(p)}</div>`).join('');
+    const parts = (t.participants || []).map(p => !p.uid
+      ? `<div class="cover-part-chip cover-part-chip--guest">${_esc(p.name)} <span class="cover-part-guest-tag">гость</span></div>`
+      : `<div class="cover-part-chip">${_esc(p.name)}</div>`).join('');
 
     return `
       <div class="cover-hero">

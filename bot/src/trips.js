@@ -48,7 +48,7 @@ export async function createTrip({ type, name, startDate, endDate, uid, displayN
     startDate,
     endDate,
     rivers: [],
-    participants: [displayName],
+    participants: [{ name: displayName, uid }],
     memberIds: [uid],
     comment: '',
     status,
