@@ -712,10 +712,17 @@ const TripsIndex = (() => {
     partInput?.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ',') {
         e.preventDefault();
-        const val = partInput.value.trim();
-        if (val) {
+        // Разбиваем по запятым/переносам строк — так и вставка нескольких
+        // имён скопом (из чата, списка), и обычный посимвольный ввод с
+        // запятой между именами работают одним и тем же путём.
+        const names = partInput.value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+        if (names.length) {
           if (!_draft.participants) _draft.participants = [];
-          _draft.participants.push({ name: val, uid: null });
+          names.forEach(name => {
+            if (!_draft.participants.some(p => p.name === name)) {
+              _draft.participants.push({ name, uid: null });
+            }
+          });
           partInput.value = '';
           _refreshCreate();
         }
@@ -957,12 +964,15 @@ const TripsIndex = (() => {
         const built = _buildQuizImportData();
         if (built) _importedData = built;
       }
-      // Участники — общие для обоих типов
-      const partVal = document.getElementById('f-participant')?.value.trim();
+      // Участники — общие для обоих типов (что успели вписать/вставить,
+      // не подтвердив явно Enter/запятой — тот же разбор на несколько имён)
+      const partRaw = document.getElementById('f-participant')?.value || '';
       if (!_draft.participants) _draft.participants = [];
-      if (partVal && !_draft.participants.some(p => p.name === partVal)) {
-        _draft.participants.push({ name: partVal, uid: null });
-      }
+      partRaw.split(/[,\n]/).map(s => s.trim()).filter(Boolean).forEach(name => {
+        if (!_draft.participants.some(p => p.name === name)) {
+          _draft.participants.push({ name, uid: null });
+        }
+      });
     }
   }
 

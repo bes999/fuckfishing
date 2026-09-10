@@ -31,9 +31,9 @@ const TripCoverIndex = (() => {
         <div class="profile-scroll">
           <div class="modal-title" style="margin-bottom:8px">Добавить гостя</div>
           <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
-            Для тех, кто не будет пользоваться приложением — просто имя, без регистрации. Попадёт в участников и счётчики.
+            Для тех, кто не будет пользоваться приложением — просто имя, без регистрации. Попадёт в участников и счётчики. Можно сразу несколько через запятую.
           </p>
-          <input type="text" class="invite-email-input" id="guest-name-input" placeholder="Имя гостя" autocomplete="off">
+          <input type="text" class="invite-email-input" id="guest-name-input" placeholder="Имя гостя или несколько через запятую" autocomplete="off">
           <div class="sheet-actions-row">
             <button class="picker-cancel" data-action="guest-add-close">Отмена</button>
             <button class="action-btn" data-action="guest-add-save">Добавить</button>
@@ -48,10 +48,15 @@ const TripCoverIndex = (() => {
       if (a === 'guest-add-close') { overlay.remove(); return; }
       if (a === 'guest-add-save') {
         const input = overlay.querySelector('#guest-name-input');
-        const name = input?.value.trim();
-        if (!name) { input?.focus(); return; }
+        const names = (input?.value || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+        if (!names.length) { input?.focus(); return; }
         try {
-          await TripsData.addParticipant(_tripId, { name });
+          // Последовательно — addParticipant сам читает-и-пишет весь trip
+          // за раз, параллельно запущенные вызовы могли бы затереть друг
+          // друга (каждый берёт снимок participants ДО чужой записи).
+          for (const name of names) {
+            await TripsData.addParticipant(_tripId, { name });
+          }
         } catch (err) {
           console.error('addParticipant:', err);
           alert('Не удалось добавить гостя. Проверь соединение и попробуй ещё раз.');
