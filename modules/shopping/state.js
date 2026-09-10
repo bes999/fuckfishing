@@ -16,9 +16,13 @@ const ShoppingState = (() => {
     try { localStorage.setItem(KEY, JSON.stringify(_data)); } catch (_) {}
   }
 
+  // Новая поездка — пустой список, без автоподставленного шаблона
+  // (раньше сюда садился большой дефолтный чек-лист на ~60 позиций —
+  // запутывало: незнакомые вещи в чужом списке, "уже есть" на то, что
+  // никто не добавлял).
   function getCategories(tripId) {
     if (!_data[tripId]) {
-      _data[tripId] = { categories: ShoppingData.getDefaults() };
+      _data[tripId] = { categories: [] };
       _save();
     }
     return _data[tripId].categories;
