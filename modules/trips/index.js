@@ -73,6 +73,7 @@ const TripsIndex = (() => {
       participants: myName ? [{ name: myName, uid: myUid }] : [],
       comment: '',
       private: false,
+      inviteRestricted: false,
     };
     _rivers = [];
     _renderCreate();
@@ -104,6 +105,7 @@ const TripsIndex = (() => {
       participants: trip.participants ? trip.participants.map(p => ({ ...p })) : [],
       comment:      trip.comment || '',
       private:      !!trip.private,
+      inviteRestricted: !!trip.inviteRestricted,
     };
     _rivers = trip.type === 'fishing' ? [...(trip.rivers || [])] : [];
 
@@ -486,6 +488,10 @@ const TripsIndex = (() => {
           <input type="checkbox" id="f-private" ${_draft.private ? 'checked' : ''}>
           <span>🔒 Приватная поездка — не показывать в профиле другим участникам</span>
         </label>
+        <label class="priv-toggle-row">
+          <input type="checkbox" id="f-invite-restricted" ${_draft.inviteRestricted ? 'checked' : ''}>
+          <span>👤 Только я могу добавлять участников и гостей</span>
+        </label>
       </div>`;
   }
 
@@ -757,6 +763,10 @@ const TripsIndex = (() => {
     document.getElementById('f-private')?.addEventListener('change', e => {
       _draft.private = e.target.checked;
     });
+
+    document.getElementById('f-invite-restricted')?.addEventListener('change', e => {
+      _draft.inviteRestricted = e.target.checked;
+    });
   }
 
   // ─── Чтение JSON-файла ───────────────────────────────────────────────────
@@ -1024,6 +1034,7 @@ const TripsIndex = (() => {
       participants,
       comment:   _draft.comment || '',
       private:   !!_draft.private,
+      inviteRestricted: !!_draft.inviteRestricted,
       status:    _tripStatus(_draft.startDate, _draft.endDate || _draft.startDate),
       rating:    null,
       fish:      [],
@@ -1047,6 +1058,7 @@ const TripsIndex = (() => {
         participants: trip.participants,
         comment:     trip.comment,
         private:     trip.private,
+        inviteRestricted: trip.inviteRestricted,
         status:      trip.status,
         importData:  trip.importData !== undefined ? trip.importData : (existing?.importData || null),
         guideTabs:   trip.guideTabs,

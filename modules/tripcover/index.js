@@ -414,9 +414,10 @@ const TripCoverIndex = (() => {
         </div>
         <div style="display:flex;align-items:center;gap:8px">
           <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
+          ${(!t.inviteRestricted || window.APP?.user?.uid === t.ownerId) ? `
           <button class="cover-icon-btn" id="coverAddPeople" title="Добавить участника">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
-          </button>
+          </button>` : ''}
           <button class="cover-icon-btn" id="coverGear" title="Снаряга">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/><rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 11h16"/><path d="M9 16h.01M15 16h.01"/></svg>
           </button>
@@ -1224,7 +1225,7 @@ const TripCoverIndex = (() => {
       const isOwner = window.APP?.user?.uid === trip.ownerId;
       icons = `<button class="g-tab-settings g-tab-word" data-action="info-gear" title="Снаряга">Снаряга</button>`
             + icons
-            + `<button class="g-tab-settings" data-action="info-invite" title="Пригласить"><i class="ti ti-plus"></i></button>`
+            + ((!trip.inviteRestricted || isOwner) ? `<button class="g-tab-settings" data-action="info-invite" title="Пригласить"><i class="ti ti-plus"></i></button>` : '')
             + (isOwner ? `<button class="g-tab-settings" data-action="info-edit" title="Редактировать"><i class="ti ti-pencil"></i></button>` : '');
     }
     return `<div class="g-tabstrip" id="g-tabstrip">${pills}${icons}</div>`;
