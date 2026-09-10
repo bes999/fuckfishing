@@ -437,11 +437,35 @@ const MenuRender = (() => {
     return (recipe && recipe.ingredients && recipe.ingredients.length) ? recipe.ingredients : [];
   }
 
-  // Закидывает ингредиенты блюда в Закупку этой же поездки — своя
-  // категория "Из меню", дедуп по имени (без учёта регистра) против ВСЕХ
-  // категорий, не только этой, чтобы не плодить то, что уже кто-то вписал
-  // руками. Полный overwrite categories — тот же паттерн, что и у
-  // остальных мутаций в самом модуле Закупки (см. shopping/render.js:_sync).
+  // Грубое сопоставление ингредиента с дефолтной категорией Закупки по
+  // ключевым словам в названии — id категорий фиксированные, см.
+  // ShoppingData._defaults. Не наука, а бытовая эвристика: то, что не
+  // угадали — падает в "Из меню" как запасной карман, а не теряется.
+  const _CATEGORY_KEYWORDS = [
+    ['vegetables', ['банан', 'лимон', 'лайм', 'апельсин', 'яблок', 'картоф', 'лук', 'чеснок', 'огурц', 'помидор', 'капуст', 'свёкл', 'свекл', 'зелен', 'укроп', 'мят', 'имбир']],
+    ['meat',       ['тушёнк', 'тушенк', 'буженин', 'колбас', 'сосиск', 'сало', 'краб', 'гребеш', 'мидии', 'морской еж', 'морской ёж', 'устриц', 'филе', 'рыба', 'стейк']],
+    ['dairy',      ['яйца', 'яйцо', 'желтк', 'сыр', 'масло сливочн', 'сливки', 'сгущ']],
+    ['grains',     ['гречк', 'рис', 'овсянк', 'спагетти', 'феттучини', 'паста', 'лапш', 'хлеб', 'сухари', 'сочн', 'тесто']],
+    ['sauces',     ['соль', 'перец', 'масло раст', 'соевый соус', 'уксус', 'лавров', 'мёд', 'мед', 'сахар', 'паприка', 'тмин', 'каперс', 'васаби', 'томатная паста']],
+    ['snacks',     ['орех', 'сухофрукт', 'шоколад', 'печенье', 'зефир', 'халв']],
+    ['drinks',     ['кофе', 'чай', 'сок', 'вода', 'тоник', 'содов']],
+    ['bar',        ['джин', 'виски', 'бурбон', 'ром', 'водка', 'вермут', 'кампари', 'просекко', 'ликёр', 'ликер', 'апероль', 'биттер']],
+  ];
+  function _categoryIdFor(ingredientName) {
+    const key = String(ingredientName || '').trim().toLowerCase();
+    for (const [catId, words] of _CATEGORY_KEYWORDS) {
+      if (words.some(w => key.includes(w))) return catId;
+    }
+    return null;
+  }
+
+  // Закидывает ингредиенты блюда в Закупку этой же поездки — каждый
+  // пытаемся определить в существующую категорию по ключевым словам
+  // (банан → "Овощи и фрукты" и т.д.), что не опознали — в отдельную
+  // "Из меню". Дедуп по имени (без учёта регистра) против ВСЕХ категорий,
+  // не только целевой, чтобы не плодить то, что уже кто-то вписал руками.
+  // Полный overwrite categories — тот же паттерн, что и у остальных
+  // мутаций в самом модуле Закупки (см. shopping/render.js:_sync).
   async function _pushIngredientsToShopping(btn, itemId, source, name) {
     if (typeof ShoppingState === 'undefined' || typeof ShoppingFirebase === 'undefined') return;
     const ingredients = _ingredientsForItem(itemId, source, name);
@@ -452,8 +476,7 @@ const MenuRender = (() => {
 
     ShoppingState.load();
     const cats = ShoppingState.getCategories(_tripId);
-    let cat = cats.find(c => c.title === 'Из меню');
-    if (!cat) cat = ShoppingState.addCategory(_tripId, 'Из меню');
+    let fallbackCat = null; // "Из меню" — создаём лениво, только если реально понадобится
 
     const existingNames = new Set();
     cats.forEach(c => c.items.forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
@@ -462,6 +485,14 @@ const MenuRender = (() => {
     ingredients.forEach(ing => {
       const key = String(ing.name || '').trim().toLowerCase();
       if (!key || existingNames.has(key)) return;
+
+      const targetId = _categoryIdFor(ing.name);
+      let cat = targetId ? cats.find(c => c.id === targetId) : null;
+      if (!cat) {
+        if (!fallbackCat) fallbackCat = cats.find(c => c.title === 'Из меню') || ShoppingState.addCategory(_tripId, 'Из меню');
+        cat = fallbackCat;
+      }
+
       ShoppingState.addItem(_tripId, cat.id, ing.name, ing.qty || '');
       existingNames.add(key);
       added++;
