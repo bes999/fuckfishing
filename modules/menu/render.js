@@ -185,6 +185,18 @@ const MenuRender = (() => {
       </div>`;
   }
 
+  // Наборы рецептов — не наука, а способ не смешивать в одной куче
+  // универсальные техники, то, что имеет смысл только на морском
+  // побережье (устрицы/краб/мидии — не поймать на Оби), и личные
+  // привычки конкретного человека (см. RecipesData — поле pack у
+  // рецепта, дефолт 'base' у всего, что его не проставляет явно).
+  const _PACKS = [
+    ['all',      'Всё'],
+    ['base',     'База'],
+    ['coastal',  'Побережье'],
+    ['personal', 'Моё'],
+  ];
+
   // ── Picker overlay (с табами по категориям) ────────────────────────────
   function _showPicker(dayId, mealId, slotId, slotType) {
     document.getElementById('mn-picker')?.remove();
@@ -192,17 +204,29 @@ const MenuRender = (() => {
     const sections     = MenuData.getItemsForSlot(slotType);
     const slotTypeMeta = MenuData.getSlotType(slotType);
     let activeSec      = 0;
+    let activePack      = 'all';
+
+    function _itemsOf(secIdx) {
+      const sec = sections[secIdx];
+      if (!sec) return [];
+      return activePack === 'all' ? sec.items : sec.items.filter(i => (i.pack || 'base') === activePack);
+    }
 
     function _buildList(secIdx) {
-      const sec = sections[secIdx];
-      if (!sec) return '';
-      return sec.items.map(item => `
+      const items = _itemsOf(secIdx);
+      if (!items.length) return '<div style="padding:16px;text-align:center;color:var(--label3);font-size:13px">Ничего в этом наборе</div>';
+      return items.map(item => `
         <div class="mn-picker-item" data-action="pick-item"
           data-day="${dayId}" data-meal="${mealId}" data-slot="${slotId}"
           data-item-id="${item.id}" data-item-name="${item.name}" data-item-source="${item.source}">
           <div class="mn-picker-name">${item.name}</div>
           ${item.hint ? `<div class="mn-picker-hint">${item.hint}</div>` : ''}
         </div>`).join('');
+    }
+
+    function _buildPackFilter() {
+      return _PACKS.map(([id, label]) => `
+        <button class="mn-picker-pack ${id === activePack ? 'active' : ''}" data-pack="${id}">${label}</button>`).join('');
     }
 
     function _buildTabs() {
@@ -223,6 +247,7 @@ const MenuRender = (() => {
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>
         </div>
+        <div class="mn-picker-packs" id="mn-picker-packs">${_buildPackFilter()}</div>
         ${sections.length > 1 ? `<div class="mn-picker-tabs" id="mn-picker-tabs">${_buildTabs()}</div>` : ''}
         <input class="mn-picker-search" id="mn-picker-search" type="text" placeholder="Поиск...">
         <div class="mn-picker-list" id="mn-picker-list">${_buildList(activeSec)}</div>
@@ -245,7 +270,18 @@ const MenuRender = (() => {
       _bindPickItems();
     });
 
-    // Поиск — ищет по всем секциям
+    // Набор (Всё/База/Побережье/Моё)
+    overlay.querySelector('#mn-picker-packs')?.addEventListener('click', e => {
+      const btn = e.target.closest('.mn-picker-pack');
+      if (!btn) return;
+      activePack = btn.dataset.pack;
+      overlay.querySelectorAll('.mn-picker-pack').forEach(b => b.classList.toggle('active', b.dataset.pack === activePack));
+      overlay.querySelector('#mn-picker-search').value = '';
+      overlay.querySelector('#mn-picker-list').innerHTML = _buildList(activeSec);
+      _bindPickItems();
+    });
+
+    // Поиск — ищет по всем секциям (в пределах текущего набора)
     overlay.querySelector('#mn-picker-search')?.addEventListener('input', e => {
       const q = e.target.value.toLowerCase().trim();
       if (!q) {
@@ -254,7 +290,7 @@ const MenuRender = (() => {
         return;
       }
       // Поиск по всем секциям
-      const allItems = sections.flatMap(s => s.items);
+      const allItems = sections.flatMap(s => s.items).filter(i => activePack === 'all' || (i.pack || 'base') === activePack);
       const filtered = allItems.filter(item => item.name.toLowerCase().includes(q));
       overlay.querySelector('#mn-picker-list').innerHTML = filtered.map(item => `
         <div class="mn-picker-item" data-action="pick-item"

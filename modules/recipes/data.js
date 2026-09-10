@@ -9,6 +9,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'fish_salted',
+          pack: 'base',
           name: 'Малосольная рыба',
           sub: '8-12 ч без огня',
           time: '15 мин актив.',
@@ -22,6 +23,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_caviar',
+          pack: 'base',
           name: 'Икра пятиминутка',
           sub: '5 мин',
           time: '5 мин',
@@ -35,6 +37,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_riet',
+          pack: 'base',
           name: 'Риет из рыбы',
           sub: 'Лучший завтрак',
           time: '20 мин',
@@ -48,6 +51,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_butterfly',
+          pack: 'base',
           name: 'Рыба бабочкой на костре',
           sub: null,
           time: '35 мин',
@@ -60,6 +64,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_he',
+          pack: 'base',
           name: 'Хе из рыбы',
           sub: 'Корейское, острое',
           time: '40 мин',
@@ -73,6 +78,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_sugudai',
+          pack: 'base',
           name: 'Сугудай',
           sub: 'Мягче хе',
           time: '20 мин',
@@ -87,6 +93,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_sashimi',
+          pack: 'base',
           name: 'Сашими',
           sub: 'Только свежепойманная',
           time: '10 мин',
@@ -100,6 +107,7 @@ const RecipesData = (() => {
         },
         {
           id: 'fish_pelmeni',
+          pack: 'base',
           name: 'Пельмени из рыбы на сочнях',
           sub: null,
           time: '45 мин',
@@ -111,6 +119,21 @@ const RecipesData = (() => {
           method: 'Свежее филе порубить кусочками 3-5 мм (не фарш!). Лук, соль, перец. На сочень — начинку, залепить. Варить 7-8 мин после всплытия.',
           serveWith: null
         },
+        {
+          id: 'fish_fried_pan',
+          pack: 'base',
+          name: 'Рыба жареная на сковороде',
+          sub: 'Простой ужин',
+          time: '15 мин',
+          ingredients: [
+            { name: 'Мука', qty: '2 ст.л.' },
+            { name: 'Масло растительное', qty: '3 ст.л.' },
+            { name: 'Соль, перец', qty: 'по вкусу' },
+            { name: 'Лимон', qty: 'по вкусу' },
+          ],
+          method: 'Филе посолить, поперчить, обвалять в муке. На раскалённой сковороде в масле 3-4 мин с каждой стороны до корочки. Лимон при подаче.',
+          serveWith: null
+        },
       ]
     },
     {
@@ -119,6 +142,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'del_oysters',
+          pack: 'coastal',
           name: 'Устрицы на костре с сыром',
           sub: null,
           time: '10 мин',
@@ -132,6 +156,7 @@ const RecipesData = (() => {
         },
         {
           id: 'del_scallop',
+          pack: 'coastal',
           name: 'Гребешок на сковороде',
           sub: '2 минуты',
           time: '5 мин',
@@ -145,6 +170,7 @@ const RecipesData = (() => {
         },
         {
           id: 'del_crab',
+          pack: 'coastal',
           name: 'Краб варёный',
           sub: null,
           time: '25 мин',
@@ -157,6 +183,7 @@ const RecipesData = (() => {
         },
         {
           id: 'del_urchin',
+          pack: 'coastal',
           name: 'Морской ёж',
           sub: 'Деликатес прямо из воды',
           time: '5 мин',
@@ -168,6 +195,7 @@ const RecipesData = (() => {
         },
         {
           id: 'del_mussels',
+          pack: 'coastal',
           name: 'Мидии на костре',
           sub: 'Открываются сами',
           time: '10 мин',
@@ -186,6 +214,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'br_eggs_poached',
+          pack: 'base',
           name: 'Яйца пашот',
           sub: 'Основа главного блюда',
           time: '10 мин',
@@ -198,6 +227,7 @@ const RecipesData = (() => {
         },
         {
           id: 'br_hollandaise',
+          pack: 'base',
           name: 'Голландский соус',
           sub: 'Слабый огонь!',
           time: '15 мин',
@@ -211,6 +241,7 @@ const RecipesData = (() => {
         },
         {
           id: 'br_shakshuka',
+          pack: 'base',
           name: 'Шакшука',
           sub: null,
           time: '20 мин',
@@ -226,6 +257,7 @@ const RecipesData = (() => {
         },
         {
           id: 'br_omelette',
+          pack: 'base',
           name: 'Омлет с бужениной',
           sub: null,
           time: '15 мин',
@@ -240,6 +272,7 @@ const RecipesData = (() => {
         },
         {
           id: 'br_porridge',
+          pack: 'base',
           name: 'Каша быстрая',
           sub: 'Стартовый завтрак',
           time: '5 мин',
@@ -252,6 +285,33 @@ const RecipesData = (() => {
           method: 'Овсянка + кипяток + соль + масло + мёд. Накрыть на 3 мин. Орехи + сухофрукты.',
           serveWith: null
         },
+        {
+          id: 'br_tvorog_banana',
+          pack: 'personal',
+          name: 'Творог с бананом и протеином',
+          sub: 'Классика без готовки',
+          time: '3 мин',
+          ingredients: [
+            { name: 'Творог', qty: '200 г' },
+            { name: 'Банан', qty: '1 шт' },
+            { name: 'Протеин порошок', qty: '1 мерная ложка' },
+          ],
+          method: 'Смешать творог с протеином. Банан порезать или размять сверху.',
+          serveWith: null
+        },
+        {
+          id: 'br_granola',
+          pack: 'base',
+          name: 'Гранола',
+          sub: 'Быстрый завтрак',
+          time: '2 мин',
+          ingredients: [
+            { name: 'Гранола', qty: '80 г' },
+            { name: 'Молоко / йогурт', qty: '150 мл' },
+          ],
+          method: 'Залить гранолу молоком или йогуртом. Дать постоять пару минут по вкусу.',
+          serveWith: null
+        },
       ]
     },
     {
@@ -260,6 +320,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'soup_ukha',
+          pack: 'base',
           name: 'Уха рыбацкая',
           sub: 'С традицией',
           time: '40 мин',
@@ -273,6 +334,7 @@ const RecipesData = (() => {
         },
         {
           id: 'soup_ramen',
+          pack: 'base',
           name: 'Походный рамен',
           sub: 'Из того что есть',
           time: '20 мин',
@@ -287,6 +349,7 @@ const RecipesData = (() => {
         },
         {
           id: 'soup_borsch',
+          pack: 'base',
           name: 'Борщ полевой',
           sub: 'Если есть свёкла',
           time: '50 мин',
@@ -299,6 +362,18 @@ const RecipesData = (() => {
           method: 'Свёклу натереть, обжарить с маслом. Картошка + капуста в кипяток 15 мин. Тушёнка + свёкла. Ещё 5 мин. Уксус.',
           serveWith: null
         },
+        {
+          id: 'soup_collagen',
+          pack: 'personal',
+          name: 'Бульон коллагеновый',
+          sub: 'На перекус/обед в лодке',
+          time: '3 мин',
+          ingredients: [
+            { name: 'Бульон коллагеновый (готовый)', qty: '1 пакет' },
+          ],
+          method: 'Залить кипятком по инструкции на упаковке. Дать раствориться, размешать.',
+          serveWith: null
+        },
       ]
     },
     {
@@ -307,6 +382,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'main_carbonara',
+          pack: 'base',
           name: 'Карбонара с бужениной',
           sub: 'Вместо гуанчиале — буженина',
           time: '25 мин',
@@ -322,6 +398,7 @@ const RecipesData = (() => {
         },
         {
           id: 'main_fettuccine',
+          pack: 'base',
           name: 'Феттучини с рыбой',
           sub: null,
           time: '25 мин',
@@ -335,6 +412,7 @@ const RecipesData = (() => {
         },
         {
           id: 'main_grill',
+          pack: 'base',
           name: 'Рыбные стейки на решётке',
           sub: 'Классика костра',
           time: '20 мин',
@@ -346,6 +424,22 @@ const RecipesData = (() => {
           method: 'Стейки посолить, дать 10 мин. Решётку раскалить над углями. 4-5 мин с каждой стороны. Масло + лимон при подаче.',
           serveWith: 'Белое сухое'
         },
+        {
+          id: 'main_stew',
+          pack: 'base',
+          name: 'Мясное рагу',
+          sub: 'Сытный ужин в одном котелке',
+          time: '40 мин',
+          ingredients: [
+            { name: 'Мясо (тушёнка или свежее)', qty: '400 г' },
+            { name: 'Картофель', qty: '3 шт' },
+            { name: 'Морковь', qty: '1 шт' },
+            { name: 'Лук', qty: '1 шт' },
+            { name: 'Томатная паста', qty: '2 ст.л.' },
+          ],
+          method: 'Лук с морковью обжарить. Картофель кубиками, залить водой почти вровень. Томатная паста, мясо. Тушить 25-30 мин до готовности картофеля.',
+          serveWith: null
+        },
       ]
     },
     {
@@ -354,6 +448,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'side_buckwheat',
+          pack: 'base',
           name: 'Гречка с луком',
           sub: 'Базовый гарнир',
           time: '20 мин',
@@ -367,6 +462,7 @@ const RecipesData = (() => {
         },
         {
           id: 'side_pasta',
+          pack: 'base',
           name: 'Паста простая',
           sub: 'Масло + сыр + перец',
           time: '15 мин',
@@ -381,6 +477,7 @@ const RecipesData = (() => {
         },
         {
           id: 'side_potato',
+          pack: 'base',
           name: 'Картошка в углях',
           sub: 'Лучший гарнир у костра',
           time: '45 мин',
@@ -395,6 +492,7 @@ const RecipesData = (() => {
         },
         {
           id: 'side_rice',
+          pack: 'base',
           name: 'Рис быстрый',
           sub: null,
           time: '15 мин',
@@ -406,6 +504,20 @@ const RecipesData = (() => {
           method: 'Пакетик в кипяток 12-15 мин. Масло, соль.',
           serveWith: null
         },
+        {
+          id: 'side_mash',
+          pack: 'base',
+          name: 'Картофельное пюре',
+          sub: null,
+          time: '25 мин',
+          ingredients: [
+            { name: 'Картофель', qty: '4 шт' },
+            { name: 'Молоко', qty: '100 мл' },
+            { name: 'Масло сливочное', qty: '30 г' },
+          ],
+          method: 'Картофель отварить до мягкости, слить воду. Размять с тёплым молоком и маслом.',
+          serveWith: null
+        },
       ]
     },
     {
@@ -414,6 +526,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'snack_rich_syrup',
+          pack: 'base',
           name: 'Рич сироп (2:1)',
           sub: 'Основа коктейлей',
           time: '5 мин',
@@ -426,6 +539,7 @@ const RecipesData = (() => {
         },
         {
           id: 'snack_bread',
+          pack: 'base',
           name: 'Бутерброды с малосольной',
           sub: 'Быстрый перекус',
           time: '5 мин',
@@ -439,6 +553,7 @@ const RecipesData = (() => {
         },
         {
           id: 'snack_gravlax_toast',
+          pack: 'base',
           name: 'Тост с риетом',
           sub: null,
           time: '5 мин',
@@ -458,6 +573,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'des_smores',
+          pack: 'base',
           name: 'Зефир на костре',
           sub: 'S\'mores по-русски',
           time: '5 мин',
@@ -471,6 +587,7 @@ const RecipesData = (() => {
         },
         {
           id: 'des_banana',
+          pack: 'base',
           name: 'Банан в фольге',
           sub: 'С шоколадом',
           time: '15 мин',
@@ -483,6 +600,7 @@ const RecipesData = (() => {
         },
         {
           id: 'des_condensed',
+          pack: 'base',
           name: 'Сгущёнка с хлебом',
           sub: 'Классика',
           time: '1 мин',
@@ -501,6 +619,7 @@ const RecipesData = (() => {
       cocktails: [
         {
           id: 'dr_drip',
+          pack: 'base',
           name: 'Дрип кофе',
           sub: 'Утренний ритуал',
           time: '10 мин',
@@ -512,6 +631,7 @@ const RecipesData = (() => {
         },
         {
           id: 'dr_bumble',
+          pack: 'base',
           name: 'Бамбл би',
           sub: 'Если есть лёд',
           time: '5 мин',
@@ -526,6 +646,7 @@ const RecipesData = (() => {
         },
         {
           id: 'dr_raf',
+          pack: 'base',
           name: 'Раф с халвой',
           sub: 'Если холодно',
           time: '5 мин',
@@ -539,6 +660,7 @@ const RecipesData = (() => {
         },
         {
           id: 'dr_tea',
+          pack: 'base',
           name: 'Чай из трав',
           sub: 'С берега реки',
           time: '5 мин',
@@ -550,6 +672,7 @@ const RecipesData = (() => {
         },
         {
           id: 'dr_lemonade',
+          pack: 'base',
           name: 'Лимонад походный',
           sub: null,
           time: '5 мин',
@@ -564,6 +687,7 @@ const RecipesData = (() => {
         },
         {
           id: 'dr_negroni_coffee',
+          pack: 'base',
           name: 'Кофейный негрони',
           sub: 'Кампари через дрип',
           time: '15 мин',

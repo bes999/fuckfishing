@@ -185,11 +185,23 @@ const RecipesRender = (() => {
         <div class="rec-add-scroll">
           <div class="rec-add-title">Новый рецепт</div>
 
-          <div class="rec-add-label">Категория</div>
-          <select class="rec-add-input" id="rec-add-cat">${catOptions}</select>
+          <div class="rec-add-row-2">
+            <div>
+              <div class="rec-add-label">Категория</div>
+              <select class="rec-add-input" id="rec-add-cat">${catOptions}</select>
+            </div>
+            <div>
+              <div class="rec-add-label">Набор</div>
+              <select class="rec-add-input" id="rec-add-pack">
+                <option value="base" selected>База</option>
+                <option value="coastal">Побережье</option>
+                <option value="personal">Моё</option>
+              </select>
+            </div>
+          </div>
 
           <div class="rec-add-label">Название</div>
-          <input class="rec-add-input" id="rec-add-name" type="text" placeholder="Малосольная сима">
+          <input class="rec-add-input" id="rec-add-name" type="text" placeholder="Малосольная рыба">
 
           <div class="rec-add-row-2">
             <div>
@@ -236,6 +248,7 @@ const RecipesRender = (() => {
 
       const recipe = {
         category: overlay.querySelector('#rec-add-cat').value,
+        pack: overlay.querySelector('#rec-add-pack').value || 'base',
         name,
         sub: overlay.querySelector('#rec-add-sub').value.trim(),
         time: overlay.querySelector('#rec-add-time').value.trim(),

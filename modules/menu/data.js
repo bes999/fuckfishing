@@ -32,6 +32,7 @@ const MenuData = (() => {
   const PROTEINS = [
     { id: 'pr_stew_beef',    name: 'Тушёнка говяжья',    hint: 'Классика' },
     { id: 'pr_stew_pork',    name: 'Тушёнка свиная',     hint: null },
+    { id: 'pr_chicken',      name: 'Курица',              hint: 'Филе/окорочка' },
     { id: 'pr_eggs',         name: 'Яйца варёные',        hint: null },
     { id: 'pr_fish_fillet',  name: 'Филе рыбы',           hint: 'Свежая' },
     { id: 'pr_sausage',      name: 'Колбаса/сосиски',     hint: null },
@@ -90,10 +91,10 @@ const MenuData = (() => {
   function _recipeItemsForCat(catId) {
     const items = [];
     const cat = RecipesData.getCategories().find(c => c.id === catId);
-    if (cat) items.push(...cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes' })));
+    if (cat) items.push(...cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes', pack: r.pack || 'base' })));
     if (typeof RecipesState !== 'undefined') {
       RecipesState.getCustomRecipes(catId).forEach(r => {
-        items.push({ id: r.id, name: r.name, hint: r.sub, source: 'recipes_custom' });
+        items.push({ id: r.id, name: r.name, hint: r.sub, source: 'recipes_custom', pack: r.pack || 'base' });
       });
     }
     return items;
@@ -110,7 +111,7 @@ const MenuData = (() => {
           result.push({
             section: `Бар · ${cat.label}`,
             items: cat.cocktails.map(c => ({
-              id: c.id, name: c.name, hint: c.sub, source: 'bar'
+              id: c.id, name: c.name, hint: c.sub, source: 'bar', pack: 'base'
             }))
           });
         });
@@ -126,7 +127,7 @@ const MenuData = (() => {
     if (slotType === 'protein') {
       result.push({
         section: 'Белок',
-        items: PROTEINS.map(p => ({ id: p.id, name: p.name, hint: p.hint, source: 'proteins' }))
+        items: PROTEINS.map(p => ({ id: p.id, name: p.name, hint: p.hint, source: 'proteins', pack: 'base' }))
       });
       return result;
     }
