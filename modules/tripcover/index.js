@@ -366,6 +366,9 @@ const TripCoverIndex = (() => {
           <button class="cover-icon-btn" id="coverInvite" title="Пригласить">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="17" y1="11" x2="23" y2="11"/></svg>
           </button>
+          <button class="cover-icon-btn" id="coverAddGuest" title="Добавить гостя (без аккаунта)">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
+          </button>
           <button class="cover-icon-btn" id="coverGear" title="Снаряга">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/><rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 11h16"/><path d="M9 16h.01M15 16h.01"/></svg>
           </button>
@@ -901,6 +904,50 @@ const TripCoverIndex = (() => {
     // Пригласить в эту поездку
     el.querySelector('#coverInvite')?.addEventListener('click', () => {
       if (typeof MembersRender !== 'undefined') MembersRender.showInvite(_tripId, trip.name);
+    });
+
+    // Добавить гостя без аккаунта — просто имя, попадает в participants
+    // (см. TripsData.addParticipant), в хэдкаунт и списки участников, но
+    // не в memberIds и не может залогиниться.
+    el.querySelector('#coverAddGuest')?.addEventListener('click', () => {
+      document.getElementById('guest-add-overlay')?.remove();
+      const overlay = document.createElement('div');
+      overlay.className = 'profile-overlay';
+      overlay.id = 'guest-add-overlay';
+      overlay.innerHTML = `
+        <div class="profile-sheet">
+          <div class="profile-grab"></div>
+          <div class="profile-scroll">
+            <div class="modal-title" style="margin-bottom:8px">Добавить гостя</div>
+            <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
+              Для тех, кто не будет пользоваться приложением — просто имя, без регистрации. Попадёт в участников и счётчики.
+            </p>
+            <input type="text" class="invite-email-input" id="guest-name-input" placeholder="Имя гостя" autocomplete="off">
+            <button class="action-btn" data-action="guest-add-save">Добавить</button>
+            <button class="picker-cancel" data-action="guest-add-close">Отмена</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      overlay.querySelector('#guest-name-input')?.focus();
+      overlay.addEventListener('click', async e => {
+        if (e.target === overlay) { overlay.remove(); return; }
+        const a = e.target.closest('[data-action]')?.dataset.action;
+        if (a === 'guest-add-close') { overlay.remove(); return; }
+        if (a === 'guest-add-save') {
+          const input = overlay.querySelector('#guest-name-input');
+          const name = input?.value.trim();
+          if (!name) { input?.focus(); return; }
+          try {
+            await TripsData.addParticipant(_tripId, { name });
+          } catch (err) {
+            console.error('addParticipant:', err);
+            alert('Не удалось добавить гостя. Проверь соединение и попробуй ещё раз.');
+            return;
+          }
+          overlay.remove();
+          show(_tripId);
+        }
+      });
     });
 
     // Редактировать поездку
