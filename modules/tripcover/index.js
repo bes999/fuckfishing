@@ -5,14 +5,6 @@
 const TripCoverIndex = (() => {
 
   const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
-  const READINESS_ITEMS = [
-    { key:'gear',     label:'Список снаряжения' },
-    { key:'menu',     label:'Меню составлено'   },
-    { key:'shopping', label:'Список закупки'     },
-    { key:'medkit',   label:'Аптечка'            },
-    { key:'tickets',  label:'Билеты куплены'     },
-    { key:'route',    label:'Маршрут согласован' },
-  ];
 
   let _tripId = null;
   let _guideHandler = null;
@@ -493,13 +485,18 @@ const TripCoverIndex = (() => {
   }
 
   function _readiness(t) {
-    const r = t.readiness || {};
-    const done  = Object.values(r).filter(Boolean).length;
-    const total = READINESS_ITEMS.length;
+    // Свободный список под конкретную поездку, не фиксированные 6 пунктов —
+    // см. TripsData.getDefaultReadiness/DEFAULT_READINESS_ITEMS. Старые
+    // документы (объект с фиксированными ключами) нормализует единая точка
+    // чтения (modules/trips/firebase.js:_fromDoc), сюда всегда приходит
+    // уже массив.
+    const items = Array.isArray(t.readiness) ? t.readiness : [];
+    const done  = items.filter(it => it.done).length;
+    const total = items.length;
     const pct   = total ? Math.round(done / total * 100) : 0;
 
     return `
-      <div class="cover-section">
+      <div class="cover-section" id="coverReadinessSection">
         <div class="cover-section-head">
           <div class="cover-section-title">Готовность</div>
           <div style="font-size:15px;font-weight:800;color:var(--accent)" id="coverReadPct">${pct}%</div>
@@ -508,19 +505,73 @@ const TripCoverIndex = (() => {
           <div class="cover-progress-track">
             <div class="cover-progress-fill" id="coverReadFill" style="width:${pct}%"></div>
           </div>
-          <div class="cover-read-list">
-            ${READINESS_ITEMS.map(item => `
-              <div class="cover-read-row">
-                <div class="cover-read-check ${r[item.key] ? 'done' : ''}"
-                     data-cover-readiness="${item.key}" data-trip-id="${t.id}"
+          <div class="cover-read-list" id="coverReadList">
+            ${items.map(item => `
+              <div class="cover-read-row" data-item-id="${_esc(item.id)}">
+                <div class="cover-read-check ${item.done ? 'done' : ''}"
+                     data-cover-readiness="${_esc(item.id)}" data-trip-id="${t.id}"
                      style="cursor:pointer">
-                  ${r[item.key] ? '✓' : ''}
+                  ${item.done ? '✓' : ''}
                 </div>
-                <span style="${r[item.key] ? 'color:var(--label3);text-decoration:line-through' : ''}">${item.label}</span>
+                <span class="cover-read-label" style="${item.done ? 'color:var(--label3);text-decoration:line-through' : ''}">${_esc(item.label)}</span>
+                <span class="cover-read-del" data-cover-readiness-del="${_esc(item.id)}" data-trip-id="${t.id}" aria-label="Удалить пункт">×</span>
               </div>`).join('')}
+          </div>
+          <div class="cover-read-add" data-cover-readiness-add="${t.id}">+ добавить пункт</div>
+        </div>
+      </div>`;
+  }
+
+  // Перерисовывает секцию готовности целиком (после add/del — меняется
+  // количество строк, точечный патч DOM не годится, в отличие от простого
+  // toggle) — находит свежую поездку из кэша и заново вызывает _readiness.
+  function _rerenderReadiness(tripId) {
+    const section = document.getElementById('coverReadinessSection');
+    if (!section) return;
+    const t = TripsData.getById(tripId);
+    if (!t) return;
+    section.outerHTML = _readiness(t);
+  }
+
+  // Новый пункт готовности — маленький шит вместо prompt() (тот же паттерн
+  // переименования участника, см. modules/trips/index.js:_showRenameSheet).
+  function _showAddReadinessSheet(tripId) {
+    document.getElementById('add-readiness-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'profile-overlay';
+    overlay.id = 'add-readiness-overlay';
+    overlay.innerHTML = `
+      <div class="profile-sheet">
+        <div class="profile-grab"></div>
+        <div class="profile-scroll">
+          <div class="modal-title" style="margin-bottom:14px">Новый пункт готовности</div>
+          <input type="text" class="invite-email-input" id="add-readiness-input" placeholder="Заправка канистр, бронь домика...">
+          <div class="sheet-actions-row">
+            <button class="picker-cancel" data-action="add-readiness-close">Отмена</button>
+            <button class="action-btn" data-action="add-readiness-save">Добавить</button>
           </div>
         </div>
       </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#add-readiness-input');
+    input?.focus();
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const a = e.target.closest('[data-action]')?.dataset.action;
+      if (a === 'add-readiness-close') { overlay.remove(); return; }
+      if (a === 'add-readiness-save') {
+        const label = input?.value.trim();
+        if (!label) { input?.focus(); return; }
+        const t = TripsData.getById(tripId);
+        if (!Array.isArray(t?.readiness)) { overlay.remove(); return; }
+        t.readiness = [...t.readiness, { id: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2), label, done: false }];
+        TripsData.updateTrip(tripId, { readiness: t.readiness });
+        overlay.remove();
+        _rerenderReadiness(tripId);
+        if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+      }
+    });
   }
 
   function _doneContent(t) {
@@ -1006,34 +1057,54 @@ const TripCoverIndex = (() => {
       }
     });
 
-    // Чекбоксы готовности
+    // Готовность: чекбокс (переключить), × (удалить пункт), + добавить
     el.addEventListener('click', e => {
       const check = e.target.closest('[data-cover-readiness]');
-      if (!check) return;
-      const key    = check.dataset.coverReadiness;
-      const tripId = check.dataset.tripId;
-      const t      = TripsData.getById(tripId);
-      if (!t || !t.readiness) return;
-      t.readiness[key] = !t.readiness[key];
-      TripsData.updateTrip(tripId, { readiness: t.readiness });
-      // обновляем UI
-      const done = check.classList.toggle('done');
-      check.textContent = done ? '✓' : '';
-      const label = check.nextElementSibling;
-      if (label) {
-        label.style.color = done ? 'var(--label3)' : '';
-        label.style.textDecoration = done ? 'line-through' : '';
+      if (check) {
+        const itemId = check.dataset.coverReadiness;
+        const tripId = check.dataset.tripId;
+        const t      = TripsData.getById(tripId);
+        const item   = Array.isArray(t?.readiness) ? t.readiness.find(it => it.id === itemId) : null;
+        if (!item) return;
+        item.done = !item.done;
+        TripsData.updateTrip(tripId, { readiness: t.readiness });
+        // точечный патч — состав списка не меняется, полный ре-рендер не нужен
+        const done = check.classList.toggle('done');
+        check.textContent = done ? '✓' : '';
+        const label = check.nextElementSibling;
+        if (label) {
+          label.style.color = done ? 'var(--label3)' : '';
+          label.style.textDecoration = done ? 'line-through' : '';
+        }
+        const total = t.readiness.length;
+        const doneCount = t.readiness.filter(it => it.done).length;
+        const pct = total ? Math.round(doneCount / total * 100) : 0;
+        const pctEl  = document.getElementById('coverReadPct');
+        const fillEl = document.getElementById('coverReadFill');
+        if (pctEl)  pctEl.textContent  = pct + '%';
+        if (fillEl) fillEl.style.width = pct + '%';
+        if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+        return;
       }
-      // пересчитываем прогресс
-      const total = READINESS_ITEMS.length;
-      const doneCount = Object.values(t.readiness).filter(Boolean).length;
-      const pct = Math.round(doneCount / total * 100);
-      const pctEl  = document.getElementById('coverReadPct');
-      const fillEl = document.getElementById('coverReadFill');
-      if (pctEl)  pctEl.textContent  = pct + '%';
-      if (fillEl) fillEl.style.width = pct + '%';
-      // обновляем главную
-      if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+
+      const delBtn = e.target.closest('[data-cover-readiness-del]');
+      if (delBtn) {
+        const itemId = delBtn.dataset.coverReadinessDel;
+        const tripId = delBtn.dataset.tripId;
+        const t = TripsData.getById(tripId);
+        if (!Array.isArray(t?.readiness)) return;
+        t.readiness = t.readiness.filter(it => it.id !== itemId);
+        TripsData.updateTrip(tripId, { readiness: t.readiness });
+        _rerenderReadiness(tripId);
+        if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+        return;
+      }
+
+      const addBtn = e.target.closest('[data-cover-readiness-add]');
+      if (addBtn) {
+        _showAddReadinessSheet(addBtn.dataset.coverReadinessAdd);
+        return;
+      }
     });
 
     el.querySelector('#coverEnter')?.addEventListener('click', () => {

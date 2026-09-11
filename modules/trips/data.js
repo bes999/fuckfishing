@@ -187,10 +187,30 @@ const TripsData = (() => {
     return TripsFirebase.updateTrip(id, changes);
   }
 
-  function updateReadiness(tripId, key, val) {
+  // Готовность к поездке — свободный список пунктов под конкретную поездку
+  // (id/label/done), не фиксированный набор из 6 ключей: у разных поездок
+  // реально разные сборы (канистры для катера/бронь домика вместо билетов,
+  // если добираешься сам). DEFAULT_READINESS_ITEMS — только стартовый
+  // шаблон для НОВОЙ экспедиции, дальше список редактируется свободно
+  // (см. modules/tripcover/index.js _readiness).
+  const DEFAULT_READINESS_ITEMS = [
+    { id: 'gear',     label: 'Список снаряжения' },
+    { id: 'menu',     label: 'Меню составлено'   },
+    { id: 'shopping', label: 'Список закупки'     },
+    { id: 'medkit',   label: 'Аптечка'            },
+    { id: 'tickets',  label: 'Билеты куплены'     },
+    { id: 'route',    label: 'Маршрут согласован' },
+  ];
+  function getDefaultReadiness() {
+    return DEFAULT_READINESS_ITEMS.map(it => ({ ...it, done: false }));
+  }
+
+  function updateReadiness(tripId, itemId, val) {
     const trip = getById(tripId);
-    if (!trip || !trip.readiness) return Promise.resolve();
-    trip.readiness[key] = val;
+    if (!trip || !Array.isArray(trip.readiness)) return Promise.resolve();
+    const item = trip.readiness.find(it => it.id === itemId);
+    if (!item) return Promise.resolve();
+    item.done = val;
     return TripsFirebase.updateTrip(tripId, { readiness: trip.readiness });
   }
 
@@ -264,7 +284,7 @@ const TripsData = (() => {
   return {
     migrateFromLocalStorage, backfillOwnerId,
     getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames,
-    addTrip, updateTrip, updateReadiness, addParticipant, addGuestNames,
+    addTrip, updateTrip, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
     statusLabel, statusClass,
   };
 })();

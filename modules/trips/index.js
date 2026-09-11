@@ -1049,7 +1049,7 @@ const TripsIndex = (() => {
       // участников. Свежий all-false только когда экспедиция создаётся
       // впервые; существующий — сохраняется как есть.
       readiness: isExp
-        ? (existing?.readiness || { gear:false, menu:false, shopping:false, medkit:false, tickets:false, route:false })
+        ? (existing?.readiness || TripsData.getDefaultReadiness())
         : null,
       // Данные маршрута от AI (только для экспедиций)
       importData: isExp && _importedData ? _importedData : null,

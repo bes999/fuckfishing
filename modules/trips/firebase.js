@@ -48,6 +48,22 @@ const TripsFirebase = (() => {
         (p && typeof p === 'object') ? p : { name: String(p), uid: null }
       );
     }
+    // Та же подстраховка для readiness — раньше это был фиксированный
+    // объект из 6 ключей (gear/menu/shopping/medkit/tickets/route),
+    // теперь свободный список [{id,label,done}] под конкретную поездку
+    // (см. TripsData.getDefaultReadiness). Существующие документы в
+    // Firestore ещё старой формы — превращаем в новую здесь же, одним
+    // местом на все чтения, вместо миграции руками; при следующем
+    // сохранении поездки новая форма и запишется обратно.
+    if (trip.readiness && !Array.isArray(trip.readiness)) {
+      const legacyLabels = {
+        gear: 'Список снаряжения', menu: 'Меню составлено', shopping: 'Список закупки',
+        medkit: 'Аптечка', tickets: 'Билеты куплены', route: 'Маршрут согласован',
+      };
+      trip.readiness = Object.keys(legacyLabels).map(key => ({
+        id: key, label: legacyLabels[key], done: !!trip.readiness[key],
+      }));
+    }
     return trip;
   }
 

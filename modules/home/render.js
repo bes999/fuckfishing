@@ -6,15 +6,6 @@ const HomeRender = (() => {
   const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
   const DOWS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 
-  const READINESS_ITEMS = [
-    { key: 'gear',     label: 'Список снаряжения' },
-    { key: 'menu',     label: 'Меню составлено'   },
-    { key: 'shopping', label: 'Список закупки'     },
-    { key: 'medkit',   label: 'Аптечка'            },
-    { key: 'tickets',  label: 'Билеты куплены'     },
-    { key: 'route',    label: 'Маршрут согласован' },
-  ];
-
   let _calYear, _calMonth;
   let _calendarHandler = null;
   let _tripCardsHandler = null;
@@ -134,12 +125,16 @@ const HomeRender = (() => {
     const dates = _formatDateRange(trip.startDate, trip.endDate);
     const parts = TripsData.participantNames(trip).join(' · ');
 
+    // Свободный список пунктов под конкретную поездку (id/label/done),
+    // не фиксированные 6 — см. TripsData.getDefaultReadiness. Редактируется
+    // (добавить/удалить пункт) на карточке самой поездки (tripcover); здесь,
+    // на компактном виджете Главной, только читаем и переключаем готовые.
     let readinessHtml = '';
-    if (trip.readiness) {
-      const r = trip.readiness;
-      const done  = Object.values(r).filter(Boolean).length;
-      const total = READINESS_ITEMS.length;
-      const pct   = total ? Math.round(done / total * 100) : 0;
+    if (Array.isArray(trip.readiness) && trip.readiness.length) {
+      const items = trip.readiness;
+      const done  = items.filter(it => it.done).length;
+      const total = items.length;
+      const pct   = Math.round(done / total * 100);
       readinessHtml = `
         <div class="readiness-block">
           <div class="readiness-top">
@@ -150,7 +145,7 @@ const HomeRender = (() => {
             <div class="readiness-fill" id="readinessFill" style="width:${pct}%"></div>
           </div>
           <div class="readiness-list" id="readinessList">
-            ${READINESS_ITEMS.map(item => _readinessRow(item, r[item.key], trip.id)).join('')}
+            ${items.map(item => _readinessRow(item, trip.id)).join('')}
           </div>
         </div>`;
     }
@@ -172,32 +167,32 @@ const HomeRender = (() => {
       </div>`;
   }
 
-  function _readinessRow(item, done, tripId) {
+  function _readinessRow(item, tripId) {
     return `
       <div class="readiness-row">
-        <div class="readiness-check ${done ? 'done' : ''}"
-             data-readiness="${item.key}" data-trip-id="${tripId}"
+        <div class="readiness-check ${item.done ? 'done' : ''}"
+             data-readiness="${_esc(item.id)}" data-trip-id="${tripId}"
              onclick="event.stopPropagation();HomeRender.toggleReadiness(this)">
-          ${done ? '✓' : ''}
+          ${item.done ? '✓' : ''}
         </div>
-        <span class="readiness-label ${done ? 'crossed' : ''}">${item.label}</span>
+        <span class="readiness-label ${item.done ? 'crossed' : ''}">${_esc(item.label)}</span>
       </div>`;
   }
 
   // Глобальный хэндлер для чекбоксов готовности
   function toggleReadiness(check) {
-    const key    = check.dataset.readiness;
+    const itemId = check.dataset.readiness;
     const tripId = check.dataset.tripId;
     const trip   = TripsData.getById(tripId);
-    if (!trip || !trip.readiness) return;
-    trip.readiness[key] = !trip.readiness[key];
+    const item   = Array.isArray(trip?.readiness) ? trip.readiness.find(it => it.id === itemId) : null;
+    if (!item) return;
+    item.done = !item.done;
     TripsData.updateTrip(tripId, { readiness: trip.readiness });
-    const done = trip.readiness[key];
-    check.classList.toggle('done', done);
-    check.textContent = done ? '✓' : '';
+    check.classList.toggle('done', item.done);
+    check.textContent = item.done ? '✓' : '';
     const label = check.nextElementSibling;
     if (label) {
-      label.classList.toggle('crossed', done);
+      label.classList.toggle('crossed', item.done);
     }
     _recalcReadiness(tripId);
   }
@@ -389,10 +384,10 @@ const HomeRender = (() => {
 
   function _recalcReadiness(tripId) {
     const trip = TripsData.getById(tripId);
-    if (!trip || !trip.readiness) return;
-    const done  = Object.values(trip.readiness).filter(Boolean).length;
-    const total = READINESS_ITEMS.length;
-    const pct   = total ? Math.round(done / total * 100) : 0;
+    if (!Array.isArray(trip?.readiness) || !trip.readiness.length) return;
+    const done  = trip.readiness.filter(it => it.done).length;
+    const total = trip.readiness.length;
+    const pct   = Math.round(done / total * 100);
     const pctEl  = document.getElementById('readinessPct');
     const fillEl = document.getElementById('readinessFill');
     if (pctEl)  pctEl.textContent   = pct + '%';
