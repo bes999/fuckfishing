@@ -26,16 +26,36 @@ export async function getActiveTrip(chatId) {
   return getTrip(session.activeTripId);
 }
 
+// Подстраховка от старого формата participants (массив строк-имён, до
+// перехода на {name, uid}) — см. тот же комментарий в modules/trips/
+// firebase.js на веб-стороне. Продовые документы уже мигрированы вручную,
+// но бот читает Firestore напрямую, в обход веб-кода, так что нормализацию
+// нужно повторить и здесь.
+function _normalizeTrip(trip) {
+  if (trip && Array.isArray(trip.participants)) {
+    trip.participants = trip.participants.map((p) =>
+      (p && typeof p === 'object') ? p : { name: String(p), uid: null }
+    );
+  }
+  return trip;
+}
+
+/** Имена участников как плоский массив строк — см. TripsData.participantNames
+ *  на веб-стороне (modules/trips/data.js), тот же аксессор здесь. */
+export function participantNames(trip) {
+  return (trip?.participants || []).map((p) => p.name);
+}
+
 export async function getTrip(tripId) {
   const doc = await db.collection('trips').doc(tripId).get();
-  return doc.exists ? { id: doc.id, ...doc.data() } : null;
+  return doc.exists ? _normalizeTrip({ id: doc.id, ...doc.data() }) : null;
 }
 
 /** Поездки, где uid реально в участниках — не все подряд, новые сверху. */
 export async function listTrips(uid) {
   const snap = await db.collection('trips').orderBy('startDate', 'desc').get();
   return snap.docs
-    .map((d) => ({ id: d.id, ...d.data() }))
+    .map((d) => _normalizeTrip({ id: d.id, ...d.data() }))
     .filter((t) => (t.memberIds || []).includes(uid));
 }
 

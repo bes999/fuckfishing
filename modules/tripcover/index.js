@@ -48,15 +48,10 @@ const TripCoverIndex = (() => {
       if (a === 'guest-add-close') { overlay.remove(); return; }
       if (a === 'guest-add-save') {
         const input = overlay.querySelector('#guest-name-input');
-        const names = (input?.value || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+        const names = UIUtils.splitNames(input?.value);
         if (!names.length) { input?.focus(); return; }
         try {
-          // Последовательно — addParticipant сам читает-и-пишет весь trip
-          // за раз, параллельно запущенные вызовы могли бы затереть друг
-          // друга (каждый берёт снимок participants ДО чужой записи).
-          for (const name of names) {
-            await TripsData.addParticipant(_tripId, { name });
-          }
+          await TripsData.addGuestNames(_tripId, names);
         } catch (err) {
           console.error('addParticipant:', err);
           alert('Не удалось добавить гостя. Проверь соединение и попробуй ещё раз.');

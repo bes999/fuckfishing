@@ -92,5 +92,13 @@ const UIUtils = (() => {
     return _esc(avatar || fallback || '');
   }
 
-  return { withBusyButton, confirmSheet, avatarHtml };
+  // splitNames(raw) — разбирает вставленный/вписанный текст со списком
+  // имён (гости без аккаунта, участники поездки) на отдельные имена: по
+  // запятой и по переносу строки, обрезая пробелы и выкидывая пустые.
+  // Один разбор вместо copy-paste по modules/tripcover и modules/trips.
+  function splitNames(raw) {
+    return String(raw || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+  }
+
+  return { withBusyButton, confirmSheet, avatarHtml, splitNames };
 })();

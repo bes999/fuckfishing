@@ -42,7 +42,7 @@ const ExpensesIndex = (() => {
     // из-за чего "Кто заплатил"/"Участвуют в расходе" были захламлены
     // посторонними людьми.
     const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
-    ExpensesState.setMembers(_tripId, (trip?.participants || []).map(p => p.name));
+    ExpensesState.setMembers(_tripId, TripsData.participantNames(trip));
     return Promise.resolve();
   }
 

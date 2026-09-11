@@ -16,6 +16,12 @@ const ShoppingState = (() => {
     try { localStorage.setItem(KEY, JSON.stringify(_data)); } catch (_) {}
   }
 
+  // Явный флаш на localStorage — для мест, которые мутируют cats/items
+  // сами (батчем, в цикле) вместо addItem/addCategory/etc, чтобы не
+  // платить за отдельный full-dataset _save() на каждую позицию (см.
+  // modules/menu/render.js:_pushIngredientsToShopping).
+  function persist() { _save(); }
+
   // Новая поездка — пустой список, без автоподставленного шаблона
   // (раньше сюда садился большой дефолтный чек-лист на ~60 позиций —
   // запутывало: незнакомые вещи в чужом списке, "уже есть" на то, что
@@ -108,5 +114,5 @@ const ShoppingState = (() => {
     return { total, bought, pct: total ? Math.round(bought / total * 100) : 0 };
   }
 
-  return { load, getCategories, setFromFirebase, toggleBought, updateQty, addItem, removeItem, addCategory, getStats };
+  return { load, getCategories, setFromFirebase, toggleBought, updateQty, addItem, removeItem, addCategory, getStats, persist };
 })();

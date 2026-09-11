@@ -168,6 +168,14 @@ const TripsData = (() => {
   function getCalendarMarkers(uid) { return TripsState.getCalendarMarkers(uid); }
   function getYearStats(year, uid) { return TripsState.getYearStats(year, uid); }
 
+  // Имена участников как плоский массив строк — participants сам по себе
+  // {name, uid}[] (см. миграцию схемы), но многим местам (заголовки,
+  // счётчики, пикеры "участвует в расходе/улове") нужны просто имена.
+  // Общий аксессор рядом со схемой вместо .map(p=>p.name) в каждом месте.
+  function participantNames(trip) {
+    return (trip?.participants || []).map(p => p.name);
+  }
+
   // --- Запись — асинхронно, через Firestore ---
   function addTrip(trip) {
     trip.id = trip.id || 'trip_' + Date.now();
@@ -197,11 +205,50 @@ const TripsData = (() => {
     const memberIds = trip.memberIds || [];
     if (uid && memberIds.includes(uid)) return Promise.resolve(trip);
 
-    const nameAlreadyListed = name && participants.some(p => p.name.toLowerCase() === name.toLowerCase());
-    const newParticipants = (nameAlreadyListed || !name) ? participants : [...participants, { name, uid: uid || null }];
+    const matchIdx = name ? participants.findIndex(p => p.name.toLowerCase() === name.toLowerCase()) : -1;
+    let newParticipants;
+    if (matchIdx >= 0) {
+      // Уже в списке под этим именем — если только что выдали uid (был
+      // гостем без аккаунта, теперь привязан к реальному), бэкфиллим его
+      // и сюда, а не только в memberIds ниже. Иначе следующий Save в
+      // редакторе поездки пересчитает memberIds из participants[].uid
+      // (см. modules/trips/index.js:_save) и тихо выкинет этого человека
+      // обратно в гости, хотя memberIds только что дали ему доступ.
+      newParticipants = (uid && !participants[matchIdx].uid)
+        ? participants.map((p, i) => i === matchIdx ? { ...p, uid } : p)
+        : participants;
+    } else if (name) {
+      newParticipants = [...participants, { name, uid: uid || null }];
+    } else {
+      newParticipants = participants;
+    }
     const newMemberIds = uid ? [...new Set([...memberIds, uid])] : memberIds;
 
     return TripsFirebase.updateTrip(tripId, { participants: newParticipants, memberIds: newMemberIds });
+  }
+
+  // --- Добавить сразу несколько гостей без аккаунта одним запросом (вставка
+  // через запятую/перенос строки — см. modules/tripcover/index.js). Гости
+  // никогда не несут uid, так что тут нет той гонки чтения-записи, которую
+  // решает последовательность в addParticipant — считаем дедуп по всему
+  // списку локально и пишем один раз. ---
+  function addGuestNames(tripId, names) {
+    const trip = getById(tripId);
+    if (!trip) return Promise.reject(new Error('trip not found'));
+
+    const participants = trip.participants || [];
+    const seen = new Set(participants.map(p => p.name.toLowerCase()));
+    const additions = [];
+    names.forEach(name => {
+      const trimmed = String(name || '').trim();
+      const key = trimmed.toLowerCase();
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      additions.push({ name: trimmed, uid: null });
+    });
+    if (!additions.length) return Promise.resolve(trip);
+
+    return TripsFirebase.updateTrip(tripId, { participants: [...participants, ...additions] });
   }
 
   // --- Status label ---
@@ -216,8 +263,8 @@ const TripsData = (() => {
 
   return {
     migrateFromLocalStorage, backfillOwnerId,
-    getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats,
-    addTrip, updateTrip, updateReadiness, addParticipant,
+    getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames,
+    addTrip, updateTrip, updateReadiness, addParticipant, addGuestNames,
     statusLabel, statusClass,
   };
 })();

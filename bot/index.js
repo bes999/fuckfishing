@@ -55,7 +55,7 @@ function formatTripCard(trip, { recentExpenses = [], total = 0 } = {}) {
     trip.startDate === trip.endDate
       ? formatDateRu(trip.startDate)
       : `${formatDateRu(trip.startDate)} – ${formatDateRu(trip.endDate)}`;
-  const participants = (trip.participants || []).map((p) => p.name).join(', ') || '—';
+  const participants = Trips.participantNames(trip).join(', ') || '—';
 
   let text =
     `<b>${escapeHtml(trip.name)}</b>\n` +
@@ -189,7 +189,7 @@ async function _finishExpense(ctx, w, paidBy) {
     amount: w.data.amount,
     category: w.data.category,
     paidBy,
-    participants: (trip.participants || []).map((p) => p.name),
+    participants: Trips.participantNames(trip),
     uid: w.data.uid,
   });
   Wizards.cancel(chatId);
@@ -211,7 +211,7 @@ async function handleExpenseText(ctx, w, text) {
 
     const categories = await Expenses.getCategories(w.data.tripId);
     const trip = await Trips.getTrip(w.data.tripId);
-    const participants = (trip?.participants || []).map((p) => p.name);
+    const participants = Trips.participantNames(trip);
 
     // Пробуем определить категорию ИИ по описанию — если уверенно, сразу
     // переходим к "кто заплатил"; не угадала/нет ключа — на кнопки категорий.
@@ -517,7 +517,7 @@ bot.callbackQuery(/^exp:cat:(.+)$/, async (ctx) => {
   }
 
   Wizards.update(chatId, { step: 'payer', data: { category: categoryId } });
-  await ctx.reply('Кто заплатил?', { reply_markup: payerKeyboard((trip.participants || []).map((p) => p.name)) });
+  await ctx.reply('Кто заплатил?', { reply_markup: payerKeyboard(Trips.participantNames(trip)) });
 });
 
 bot.callbackQuery(/^exp:payer:(\d+)$/, async (ctx) => {
@@ -528,7 +528,7 @@ bot.callbackQuery(/^exp:payer:(\d+)$/, async (ctx) => {
     return ctx.reply('Диалог устарел. Начните заново: «➕ Расход».');
   }
   const trip = await Trips.getTrip(w.data.tripId);
-  const name = trip?.participants?.map((p) => p.name)?.[Number(ctx.match[1])];
+  const name = trip?.participants?.[Number(ctx.match[1])]?.name;
   if (!name) return ctx.reply('Не понял выбор, попробуйте ещё раз.');
   try {
     await _finishExpense(ctx, w, name);

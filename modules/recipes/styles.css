@@ -46,6 +46,27 @@
   margin-top: 2px;
 }
 
+.rec-packs {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  background: var(--bg2);
+  padding: 10px 12px 8px;
+}
+.rec-packs::-webkit-scrollbar { display: none; }
+.rec-pack {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 12px; font-weight: 500;
+  font-family: inherit;
+  color: var(--label3);
+  background: var(--bg3);
+  border: none; border-radius: 20px;
+  cursor: pointer; white-space: nowrap;
+}
+.rec-pack.active {
+  color: #fff;
+  background: var(--accent);
+}
+
 .rec-tabs {
   display: flex;
   overflow-x: auto;

@@ -5,6 +5,17 @@ const RecipesRender = (() => {
   let _el = null;
   let _activeCat = 'fish';
   let _openCards = new Set();
+  let _activePack = 'all';
+
+  // Тот же набор, что и в пикере блюда для Меню (modules/menu/render.js) —
+  // без этого фильтра книга рецептов всегда показывала прибрежные/личные
+  // рецепты на любой поездке, независимо от того, что скрыто в пикере.
+  const _PACKS = [
+    ['all',      'Всё'],
+    ['base',     'База'],
+    ['coastal',  'Побережье'],
+    ['personal', 'Моё'],
+  ];
 
   function render(el) {
     _el = el;
@@ -12,10 +23,16 @@ const RecipesRender = (() => {
     el.innerHTML = `
       <div class="rec-wrap">
         ${_topbar()}
+        ${_packFilter()}
         ${_tabs()}
         <div class="rec-cards" id="rec-cards">${_cards()}</div>
       </div>`;
     _bindEvents();
+  }
+
+  function _packFilter() {
+    return `<div class="rec-packs" id="rec-packs">${_PACKS.map(([id, label]) => `
+      <button class="rec-pack ${id === _activePack ? 'active' : ''}" data-pack="${id}">${label}</button>`).join('')}</div>`;
   }
 
   function _topbar() {
@@ -47,8 +64,12 @@ const RecipesRender = (() => {
 
   function _cards() {
     const cat = RecipesData.getCategories().find(c => c.id === _activeCat);
-    const builtIn = cat ? cat.cocktails : [];
-    const custom  = RecipesState.getCustomRecipes(_activeCat);
+    const matchesPack = r => _activePack === 'all' || (r.pack || 'base') === _activePack;
+    const builtIn = (cat ? cat.cocktails : []).filter(matchesPack);
+    const custom  = RecipesState.getCustomRecipes(_activeCat).filter(matchesPack);
+    if (!builtIn.length && !custom.length) {
+      return '<div style="padding:32px 16px;text-align:center;color:var(--label3);font-size:13px">Ничего в этом наборе</div>';
+    }
     return builtIn.map(r => _card(r)).join('') + custom.map(r => _card(r)).join('');
   }
 
@@ -159,6 +180,16 @@ const RecipesRender = (() => {
         _el.querySelector('#rec-cards').innerHTML = _cards();
         _bindCardEvents();
       });
+    });
+    _el.querySelector('#rec-packs')?.addEventListener('click', e => {
+      const btn = e.target.closest('.rec-pack');
+      if (!btn) return;
+      _el.querySelector('.rec-pack.active')?.classList.remove('active');
+      btn.classList.add('active');
+      _activePack = btn.dataset.pack;
+      _openCards.clear();
+      _el.querySelector('#rec-cards').innerHTML = _cards();
+      _bindCardEvents();
     });
     _el.querySelector('#rec-back')?.addEventListener('click', () => {
       if (typeof RecipesIndex !== 'undefined') RecipesIndex.close();

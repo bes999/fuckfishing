@@ -39,7 +39,7 @@ const CatchesIndex = (() => {
     // (modules/expenses/index.js): раньше тут подтягивался весь список
     // members приложения, а не участники конкретной поездки.
     const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
-    CatchesState.setMembers(_tripId, (trip?.participants || []).map(p => p.name));
+    CatchesState.setMembers(_tripId, TripsData.participantNames(trip));
     return Promise.resolve();
   }
 

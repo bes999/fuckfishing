@@ -293,7 +293,7 @@ var RiversRender = (function () {
     }
     // Fallback: из participants поездки
     if (!members.length && window.APP && window.APP.currentTripData) {
-      members = (window.APP.currentTripData.participants || []).map(function(p) { return p.name; });
+      members = TripsData.participantNames(window.APP.currentTripData);
     }
  
     var h = '<select class="rv-catch-sel rv-catch-member" id="' + id + '" style="margin-bottom:8px">';

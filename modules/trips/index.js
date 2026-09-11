@@ -364,7 +364,7 @@ const TripsIndex = (() => {
       places = _rivers.map(r => `${r.name}, ${r.region}`).join('; ');
     }
 
-    const parts = (_draft.participants || []).map(p => p.name).join(', ');
+    const parts = TripsData.participantNames(_draft).join(', ');
 
     // Строки импорта для экспедиции
     const importRows = isExp && _importedData ? `
@@ -721,7 +721,7 @@ const TripsIndex = (() => {
         // Разбиваем по запятым/переносам строк — так и вставка нескольких
         // имён скопом (из чата, списка), и обычный посимвольный ввод с
         // запятой между именами работают одним и тем же путём.
-        const names = partInput.value.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
+        const names = UIUtils.splitNames(partInput.value);
         if (names.length) {
           if (!_draft.participants) _draft.participants = [];
           names.forEach(name => {
@@ -747,14 +747,7 @@ const TripsIndex = (() => {
     overlay.querySelectorAll('[data-part-rename-idx]').forEach(nameEl => {
       nameEl.addEventListener('click', () => {
         const idx = parseInt(nameEl.dataset.partRenameIdx);
-        const p = _draft.participants[idx];
-        if (!p) return;
-        const next = prompt('Как показывать в этой поездке:', p.name);
-        if (next === null) return;
-        const trimmed = next.trim();
-        if (!trimmed) return;
-        p.name = trimmed;
-        _refreshCreate();
+        _showRenameSheet(idx);
       });
     });
 
@@ -978,7 +971,7 @@ const TripsIndex = (() => {
       // не подтвердив явно Enter/запятой — тот же разбор на несколько имён)
       const partRaw = document.getElementById('f-participant')?.value || '';
       if (!_draft.participants) _draft.participants = [];
-      partRaw.split(/[,\n]/).map(s => s.trim()).filter(Boolean).forEach(name => {
+      UIUtils.splitNames(partRaw).forEach(name => {
         if (!_draft.participants.some(p => p.name === name)) {
           _draft.participants.push({ name, uid: null });
         }
@@ -1107,6 +1100,50 @@ const TripsIndex = (() => {
 
   function _esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Переименовать участника на эту поездку — маленький шит вместо голого
+  // prompt() (в этом приложении уже есть прецедент отказа от prompt() в
+  // пользу шита — см. modules/members/index.js "раньше было три подряд
+  // идущих prompt()").
+  function _showRenameSheet(idx) {
+    const p = _draft.participants[idx];
+    if (!p) return;
+    document.getElementById('rename-part-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'profile-overlay';
+    overlay.id = 'rename-part-overlay';
+    overlay.innerHTML = `
+      <div class="profile-sheet">
+        <div class="profile-grab"></div>
+        <div class="profile-scroll">
+          <div class="modal-title" style="margin-bottom:8px">Переименовать</div>
+          <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
+            Как показывать в этой поездке — не меняет имя аккаунта.
+          </p>
+          <input type="text" class="invite-email-input" id="rename-part-input" value="${_esc(p.name)}">
+          <div class="sheet-actions-row">
+            <button class="picker-cancel" data-action="rename-part-close">Отмена</button>
+            <button class="action-btn" data-action="rename-part-save">Сохранить</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    const input = overlay.querySelector('#rename-part-input');
+    input?.focus();
+    input?.select();
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const a = e.target.closest('[data-action]')?.dataset.action;
+      if (a === 'rename-part-close') { overlay.remove(); return; }
+      if (a === 'rename-part-save') {
+        const trimmed = input?.value.trim();
+        if (!trimmed) { input?.focus(); return; }
+        p.name = trimmed;
+        overlay.remove();
+        _refreshCreate();
+      }
+    });
   }
 
   return { init, render, showCreate, showEdit, openTrip };

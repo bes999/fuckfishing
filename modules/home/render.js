@@ -132,7 +132,7 @@ const HomeRender = (() => {
     const days = Math.ceil((new Date(trip.startDate) - new Date()) / 86400000);
     const daysStr = days > 0 ? days : '🎣';
     const dates = _formatDateRange(trip.startDate, trip.endDate);
-    const parts = (trip.participants || []).map(p => p.name).join(' · ');
+    const parts = TripsData.participantNames(trip).join(' · ');
 
     let readinessHtml = '';
     if (trip.readiness) {

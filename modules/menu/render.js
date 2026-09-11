@@ -8,6 +8,14 @@ const MenuRender = (() => {
   let _openDays   = new Set();
   let _editMeals  = new Set(); // 'dayId_mealId'
 
+  // Названия блюд идут из свободного текста (своих рецептов, см.
+  // modules/recipes/render.js #rec-add-name) и попадают сюда через
+  // innerHTML — без экранирования кавычка в названии рецепта ломает
+  // атрибут (data-name и т.п.) и внедряет произвольный HTML/обработчик.
+  function _esc(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
   function render(el, tripId) {
     _el     = el;
     _tripId = tripId;
@@ -36,7 +44,7 @@ const MenuRender = (() => {
       const slots  = (day.meals[m.id] && day.meals[m.id].slots) || [];
       const filled = slots.filter(s => s.item);
       if (!filled.length) return '';
-      const items = filled.map(s => s.item.name).join(', ');
+      const items = filled.map(s => _esc(s.item.name)).join(', ');
       return `<div class="mn-today-row"><span class="mn-today-meal">${m.label}</span><span class="mn-today-items">${items}</span></div>`;
     }).join('');
 
@@ -114,7 +122,7 @@ const MenuRender = (() => {
     meals.forEach(m => {
       const slots = day.meals[m.id]?.slots || [];
       const mainSlot = slots.find(s => s.type === 'main' && s.item);
-      if (mainSlot) parts.push(`${m.label}: ${mainSlot.item.name}`);
+      if (mainSlot) parts.push(`${m.label}: ${_esc(mainSlot.item.name)}`);
     });
     if (!parts.length) return 'Не заполнено';
     return parts.slice(0, 2).join(' · ');
@@ -161,14 +169,14 @@ const MenuRender = (() => {
       // режима редактирования (там место занято крестиком удаления, и это
       // явно два разных действия — не путать местами).
       const cartBtn = !isEdit
-        ? `<span class="mn-slot-cart" data-action="push-shopping" data-itemid="${slot.item.id}" data-source="${slot.item.source||''}" data-name="${slot.item.name}" title="Добавить ингредиенты в закупку"><i class="ti ti-shopping-cart" aria-hidden="true"></i></span>`
+        ? `<span class="mn-slot-cart" data-action="push-shopping" data-itemid="${_esc(slot.item.id)}" data-source="${_esc(slot.item.source||'')}" data-name="${_esc(slot.item.name)}" title="Добавить ингредиенты в закупку"><i class="ti ti-shopping-cart" aria-hidden="true"></i></span>`
         : '';
       return `
         <div class="mn-slot">
           <span class="mn-slot-label">${label}</span>
           <div class="mn-slot-tag filled-${color} ${isEdit ? 'editable' : ''}"
             ${isEdit ? `data-action="edit-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}" data-type="${slot.type}"` : ''}>
-            <span class="mn-slot-txt">${slot.item.name}</span>
+            <span class="mn-slot-txt">${_esc(slot.item.name)}</span>
             ${isEdit ? `<span class="mn-slot-del" data-action="remove-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}">×</span>` : ''}
           </div>
           ${cartBtn}
@@ -218,9 +226,9 @@ const MenuRender = (() => {
       return items.map(item => `
         <div class="mn-picker-item" data-action="pick-item"
           data-day="${dayId}" data-meal="${mealId}" data-slot="${slotId}"
-          data-item-id="${item.id}" data-item-name="${item.name}" data-item-source="${item.source}">
-          <div class="mn-picker-name">${item.name}</div>
-          ${item.hint ? `<div class="mn-picker-hint">${item.hint}</div>` : ''}
+          data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}">
+          <div class="mn-picker-name">${_esc(item.name)}</div>
+          ${item.hint ? `<div class="mn-picker-hint">${_esc(item.hint)}</div>` : ''}
         </div>`).join('');
     }
 
@@ -295,9 +303,9 @@ const MenuRender = (() => {
       overlay.querySelector('#mn-picker-list').innerHTML = filtered.map(item => `
         <div class="mn-picker-item" data-action="pick-item"
           data-day="${dayId}" data-meal="${mealId}" data-slot="${slotId}"
-          data-item-id="${item.id}" data-item-name="${item.name}" data-item-source="${item.source}">
-          <div class="mn-picker-name">${item.name}</div>
-          ${item.hint ? `<div class="mn-picker-hint">${item.hint}</div>` : ''}
+          data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}">
+          <div class="mn-picker-name">${_esc(item.name)}</div>
+          ${item.hint ? `<div class="mn-picker-hint">${_esc(item.hint)}</div>` : ''}
         </div>`).join('') || '<div style="padding:16px;text-align:center;color:var(--label3);font-size:13px">Ничего не найдено</div>';
       _bindPickItems();
     });
@@ -504,15 +512,22 @@ const MenuRender = (() => {
   // если такой ещё нет (например, новая поездка со свежей пустой
   // Закупкой — см. modules/shopping/state.js) — создаёт её, подцепив
   // иконку из дефолтного шаблона, если название совпадает с одной из
-  // стандартных.
+  // стандартных. Мутирует cats/cat.items напрямую (не через addCategory/
+  // addItem) — те шлют свой localStorage-_save() на каждый вызов, а тут
+  // может понадобиться добавить сразу несколько категорий и позиций за
+  // один пуш; сохраняем локально одним ShoppingState.persist() в конце
+  // (см. _pushIngredientsToShopping).
   function _findOrCreateCat(cats, title) {
     let cat = cats.find(c => c.title === title);
     if (cat) return cat;
-    // addCategory уже добавляет категорию в тот же массив cats (это одна
-    // и та же ссылка на internal state) — самим ещё раз push делать не надо.
-    cat = ShoppingState.addCategory(_tripId, title);
     const def = (typeof ShoppingData !== 'undefined' ? ShoppingData.getDefaults() : []).find(d => d.title === title);
-    if (def && def.icon) cat.icon = def.icon;
+    cat = {
+      id: `cat_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      title,
+      icon: (def && def.icon) || 'ti-list',
+      items: [],
+    };
+    cats.push(cat);
     return cat;
   }
 
@@ -542,15 +557,25 @@ const MenuRender = (() => {
       const key = String(ing.name || '').trim().toLowerCase();
       if (!key || existingNames.has(key)) return;
 
-      const title = _categoryTitleFor(ing.name) || _FALLBACK_CATEGORY;
+      // Авторская category на ингредиенте (проставлена в Рецептах) в
+      // приоритете — угадывание по ключевым словам остаётся запасным
+      // вариантом только для того, что её не несёт (свои рецепты,
+      // добавленные без явной категории у каждого ингредиента).
+      const title = ing.category || _categoryTitleFor(ing.name) || _FALLBACK_CATEGORY;
       const cat = _findOrCreateCat(cats, title);
 
-      ShoppingState.addItem(_tripId, cat.id, ing.name, ing.qty || '');
+      cat.items.push({
+        id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+        name: ing.name, qty: ing.qty || '', bought: false,
+      });
       existingNames.add(key);
       added++;
     });
 
-    if (added) await ShoppingFirebase.save(_tripId, ShoppingState.getCategories(_tripId));
+    if (added) {
+      ShoppingState.persist();
+      await ShoppingFirebase.save(_tripId, cats);
+    }
 
     if (btn) {
       const orig = btn.innerHTML;

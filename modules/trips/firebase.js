@@ -36,6 +36,18 @@ const TripsFirebase = (() => {
       }
       delete trip.importDataJson;
     }
+    // Подстраховка от старого формата participants (массив строк-имён,
+    // до перехода на {name, uid} — см. commit "participants поездки —
+    // строки → {name, uid}"). Продовые документы уже мигрированы вручную,
+    // но ничего в коде не гарантирует, что строка больше никогда не
+    // всплывёт (восстановленный бэкап, старый клиент и т.п.) — единая
+    // точка входа для чтения поездок из Firestore нормализует форму,
+    // а не даёт каждому потребителю падать/портить данные по-своему.
+    if (Array.isArray(trip.participants)) {
+      trip.participants = trip.participants.map(p =>
+        (p && typeof p === 'object') ? p : { name: String(p), uid: null }
+      );
+    }
     return trip;
   }
 
