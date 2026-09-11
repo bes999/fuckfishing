@@ -1000,13 +1000,19 @@ const TripsIndex = (() => {
 
   async function _save() {
     const isExp = _draft.type === 'expedition';
+    const existing = _editMode && _editTripId ? TripsData.getById(_editTripId) : null;
 
-    // Реки для экспедиции — из importedData или пустые
+    // Реки для экспедиции — из importedData, если его загружали/меняли в
+    // этом сеансе редактирования; если нет — оставляем то, что уже было
+    // сохранено (существующие from JSON-импорта реки — НЕ строка
+    // "поменял название поездки и разом стёр весь список рек", которой
+    // был этот код раньше: importedData тут почти всегда null при
+    // редактировании чего-то помимо самого импорта, и пустой fallback
+    // тихо обнулял rivers на КАЖДОЕ сохранение формы).
     const rivers = isExp
-      ? (_importedData?.rivers?.map(r => ({ name: r.name, region: r.type || '' })) || [])
+      ? (_importedData?.rivers?.map(r => ({ name: r.name, region: r.type || '' })) || existing?.rivers || [])
       : _rivers;
 
-    const existing = _editMode && _editTripId ? TripsData.getById(_editTripId) : null;
     const ownerUid = _editMode ? (existing?.ownerId || null) : (window.APP?.user?.uid || null);
 
     // Каждый участник уже несёт свой uid (проставленный при выборе из
@@ -1029,11 +1035,21 @@ const TripsIndex = (() => {
       private:   !!_draft.private,
       inviteRestricted: !!_draft.inviteRestricted,
       status:    _tripStatus(_draft.startDate, _draft.endDate || _draft.startDate),
-      rating:    null,
+      // rating/conditions — заполняются ПОСЛЕ поездки (звёзды, погода),
+      // никак не через эту форму — при редактировании (name/даты/
+      // участники и т.п.) сохраняем то, что уже было, а не обнуляем
+      // задним числом уже отмеченный улов/впечатления. Свежие только у
+      // новой поездки, которой ещё нечего сохранять.
+      rating:    _editMode ? (existing?.rating ?? null) : null,
       fish:      [],
-      conditions: {},
+      conditions: _editMode ? (existing?.conditions || {}) : {},
+      // Чек-лист готовности — та же логика: обнулять его на каждое
+      // сохранение формы (было раньше) значит терять реально отмеченные
+      // "Снаряга/Меню/Закупка/Аптечка" при любой правке названия или
+      // участников. Свежий all-false только когда экспедиция создаётся
+      // впервые; существующий — сохраняется как есть.
       readiness: isExp
-        ? { gear:false, menu:false, shopping:false, medkit:false, tickets:false, route:false }
+        ? (existing?.readiness || { gear:false, menu:false, shopping:false, medkit:false, tickets:false, route:false })
         : null,
       // Данные маршрута от AI (только для экспедиций)
       importData: isExp && _importedData ? _importedData : null,
