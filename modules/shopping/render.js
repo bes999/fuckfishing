@@ -52,6 +52,9 @@ const ShoppingRender = (() => {
           <div class="sh-progress-fill" style="width:${stats.pct}%"></div>
         </div>
       </div>
+      <div class="sh-paste-row" id="sh-paste" data-action="paste-list">
+        <i class="ti ti-clipboard-list" aria-hidden="true"></i> вставить список текстом
+      </div>
       <div class="sh-cats">
         ${catsHtml}
         <div class="sh-add-cat" data-action="add-cat">
@@ -218,6 +221,10 @@ _bodyHandler = e => {
     _showAddCat();
     return;
   }
+  if (action === 'paste-list') {
+    _showPasteList();
+    return;
+  }
 };
 body.addEventListener('click', _bodyHandler, true);
   }
@@ -269,6 +276,82 @@ body.addEventListener('click', _bodyHandler, true);
         _openCats.add(catId);
         _rebuildCat(catId);
       });
+    });
+  }
+
+  // Вставка списка текстом — когда список продуктов уже накидан где-то в
+  // заметках/переписке и его надо целиком перенести в Закупку, а не
+  // разносить по категориям руками одну позицию за раз. Одна строка — одна
+  // позиция, опционально "Название — количество" (тот же формат, что и
+  // ингредиенты в форме рецепта — modules/recipes/render.js). Категория
+  // резолвится тем же RecipesData.resolveShoppingCategory, что и пуш
+  // ингредиентов рецепта из Меню — независимо от того, выбраны ли вообще
+  // какие-то блюда в Меню этой поездки. Дедуп по имени против ВСЕХ
+  // категорий, тот же паттерн, что у _pushIngredientsToShopping.
+  function _showPasteList() {
+    document.getElementById('sh-paste-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'sh-paste-overlay';
+    overlay.className = 'sh-overlay';
+    overlay.innerHTML = `
+      <div class="sh-sheet">
+        <div class="sh-sheet__handle"></div>
+        <div class="sh-sheet__head">
+          <span class="sh-sheet__title">Вставить список</span>
+          <button class="sh-sheet__close" id="sh-paste-close" aria-label="Закрыть"><i class="ti ti-x" aria-hidden="true"></i></button>
+        </div>
+        <div class="sh-sheet__body">
+          <p style="font-size:13px;color:var(--label3);margin:0 0 10px">По одной позиции на строке — категория подберётся сама. Через тире можно указать количество.</p>
+          <textarea class="sh-sheet__input sh-paste-textarea" id="sh-paste-text" placeholder="Лук — 2 кг&#10;Хлеб&#10;Тушёнка говяжья — 4 банки" autocomplete="off"></textarea>
+        </div>
+        <div class="sh-sheet__actions">
+          <button class="sh-sheet__btn-save" id="sh-paste-save">Добавить</button>
+        </div>
+      </div>`;
+
+    _el.appendChild(overlay);
+    overlay.querySelector('#sh-paste-text')?.focus();
+
+    overlay.querySelector('#sh-paste-close')?.addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    const saveBtn = overlay.querySelector('#sh-paste-save');
+    saveBtn?.addEventListener('click', async () => {
+      const lines = (overlay.querySelector('#sh-paste-text')?.value || '')
+        .split('\n').map(l => l.trim()).filter(Boolean);
+      if (!lines.length) return;
+
+      await UIUtils.withBusyButton(saveBtn, async () => {
+        const cats = ShoppingState.getCategories(_tripId);
+        const existingNames = new Set();
+        cats.forEach(c => c.items.forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
+
+        let added = 0;
+        lines.forEach(line => {
+          const parts = line.split(/\s+—\s+|\s+-\s+/);
+          const name = parts[0].trim();
+          const qty  = parts.length > 1 ? parts.slice(1).join(' ').trim() : '';
+          const key  = name.toLowerCase();
+          if (!key || existingNames.has(key)) return;
+
+          const title = RecipesData.resolveShoppingCategory(name);
+          const cat = ShoppingState.findOrCreateCategory(cats, title);
+          cat.items.push({
+            id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            name, qty, bought: false,
+          });
+          existingNames.add(key);
+          added++;
+        });
+
+        if (added) {
+          ShoppingState.persist();
+          await ShoppingFirebase.save(_tripId, cats);
+          _rebuildBody();
+        }
+      });
+      overlay.remove();
     });
   }
 

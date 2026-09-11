@@ -28,6 +28,7 @@ const AppHeader = (() => {
     { id: 'gear',             label: 'Снаряга',   icon: 'ti-backpack' },
     { id: 'medkit',           label: 'Аптечка',   icon: 'ti-first-aid-kit' },
     { id: 'medkit-reference', label: 'Справка',   icon: 'ti-list' },
+    { id: 'purchases',        label: 'Покупки',   icon: 'ti-basket' },
   ];
 
   const TRIP_ITEMS = [

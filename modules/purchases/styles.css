@@ -1,0 +1,33 @@
+/* Личный список покупок — вкладка "Покупки" в профиле (modules/members).
+   Строки переиспользуют .p-gear-item/.p-gear-add/.p-emerg-del/.p-sec-title
+   из modules/members/styles.css — тут только то, чего там нет. */
+
+/* Тот же чекбокс, что в modules/expenses/styles.css (.exp-checkbox) —
+   рисуется CSS-галочкой, не иконочным шрифтом: набор иконок в этом
+   проекте — куратированное подмножество (shared/tabler-icons.css), в
+   нём нет ti-square-rounded/ti-square-rounded-check. */
+.pur-check {
+  width: 22px; height: 22px; flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--label4);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.pur-check.checked {
+  background: var(--green);
+  border-color: var(--green);
+}
+.pur-check.checked::after {
+  content: '';
+  width: 6px; height: 10px;
+  border: 2px solid #fff;
+  border-top: none; border-left: none;
+  transform: rotate(45deg) translateY(-1px);
+  display: block;
+}
+
+.pur-name { flex: 1; min-width: 0; margin: 0 10px; }
+.pur-name--bought { color: var(--label3); text-decoration: line-through; }
+.pur-amount { font-size: 13px; color: var(--label3); font-weight: 600; flex-shrink: 0; }

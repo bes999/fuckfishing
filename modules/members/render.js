@@ -117,7 +117,7 @@ const MembersRender = (() => {
       </div>
       <div class="profile-scroll" style="overflow-y:auto;flex:1;padding-bottom:calc(83px + env(safe-area-inset-bottom))">
         ${_profileHeader(profile, isMe, isOrg)}
-        ${_subtabs()}
+        ${_subtabs(isMe)}
         <div id="profile-tab-content">
           ${_tabProfile(profile, isMe)}
         </div>
@@ -211,8 +211,12 @@ const MembersRender = (() => {
       </div>`;
   }
 
-  function _subtabs() {
+  function _subtabs(isMe) {
     const tabs = [{id:'profile',lbl:'Профиль'},{id:'gear',lbl:'Снаряга'},{id:'medkit',lbl:'Аптечка'},{id:'trips',lbl:'Поездки'}];
+    // "Покупки" — только у себя: список полностью приватный (см.
+    // firestore.rules personal_purchases), у чужого профиля его даже
+    // показывать нечего — Firestore всё равно откажет в чтении.
+    if (isMe) tabs.push({id:'purchases',lbl:'Покупки'});
     return `<div class="p-subtabs">
       ${tabs.map(t => `<button class="p-stab${_activeTab===t.id?' active':''}" data-action="profile-tab" data-tab="${t.id}">${t.lbl}</button>`).join('')}
     </div>`;
@@ -384,6 +388,7 @@ const MembersRender = (() => {
   }
 
   function switchTab(tab) {
+    const prevTab = _activeTab;
     _activeTab = tab;
     const pg = document.getElementById('p-members');
     if (!pg) return;
@@ -393,6 +398,11 @@ const MembersRender = (() => {
     // При уходе с вкладки аптечки — восстанавливаем оригинальный #p-medkit
     const hidden = document.getElementById('p-medkit-hidden');
     if (hidden) hidden.id = 'p-medkit';
+
+    // При уходе с "Покупки" — снимаем подписку на Firestore, иначе она
+    // продолжает висеть даже после того, как контейнер #pur-list уже удалён
+    // следующим рендером.
+    if (prevTab === 'purchases' && typeof PurchasesRender !== 'undefined') PurchasesRender.destroy();
 
     pg.querySelectorAll('.p-stab').forEach(b => {
       b.classList.toggle('active', b.dataset.tab === tab);
@@ -409,6 +419,11 @@ const MembersRender = (() => {
       content.innerHTML = '<div id="gear-tab-container"></div>';
       if (typeof GearModule !== 'undefined') {
         GearModule.init(d.profile.uid, d.isMe, document.getElementById('gear-tab-container'));
+      }
+    } else if (tab === 'purchases') {
+      content.innerHTML = '<div id="pur-tab-container"></div>';
+      if (typeof PurchasesRender !== 'undefined') {
+        PurchasesRender.init(d.profile.uid, document.getElementById('pur-tab-container'));
       }
     } else if (tab === 'medkit') {
       // Рендерим inline — шапка профиля остаётся, меняется только контент
