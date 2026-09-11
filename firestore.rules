@@ -118,6 +118,28 @@ service cloud.firestore {
       allow delete: if isMember() && resource.data.createdBy == request.auth.uid;
     }
 
+    // Бывший встроенный каталог рецептов (modules/recipes/data.js) —
+    // теперь тоже в Firestore, редактируется прямо в приложении любым
+    // участником (не только автором, тут нет понятия "автор" — это общая
+    // книга рецептов, не чей-то личный список). См. RecipesFirebase.
+    match /recipes_catalog/{id} {
+      allow read, write: if isMember();
+    }
+
+    // Каталог ингредиентов — общий справочник "что покупаем" для
+    // автодополнения в форме рецепта и резолва категории при пуше в
+    // Закупку (см. modules/recipes/firebase.js).
+    match /ingredients/{id} {
+      allow read, write: if isMember();
+    }
+
+    // Порядок/видимость вкладок-категорий книги рецептов — один общий
+    // документ (recipes_meta/categories), тот же паттерн, что и остальные
+    // общие настройки рецептов выше.
+    match /recipes_meta/{id} {
+      allow read, write: if isMember();
+    }
+
     // Личные списки снаряги под конкретную поездку — видны всем участникам
     // (как расходы/улов), но создавать/менять/удалять может только владелец.
     match /gear_trip_snapshots/{id} {
@@ -132,6 +154,15 @@ service cloud.firestore {
     // персональный.
     match /gear_trip_shared/{tripId} {
       allow read, write: if isMember();
+    }
+
+    // Личный список покупок на поездку — в отличие от gear_trip_snapshots
+    // выше, НЕ виден остальным участникам вообще (не "личное, но видно
+    // всем", а по-настоящему приватное — свои носки/энергетики/новый
+    // спиннинг никого не касаются). uid прямо в пути, а не в поле
+    // документа — так isMember() тут даже не нужен, только владелец.
+    match /personal_purchases/{uid}/trips/{tripId} {
+      allow read, write: if isSignedIn() && request.auth.uid == uid;
     }
 
     match /{document=**} { allow read, write: if false; }

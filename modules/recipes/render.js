@@ -3,19 +3,22 @@
 const RecipesRender = (() => {
 
   let _el = null;
-  let _activeCat = 'fish';
+  let _activeCat = RecipesData.getCategories()[0].id;
   let _openCards = new Set();
-  let _activePack = 'all';
+  let _activeTag = 'all';
+  let _activeQuery = '';
 
-  // Тот же набор, что и в пикере блюда для Меню (modules/menu/render.js) —
-  // без этого фильтра книга рецептов всегда показывала прибрежные/личные
-  // рецепты на любой поездке, независимо от того, что скрыто в пикере.
-  const _PACKS = [
-    ['all',      'Всё'],
-    ['base',     'База'],
-    ['coastal',  'Побережье'],
-    ['personal', 'Моё'],
-  ];
+  // Список тегов направлений открытый и растёт сам — берём то, что реально
+  // проставлено на рецептах (встроенных + своих), а не гадаем заранее фиксированный
+  // набор мест. Тот же список используется в пикере блюда для Меню
+  // (modules/menu/render.js), чтобы книга рецептов и Меню фильтровали одинаково.
+  function _allTags() {
+    const set = new Set(RecipesData.getAllDestinations());
+    if (typeof RecipesState !== 'undefined') {
+      RecipesData.getCategories().forEach(c => RecipesState.getCustomRecipes(c.id).forEach(r => (r.destinations || []).forEach(t => set.add(t))));
+    }
+    return [...set].sort();
+  }
 
   function render(el) {
     _el = el;
@@ -23,16 +26,34 @@ const RecipesRender = (() => {
     el.innerHTML = `
       <div class="rec-wrap">
         ${_topbar()}
-        ${_packFilter()}
+        ${_searchBox()}
+        ${_tagFilter()}
         ${_tabs()}
         <div class="rec-cards" id="rec-cards">${_cards()}</div>
       </div>`;
     _bindEvents();
   }
 
-  function _packFilter() {
-    return `<div class="rec-packs" id="rec-packs">${_PACKS.map(([id, label]) => `
-      <button class="rec-pack ${id === _activePack ? 'active' : ''}" data-pack="${id}">${label}</button>`).join('')}</div>`;
+  function _searchBox() {
+    // Обёртка на всю ширину, тот же bg2-паттерн, что у .rec-tags/.rec-tabs
+    // ниже — без неё поле поиска смотрелось отдельной плавающей коробкой,
+    // не совпадающей по краям с рядами под ней.
+    return `<div class="rec-search-row">
+      <input class="rec-search" id="rec-search" type="text" placeholder="Поиск по рецептам..." value="${_esc(_activeQuery)}">
+    </div>`;
+  }
+
+  function _tagPillsHtml() {
+    const tags = _allTags();
+    if (!tags.length) return '';
+    const pills = ['Всё', ...tags];
+    return pills.map(t => `
+      <button class="rec-tag ${(t === 'Всё' ? 'all' : t) === _activeTag ? 'active' : ''}" data-tag="${_esc(t === 'Всё' ? 'all' : t)}">${_esc(t)}</button>`).join('');
+  }
+
+  function _tagFilter() {
+    const html = _tagPillsHtml();
+    return html ? `<div class="rec-tags" id="rec-tags">${html}</div>` : '';
   }
 
   function _topbar() {
@@ -59,26 +80,192 @@ const RecipesRender = (() => {
       <button class="rec-tab ${c.id === _activeCat ? 'active' : ''}" data-cat="${c.id}">
         ${c.label}
       </button>`).join('');
-    return `<div class="rec-tabs" role="tablist">${tabs}</div>`;
+    return `<div class="rec-tabs" role="tablist">${tabs}<button class="rec-tab-settings" id="rec-tab-settings" aria-label="Настроить вкладки"><i class="ti ti-dots" aria-hidden="true"></i></button></div>`;
+  }
+
+  // ── Настройка вкладок-категорий — какие показаны и в каком порядке.
+  // Тот же паттерн (чекбокс + стрелки), что и у вкладок Гида поездки
+  // (modules/tripcover/index.js:_showGuideTabsSettings), но общий на всю
+  // книгу рецептов, а не per-trip — сохраняется в recipes_meta/categories.
+  function _showCategorySettings() {
+    document.getElementById('rcs-overlay')?.remove();
+
+    const defs = RecipesData.getCategoryDefs();
+    const saved = RecipesState.getCategoryOrder() || [];
+    const validSaved = saved.filter(id => defs.some(d => d.id === id));
+    const visible = validSaved.length ? validSaved : defs.map(d => d.id);
+    const hiddenIds = defs.map(d => d.id).filter(id => !visible.includes(id));
+    let order = [...visible, ...hiddenIds];
+    const checked = new Set(visible);
+
+    function renderRows() {
+      return order.map((id, i) => {
+        const def = defs.find(d => d.id === id);
+        return `
+        <div class="tqp-row rcs-row">
+          <input type="checkbox" class="rcs-check" data-rcs-check="${id}" ${checked.has(id) ? 'checked' : ''}>
+          <span class="rcs-label">${_esc(def ? def.label : id)}</span>
+          <div class="rcs-arrows">
+            <button class="rcs-arrow" data-rcs-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button class="rcs-arrow" data-rcs-down="${id}" ${i === order.length - 1 ? 'disabled' : ''}>↓</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'rcs-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Вкладки рецептов</div>
+        <div class="tqp-list" id="rcs-list">${renderRows()}</div>
+        <button class="rcs-save" data-action="rcs-save">Сохранить</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    const rerenderList = () => {
+      const listEl = document.getElementById('rcs-list');
+      if (listEl) listEl.innerHTML = renderRows();
+    };
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const upId = e.target.closest('[data-rcs-up]')?.dataset.rcsUp;
+      if (upId) {
+        const i = order.indexOf(upId);
+        if (i > 0) { [order[i - 1], order[i]] = [order[i], order[i - 1]]; rerenderList(); }
+        return;
+      }
+      const downId = e.target.closest('[data-rcs-down]')?.dataset.rcsDown;
+      if (downId) {
+        const i = order.indexOf(downId);
+        if (i < order.length - 1) { [order[i + 1], order[i]] = [order[i], order[i + 1]]; rerenderList(); }
+        return;
+      }
+      if (e.target.closest('[data-action="rcs-save"]')) {
+        // Сохраняем только видимые id по порядку — тот же паттерн, что и
+        // trip.guideTabs: скрытая категория не запоминает свою позицию,
+        // при повторном включении просто уходит в конец списка.
+        RecipesFirebase.saveCategoryOrder(order.filter(id => checked.has(id)));
+        overlay.remove();
+        if (_el) {
+          if (!RecipesData.getCategories().some(c => c.id === _activeCat)) {
+            _activeCat = RecipesData.getCategories()[0]?.id;
+          }
+          render(_el);
+        }
+      }
+    });
+
+    overlay.addEventListener('change', e => {
+      const id = e.target.dataset.rcsCheck;
+      if (!id) return;
+      if (!e.target.checked && checked.size === 1 && checked.has(id)) {
+        e.target.checked = true;
+        return;
+      }
+      if (e.target.checked) checked.add(id); else checked.delete(id);
+    });
   }
 
   function _cards() {
+    // Универсальный рецепт (пустой destinations) актуален при любом выбранном
+    // направлении — фильтр сужает "что ещё, кроме базы", а не заменяет её.
+    const matchesTag = r => _activeTag === 'all' || !(r.destinations || []).length || r.destinations.includes(_activeTag);
+
+    // С поиском — ищем по названию/описанию сразу по всем категориям (а не
+    // только в открытой вкладке), как и поиск в пикере блюда для Меню
+    // (modules/menu/render.js) — иначе пришлось бы вручную перебирать
+    // вкладки, чтобы найти рецепт, если не помнишь, в какой он категории.
+    const query = _activeQuery.trim().toLowerCase();
+    if (query) {
+      const matchesQuery = r => r.name.toLowerCase().includes(query) || (r.sub || '').toLowerCase().includes(query);
+      const cats = RecipesData.getCategories();
+      const builtIn = cats.flatMap(c => c.cocktails).filter(matchesTag).filter(matchesQuery);
+      const custom  = cats.flatMap(c => RecipesState.getCustomRecipes(c.id)).filter(matchesTag).filter(matchesQuery);
+      if (!builtIn.length && !custom.length) {
+        return '<div style="padding:32px 16px;text-align:center;color:var(--label3);font-size:13px">Ничего не найдено</div>';
+      }
+      return builtIn.map(r => _card(r, false)).join('') + custom.map(r => _card(r, true)).join('');
+    }
+
     const cat = RecipesData.getCategories().find(c => c.id === _activeCat);
-    const matchesPack = r => _activePack === 'all' || (r.pack || 'base') === _activePack;
-    const builtIn = (cat ? cat.cocktails : []).filter(matchesPack);
-    const custom  = RecipesState.getCustomRecipes(_activeCat).filter(matchesPack);
+    const builtIn = (cat ? cat.cocktails : []).filter(matchesTag);
+    const custom  = RecipesState.getCustomRecipes(_activeCat).filter(matchesTag);
     if (!builtIn.length && !custom.length) {
       return '<div style="padding:32px 16px;text-align:center;color:var(--label3);font-size:13px">Ничего в этом наборе</div>';
     }
-    return builtIn.map(r => _card(r)).join('') + custom.map(r => _card(r)).join('');
+
+    // Стрелки "переставить" показываем только на полном, нефильтрованном
+    // по тегу списке категории — если сузить по направлению, часть позиций
+    // между видимыми скрыта, и "вверх/вниз" перестало бы значить то же
+    // самое, что настоящий порядок в категории.
+    if (_activeTag !== 'all') {
+      return builtIn.map(r => _card(r, false)).join('') + custom.map(r => _card(r, true)).join('');
+    }
+    const merged = _orderedRecipesForCat(_activeCat);
+    return merged.map((entry, i) => _card(entry.r, entry.isCustom, {
+      catId: _activeCat, isFirst: i === 0, isLast: i === merged.length - 1,
+    })).join('');
   }
 
-  function _card(r) {
+  // Built-in + свои рецепты категории вместе, отсортированные по полю
+  // order (отсутствует = 0 — стабильная сортировка сохраняет исходный
+  // порядок, пока никто ничего не переставлял). Общий helper для _cards()
+  // (рисует стрелки) и _moveRecipe() (сама логика перестановки).
+  function _orderedRecipesForCat(catId) {
+    const cat = RecipesData.getCategories().find(c => c.id === catId);
+    const builtIn = (cat ? cat.cocktails : []).map(r => ({ r, isCustom: false }));
+    const custom  = RecipesState.getCustomRecipes(catId).map(r => ({ r, isCustom: true }));
+    return [...builtIn, ...custom].sort((a, b) => (a.r.order ?? 0) - (b.r.order ?? 0));
+  }
+
+  // Переставляет рецепт на одну позицию вверх/вниз внутри категории.
+  // Нормализует order ВСЕХ рецептов категории на 0..N-1 по текущему
+  // отображаемому порядку перед свапом — без этого первая же перестановка
+  // между двумя рецептами без order (оба 0 после ??0) была бы no-op.
+  // Дальше меняются местами только order двух затронутых записей.
+  async function _moveRecipe(catId, recipeId, isCustom, dir) {
+    const list = _orderedRecipesForCat(catId);
+    const i = list.findIndex(e => e.r.id === recipeId && e.isCustom === isCustom);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return;
+
+    const writes = [];
+    list.forEach((entry, idx) => {
+      if (entry.r.order !== idx) writes.push({ id: entry.r.id, isCustom: entry.isCustom, order: idx });
+    });
+    // Свап после нормализации — оба участника теперь гарантированно i/j.
+    const a = writes.find(w => w.id === list[i].r.id && w.isCustom === list[i].isCustom) || { id: list[i].r.id, isCustom: list[i].isCustom, order: i };
+    const b = writes.find(w => w.id === list[j].r.id && w.isCustom === list[j].isCustom) || { id: list[j].r.id, isCustom: list[j].isCustom, order: j };
+    a.order = j; b.order = i;
+    if (!writes.includes(a)) writes.push(a);
+    if (!writes.includes(b)) writes.push(b);
+
+    await Promise.all(writes.map(w =>
+      w.isCustom ? RecipesFirebase.updateRecipe(w.id, { order: w.order }) : RecipesFirebase.updateCatalogRecipe(w.id, { order: w.order })
+    ));
+    if (_el) {
+      const cardsEl = _el.querySelector('#rec-cards');
+      if (cardsEl) { cardsEl.innerHTML = _cards(); _bindCardEvents(); }
+    }
+  }
+
+  function _card(r, isCustom, reorder) {
     const avg = RecipesState.getAvgRating(r.id);
     const isOpen = _openCards.has(r.id);
+    const moveBtns = reorder ? `
+          <div class="rec-move">
+            <button class="rec-move-btn" data-move-up="${r.id}" data-move-custom="${isCustom ? '1' : ''}" data-move-cat="${reorder.catId}" ${reorder.isFirst ? 'disabled' : ''} aria-label="Выше">↑</button>
+            <button class="rec-move-btn" data-move-down="${r.id}" data-move-custom="${isCustom ? '1' : ''}" data-move-cat="${reorder.catId}" ${reorder.isLast ? 'disabled' : ''} aria-label="Ниже">↓</button>
+          </div>` : '';
     return `
       <div class="rec-card ${isOpen ? 'open' : ''}" data-id="${r.id}">
         <div class="rec-card__head">
+          ${moveBtns}
           <div class="rec-card__info">
             <div class="rec-card__name">${_esc(r.name)}</div>
             ${r.sub ? `<div class="rec-card__sub">${_esc(r.sub)}</div>` : ''}
@@ -95,11 +282,11 @@ const RecipesRender = (() => {
             </svg>
           </div>
         </div>
-        ${isOpen ? _cardBody(r) : ''}
+        ${isOpen ? _cardBody(r, isCustom) : ''}
       </div>`;
   }
 
-  function _cardBody(r) {
+  function _cardBody(r, isCustom) {
     const uid      = window.APP?.profile?.uid || 'anon';
     const name     = window.APP?.profile?.displayName || 'Я';
     const initials = name.charAt(0).toUpperCase();
@@ -137,18 +324,22 @@ const RecipesRender = (() => {
       </div>`).join('');
 
     const myUid = window.APP?.user?.uid;
-    const deleteBtn = r.createdBy && r.createdBy === myUid
+    const deleteBtn = isCustom && r.createdBy && r.createdBy === myUid
       ? `<button class="rec-del-btn" data-action="del-recipe" data-id="${r.id}">
            <i class="ti ti-trash" aria-hidden="true"></i> Удалить рецепт
          </button>`
       : '';
+    const editBtn = `
+      <button class="rec-edit-btn" data-action="edit-recipe" data-id="${r.id}" data-custom="${isCustom ? '1' : ''}">
+        <i class="ti ti-pencil" aria-hidden="true"></i> Редактировать
+      </button>`;
 
     return `
       <div class="rec-card__body">
         ${ingredients}
         <div class="rec-method">${_esc(r.method)}</div>
         ${serveWith}
-        ${deleteBtn}
+        <div class="rec-edit-row">${editBtn}${deleteBtn}</div>
         <div class="rec-rate-row">
           <span class="rec-rate-label">Оценить:</span>
           <div class="rec-stars" role="group" aria-label="Оценка рецепта">${stars}</div>
@@ -181,12 +372,12 @@ const RecipesRender = (() => {
         _bindCardEvents();
       });
     });
-    _el.querySelector('#rec-packs')?.addEventListener('click', e => {
-      const btn = e.target.closest('.rec-pack');
+    _el.querySelector('#rec-tags')?.addEventListener('click', e => {
+      const btn = e.target.closest('.rec-tag');
       if (!btn) return;
-      _el.querySelector('.rec-pack.active')?.classList.remove('active');
+      _el.querySelector('.rec-tag.active')?.classList.remove('active');
       btn.classList.add('active');
-      _activePack = btn.dataset.pack;
+      _activeTag = btn.dataset.tag;
       _openCards.clear();
       _el.querySelector('#rec-cards').innerHTML = _cards();
       _bindCardEvents();
@@ -194,18 +385,48 @@ const RecipesRender = (() => {
     _el.querySelector('#rec-back')?.addEventListener('click', () => {
       if (typeof RecipesIndex !== 'undefined') RecipesIndex.close();
     });
-    _el.querySelector('#rec-add')?.addEventListener('click', showAddForm);
+    _el.querySelector('#rec-add')?.addEventListener('click', () => _showRecipeForm(null, true));
+    _el.querySelector('#rec-tab-settings')?.addEventListener('click', _showCategorySettings);
+    _el.querySelector('#rec-search')?.addEventListener('input', e => {
+      _activeQuery = e.target.value;
+      _openCards.clear();
+      _el.querySelector('#rec-cards').innerHTML = _cards();
+      _bindCardEvents();
+    });
     _bindCardEvents();
   }
 
-  // ── Добавить свой рецепт ────────────────────────────────────────────
-  function showAddForm() {
+  // ── Добавить/отредактировать рецепт ─────────────────────────────────
+  // Одна форма на оба случая: existing=null — новый свой рецепт (isCustom
+  // всегда true для новых — в каталог напрямую не пишем, только через
+  // миграцию); existing — редактирование, isCustom определяет, в какую
+  // коллекцию сохранять (recipes_custom или recipes_catalog).
+  function _ingRowHtml(ing) {
+    return `
+      <div class="rec-ing-row-edit">
+        <input class="rec-add-input rec-ing-name-input" type="text" list="rec-ing-datalist"
+          placeholder="Название" value="${_esc(ing?.name || '')}">
+        <input class="rec-add-input rec-ing-qty-input" type="text"
+          placeholder="Кол-во" value="${_esc(ing?.qty || '')}">
+        <button class="rec-ing-row-remove" data-action="rm-ing" aria-label="Удалить ингредиент">
+          <i class="ti ti-x" aria-hidden="true"></i>
+        </button>
+      </div>`;
+  }
+
+  function _ingDatalistHtml() {
+    const names = [...new Set(RecipesState.getIngredients().map(i => i.name))].sort();
+    return `<datalist id="rec-ing-datalist">${names.map(n => `<option value="${_esc(n)}">`).join('')}</datalist>`;
+  }
+
+  function _showRecipeForm(existing, isCustom) {
     document.getElementById('rec-add-overlay')?.remove();
 
     const cats = RecipesData.getCategories();
     const catOptions = cats.map(c =>
-      `<option value="${c.id}" ${c.id === _activeCat ? 'selected' : ''}>${_esc(c.label)}</option>`
+      `<option value="${c.id}" ${c.id === (existing?.category || _activeCat) ? 'selected' : ''}>${_esc(c.label)}</option>`
     ).join('');
+    const ingredients = (existing?.ingredients?.length ? existing.ingredients : [null]);
 
     const overlay = document.createElement('div');
     overlay.className = 'rec-add-overlay';
@@ -214,7 +435,7 @@ const RecipesRender = (() => {
       <div class="rec-add-sheet">
         <div class="rec-add-handle"></div>
         <div class="rec-add-scroll">
-          <div class="rec-add-title">Новый рецепт</div>
+          <div class="rec-add-title">${existing ? 'Редактировать рецепт' : 'Новый рецепт'}</div>
 
           <div class="rec-add-row-2">
             <div>
@@ -222,40 +443,39 @@ const RecipesRender = (() => {
               <select class="rec-add-input" id="rec-add-cat">${catOptions}</select>
             </div>
             <div>
-              <div class="rec-add-label">Набор</div>
-              <select class="rec-add-input" id="rec-add-pack">
-                <option value="base" selected>База</option>
-                <option value="coastal">Побережье</option>
-                <option value="personal">Моё</option>
-              </select>
+              <div class="rec-add-label">Направление (необязательно)</div>
+              <input class="rec-add-input" id="rec-add-dest" type="text" placeholder="Сахалин, Кольский"
+                value="${_esc((existing?.destinations || []).join(', '))}">
             </div>
           </div>
 
           <div class="rec-add-label">Название</div>
-          <input class="rec-add-input" id="rec-add-name" type="text" placeholder="Малосольная рыба">
+          <input class="rec-add-input" id="rec-add-name" type="text" placeholder="Малосольная рыба" value="${_esc(existing?.name || '')}">
 
           <div class="rec-add-row-2">
             <div>
               <div class="rec-add-label">Коротко (необязательно)</div>
-              <input class="rec-add-input" id="rec-add-sub" type="text" placeholder="8-12 ч без огня">
+              <input class="rec-add-input" id="rec-add-sub" type="text" placeholder="8-12 ч без огня" value="${_esc(existing?.sub || '')}">
             </div>
             <div>
               <div class="rec-add-label">Время</div>
-              <input class="rec-add-input" id="rec-add-time" type="text" placeholder="15 мин актив.">
+              <input class="rec-add-input" id="rec-add-time" type="text" placeholder="15 мин актив." value="${_esc(existing?.time || '')}">
             </div>
           </div>
 
-          <div class="rec-add-label">Ингредиенты — по одному на строке, через тире количество (необязательно)</div>
-          <textarea class="rec-add-textarea" id="rec-add-ing" placeholder="Филе — 800 г&#10;Соль крупная — 2 ст.л.&#10;Перец + укроп"></textarea>
+          <div class="rec-add-label">Ингредиенты — название начинает подсказывать уже существующие, чтобы не плодить дубли</div>
+          <div id="rec-ing-rows">${ingredients.map(_ingRowHtml).join('')}</div>
+          ${_ingDatalistHtml()}
+          <button class="rec-ing-add-row" id="rec-ing-add" type="button">+ добавить ингредиент</button>
 
           <div class="rec-add-label">Способ приготовления</div>
-          <textarea class="rec-add-textarea" id="rec-add-method" placeholder="Не мыть — обсушить. Натереть смесью..."></textarea>
+          <textarea class="rec-add-textarea" id="rec-add-method" placeholder="Не мыть — обсушить. Натереть смесью...">${_esc(existing?.method || '')}</textarea>
 
           <div class="rec-add-label">Подать с (необязательно)</div>
-          <input class="rec-add-input" id="rec-add-serve" type="text" placeholder="Джин-тоник">
+          <input class="rec-add-input" id="rec-add-serve" type="text" placeholder="Джин-тоник" value="${_esc(existing?.serveWith || '')}">
         </div>
         <div class="rec-add-actions">
-          <button class="rec-add-save" id="rec-add-save">Добавить</button>
+          <button class="rec-add-save" id="rec-add-save">${existing ? 'Сохранить' : 'Добавить'}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -265,31 +485,69 @@ const RecipesRender = (() => {
       if (e.target === overlay) overlay.remove();
     });
 
+    const rowsEl = overlay.querySelector('#rec-ing-rows');
+    rowsEl.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="rm-ing"]');
+      if (!btn) return;
+      if (rowsEl.children.length > 1) btn.closest('.rec-ing-row-edit').remove();
+      else btn.closest('.rec-ing-row-edit').querySelectorAll('input').forEach(i => i.value = '');
+    });
+    overlay.querySelector('#rec-ing-add').addEventListener('click', () => {
+      rowsEl.insertAdjacentHTML('beforeend', _ingRowHtml(null));
+    });
+
     overlay.querySelector('#rec-add-save').addEventListener('click', async e => {
       const name = overlay.querySelector('#rec-add-name').value.trim();
       if (!name) { overlay.querySelector('#rec-add-name').focus(); return; }
 
-      const ingLines = overlay.querySelector('#rec-add-ing').value.split('\n').map(l => l.trim()).filter(Boolean);
-      const ingredients = ingLines.map(line => {
-        const parts = line.split(/\s+—\s+|\s+-\s+/);
-        return parts.length > 1
-          ? { name: parts[0].trim(), qty: parts.slice(1).join(' ').trim() }
-          : { name: line, qty: '' };
+      const ingredients = [...rowsEl.querySelectorAll('.rec-ing-row-edit')]
+        .map(row => ({
+          name: row.querySelector('.rec-ing-name-input').value.trim(),
+          qty: row.querySelector('.rec-ing-qty-input').value.trim(),
+        }))
+        .filter(ing => ing.name);
+
+      // Ингредиенты, которых ещё нет в каталоге (автодополнение выше их не
+      // предлагало, значит это новое имя) — заводим в общий каталог сразу
+      // при сохранении рецепта, а не отдельным шагом: иначе "добавить
+      // ингредиент в каталог" стало бы ещё одной формой, которую надо
+      // помнить открыть отдельно.
+      for (const ing of ingredients) {
+        if (!RecipesState.getIngredientByName(ing.name)) {
+          try {
+            const newId = await RecipesFirebase.addIngredient({ name: ing.name, category: null });
+            RecipesState.setIngredients([...RecipesState.getIngredients(), { id: newId, name: ing.name, category: null }]);
+          } catch (_) {}
+        }
+      }
+      const withCategory = ingredients.map(ing => {
+        const catalogIng = RecipesState.getIngredientByName(ing.name);
+        return Object.assign({}, ing, { category: (catalogIng && catalogIng.category) || null });
       });
 
       const recipe = {
         category: overlay.querySelector('#rec-add-cat').value,
-        pack: overlay.querySelector('#rec-add-pack').value || 'base',
+        // Нормализуем регистр целиком (не только первую букву) — иначе
+        // "сахалин" и "САХАЛИН" из разных рецептов становятся двумя разными
+        // тегами вместо одного (см. _allTags/_matchesTag — сравнение точное).
+        destinations: UIUtils.splitNames(overlay.querySelector('#rec-add-dest').value).map(t =>
+          t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()),
         name,
         sub: overlay.querySelector('#rec-add-sub').value.trim(),
         time: overlay.querySelector('#rec-add-time').value.trim(),
-        ingredients,
+        ingredients: withCategory,
         method: overlay.querySelector('#rec-add-method').value.trim(),
         serveWith: overlay.querySelector('#rec-add-serve').value.trim() || null,
       };
 
       await UIUtils.withBusyButton(e.currentTarget, async () => {
-        await RecipesFirebase.addRecipe(recipe);
+        if (!existing) {
+          await RecipesFirebase.addRecipe(recipe);
+        } else if (isCustom) {
+          await RecipesFirebase.updateRecipe(existing.id, recipe);
+        } else {
+          await RecipesFirebase.updateCatalogRecipe(existing.id, recipe);
+        }
       });
       overlay.remove();
     });
@@ -297,8 +555,20 @@ const RecipesRender = (() => {
 
   function _bindCardEvents() {
     if (!_el) return;
+    _el.querySelectorAll('.rec-move-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        if (btn.disabled) return;
+        const catId = btn.dataset.moveCat;
+        const isCustom = btn.dataset.moveCustom === '1';
+        const id = btn.dataset.moveUp || btn.dataset.moveDown;
+        const dir = btn.dataset.moveUp ? -1 : 1;
+        _moveRecipe(catId, id, isCustom, dir);
+      });
+    });
     _el.querySelectorAll('.rec-card__head').forEach(head => {
-      head.addEventListener('click', () => {
+      head.addEventListener('click', e => {
+        if (e.target.closest('.rec-move')) return;
         const card = head.closest('.rec-card');
         const id = card.dataset.id;
         if (_openCards.has(id)) {
@@ -308,8 +578,9 @@ const RecipesRender = (() => {
         } else {
           _openCards.add(id);
           card.classList.add('open');
-          const r = RecipesData.getRecipeById(id) || RecipesState.getCustomRecipeById(id);
-          if (r) card.insertAdjacentHTML('beforeend', _cardBody(r));
+          const catalogR = RecipesData.getRecipeById(id);
+          const r = catalogR || RecipesState.getCustomRecipeById(id);
+          if (r) card.insertAdjacentHTML('beforeend', _cardBody(r, !catalogR));
           _bindBodyEvents(card);
         }
       });
@@ -368,6 +639,14 @@ const RecipesRender = (() => {
       await RecipesFirebase.deleteRecipe(id);
       _openCards.delete(id);
     });
+
+    const editBtn = card.querySelector('[data-action="edit-recipe"]');
+    editBtn?.addEventListener('click', e => {
+      e.stopPropagation();
+      const isCustom = editBtn.dataset.custom === '1';
+      const r = isCustom ? RecipesState.getCustomRecipeById(id) : RecipesData.getRecipeById(id);
+      if (r) _showRecipeForm(r, isCustom);
+    });
   }
 
   function _appendComment(card, comment) {
@@ -409,6 +688,14 @@ const RecipesRender = (() => {
       const card = active.closest('.rec-card');
       if (card) pending = { id: card.dataset.id, value: active.value, start: active.selectionStart, end: active.selectionEnd };
     }
+    // Список тегов направлений тоже может измениться удалённо (кто-то
+    // добавил/отредактировал рецепт с новым тегом, пока этот экран открыт
+    // у другого участника) — контейнер #rec-tags уже висит на делегированном
+    // обработчике клика (см. _bindEvents), поэтому достаточно перерисовать
+    // только содержимое, разметку и обработчик трогать не нужно.
+    const tagsEl = _el.querySelector('#rec-tags');
+    if (tagsEl) tagsEl.innerHTML = _tagPillsHtml();
+
     _el.querySelector('#rec-cards').innerHTML = _cards();
     _bindCardEvents();
     if (pending) {

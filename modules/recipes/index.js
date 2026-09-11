@@ -13,12 +13,13 @@ const RecipesIndex = (() => {
     }
     RecipesRender.render(_el);
     RecipesFirebase.subscribe(() => RecipesRender.refresh());
-    RecipesFirebase.subscribeCustom(() => RecipesRender.refresh());
+    // Каталог/свои рецепты подписаны глобально в index.html (Меню читает
+    // их синхронно независимо от того, был ли открыт этот экран) — здесь
+    // только рейтинги/комментарии, привязанные к жизни именно этого экрана.
   }
 
   function close() {
     RecipesFirebase.unsubscribe();
-    RecipesFirebase.unsubscribeCustom();
     if (typeof onNavigate === 'function') onNavigate('home');
   }
 

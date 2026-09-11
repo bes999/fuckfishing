@@ -16,6 +16,7 @@
   <!-- Module styles -->
   <link rel="stylesheet" href="modules/auth/styles.css">
   <link rel="stylesheet" href="modules/members/styles.css">
+  <link rel="stylesheet" href="modules/purchases/styles.css">
   <link rel="stylesheet" href="modules/medkit/styles.css">
   <link rel="stylesheet" href="modules/safety/styles.css">
   <link rel="stylesheet" href="modules/gear/styles.css">
@@ -93,6 +94,9 @@
   <script src="modules/members/firebase.js"></script>
   <script src="modules/members/render.js"></script>
   <script src="modules/members/index.js"></script>
+
+  <script src="modules/purchases/firebase.js"></script>
+  <script src="modules/purchases/render.js"></script>
 
   <!-- ── Medkit module ── -->
   <script src="modules/medkit/data.js"></script>
@@ -246,6 +250,15 @@
         if (uid && typeof MembersRender !== 'undefined') {
           MembersRender.showProfile(uid, uid);
         }
+      } else if (pageId === 'purchases') {
+        // Личные покупки — вкладка внутри своего же профиля (см.
+        // modules/purchases/render.js), поэтому открываем профиль и сразу
+        // переключаем таб, а не отдельный экран.
+        AppRouter.show('members');
+        const uid = window.APP?.profile?.uid;
+        if (uid && typeof MembersRender !== 'undefined') {
+          MembersRender.showProfile(uid, uid).then(() => MembersRender.switchTab('purchases'));
+        }
       } else if (pageId === 'members') {
         // Список участников поездки — отдельно от "мой профиль"
         AppRouter.show('members');
@@ -328,12 +341,43 @@
         });
       }
 
+      // Каталог рецептов и ингредиентов — раньше это был статический массив
+      // в modules/recipes/data.js, теперь живёт в Firestore (редактируется
+      // прямо в приложении), а Меню читает RecipesData.getCategories()
+      // синхронно при открытии пикера блюда — независимо от того,
+      // заходили ли вообще в сам экран Рецептов. Поэтому подписка глобальная,
+      // а не внутри RecipesIndex.show(). ВАЖНО: подписки стартуют только
+      // ПОСЛЕ migrateSeedData() — если запустить их раньше (как было
+      // сначала), on Snapshot успевает сработать на ещё пустой коллекции и
+      // catalogReady() резолвится (это promise, срабатывающий один раз)
+      // раньше, чем миграция дописала данные; последующий реальный снапшот
+      // уже никто не ждёт. Здесь такой гонки нет — к моменту первой
+      // подписки данные (если их не было) уже гарантированно записаны.
+      const _recipesReady = (typeof RecipesFirebase !== 'undefined')
+        ? RecipesFirebase.migrateSeedData().catch(() => {}).then(() => {
+            RecipesFirebase.subscribeCatalog(() => {
+              if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
+            });
+            RecipesFirebase.subscribeIngredients(() => {});
+            RecipesFirebase.subscribeCustom(() => {
+              if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
+            });
+            // Порядок/видимость вкладок-категорий — не блокирует старт
+            // приложения (getCategories() и без неё безопасно откатывается
+            // на дефолтный порядок), просто держим кэш свежим.
+            RecipesFirebase.subscribeCategoryOrder(() => {
+              if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
+            });
+            return RecipesFirebase.catalogReady();
+          })
+        : Promise.resolve();
+
       // Ждём первый снапшот (обычно почти мгновенно — офлайн-персистентность
       // включена в shared/config.js), затем один раз мигрируем локальные
       // поездки, которых ещё нет в Firestore, и только после этого
       // инициализируем страницы — так сохраняется прежняя гарантия "к
       // моменту первого рендера данные уже есть".
-      TripsFirebase.ready()
+      Promise.all([TripsFirebase.ready(), _recipesReady])
         .then(() => TripsData.migrateFromLocalStorage())
         .then(() => TripsData.backfillOwnerId())
         .catch(() => {})

@@ -193,17 +193,16 @@ const MenuRender = (() => {
       </div>`;
   }
 
-  // Наборы рецептов — не наука, а способ не смешивать в одной куче
-  // универсальные техники, то, что имеет смысл только на морском
-  // побережье (устрицы/краб/мидии — не поймать на Оби), и личные
-  // привычки конкретного человека (см. RecipesData — поле pack у
-  // рецепта, дефолт 'base' у всего, что его не проставляет явно).
-  const _PACKS = [
-    ['all',      'Всё'],
-    ['base',     'База'],
-    ['coastal',  'Побережье'],
-    ['personal', 'Моё'],
-  ];
+  // Теги направлений открытые и растут сами вместе с рецептами (см.
+  // RecipesData.getAllDestinations) — вместо фиксированного набора мест,
+  // угаданного заранее, список фильтра берётся из того, что реально
+  // проставлено на items данного слота. Пустой destinations у рецепта =
+  // универсальный, подходит при любом выбранном направлении.
+  function _allTags(sections) {
+    const set = new Set();
+    sections.forEach(s => s.items.forEach(i => (i.destinations || []).forEach(t => set.add(t))));
+    return [...set].sort();
+  }
 
   // ── Picker overlay (с табами по категориям) ────────────────────────────
   function _showPicker(dayId, mealId, slotId, slotType) {
@@ -211,13 +210,18 @@ const MenuRender = (() => {
 
     const sections     = MenuData.getItemsForSlot(slotType);
     const slotTypeMeta = MenuData.getSlotType(slotType);
+    const tags         = _allTags(sections);
     let activeSec      = 0;
-    let activePack      = 'all';
+    let activeTag      = 'all';
+
+    function _matchesTag(i) {
+      return activeTag === 'all' || !(i.destinations || []).length || i.destinations.includes(activeTag);
+    }
 
     function _itemsOf(secIdx) {
       const sec = sections[secIdx];
       if (!sec) return [];
-      return activePack === 'all' ? sec.items : sec.items.filter(i => (i.pack || 'base') === activePack);
+      return sec.items.filter(_matchesTag);
     }
 
     function _buildList(secIdx) {
@@ -232,9 +236,11 @@ const MenuRender = (() => {
         </div>`).join('');
     }
 
-    function _buildPackFilter() {
-      return _PACKS.map(([id, label]) => `
-        <button class="mn-picker-pack ${id === activePack ? 'active' : ''}" data-pack="${id}">${label}</button>`).join('');
+    function _buildTagFilter() {
+      if (!tags.length) return '';
+      const pills = ['Всё', ...tags];
+      return pills.map(t => `
+        <button class="mn-picker-tag ${(t === 'Всё' ? 'all' : t) === activeTag ? 'active' : ''}" data-tag="${_esc(t === 'Всё' ? 'all' : t)}">${_esc(t)}</button>`).join('');
     }
 
     function _buildTabs() {
@@ -255,7 +261,7 @@ const MenuRender = (() => {
             <i class="ti ti-x" aria-hidden="true"></i>
           </button>
         </div>
-        <div class="mn-picker-packs" id="mn-picker-packs">${_buildPackFilter()}</div>
+        <div class="mn-picker-tags" id="mn-picker-tags">${_buildTagFilter()}</div>
         ${sections.length > 1 ? `<div class="mn-picker-tabs" id="mn-picker-tabs">${_buildTabs()}</div>` : ''}
         <input class="mn-picker-search" id="mn-picker-search" type="text" placeholder="Поиск...">
         <div class="mn-picker-list" id="mn-picker-list">${_buildList(activeSec)}</div>
@@ -278,18 +284,18 @@ const MenuRender = (() => {
       _bindPickItems();
     });
 
-    // Набор (Всё/База/Побережье/Моё)
-    overlay.querySelector('#mn-picker-packs')?.addEventListener('click', e => {
-      const btn = e.target.closest('.mn-picker-pack');
+    // Направление (Всё/Сахалин/Кольский/...)
+    overlay.querySelector('#mn-picker-tags')?.addEventListener('click', e => {
+      const btn = e.target.closest('.mn-picker-tag');
       if (!btn) return;
-      activePack = btn.dataset.pack;
-      overlay.querySelectorAll('.mn-picker-pack').forEach(b => b.classList.toggle('active', b.dataset.pack === activePack));
+      activeTag = btn.dataset.tag;
+      overlay.querySelectorAll('.mn-picker-tag').forEach(b => b.classList.toggle('active', b.dataset.tag === activeTag));
       overlay.querySelector('#mn-picker-search').value = '';
       overlay.querySelector('#mn-picker-list').innerHTML = _buildList(activeSec);
       _bindPickItems();
     });
 
-    // Поиск — ищет по всем секциям (в пределах текущего набора)
+    // Поиск — ищет по всем секциям (в пределах текущего направления)
     overlay.querySelector('#mn-picker-search')?.addEventListener('input', e => {
       const q = e.target.value.toLowerCase().trim();
       if (!q) {
@@ -298,7 +304,7 @@ const MenuRender = (() => {
         return;
       }
       // Поиск по всем секциям
-      const allItems = sections.flatMap(s => s.items).filter(i => activePack === 'all' || (i.pack || 'base') === activePack);
+      const allItems = sections.flatMap(s => s.items).filter(_matchesTag);
       const filtered = allItems.filter(item => item.name.toLowerCase().includes(q));
       overlay.querySelector('#mn-picker-list').innerHTML = filtered.map(item => `
         <div class="mn-picker-item" data-action="pick-item"
@@ -481,59 +487,12 @@ const MenuRender = (() => {
     return (recipe && recipe.ingredients && recipe.ingredients.length) ? recipe.ingredients : [];
   }
 
-  // Грубое сопоставление ингредиента с категорией Закупки по ключевым
-  // словам в названии — ключ здесь ТИТУЛ категории (не id: у только что
-  // созданной по требованию категории id случайный, а название — тот же
-  // самый текст, что и в дефолтном шаблоне ShoppingData, так что по нему
-  // и находим/создаём стабильно). Что не угадали — падает в уже
-  // существующую "Маркетплейсы" (категория для всякой всячины), без
-  // отдельного нового "запасного кармана".
-  const _CATEGORY_KEYWORDS = [
-    ['Овощи и фрукты',    ['банан', 'лимон', 'лайм', 'апельсин', 'яблок', 'картоф', 'лук', 'чеснок', 'огурц', 'помидор', 'капуст', 'свёкл', 'свекл', 'зелен', 'укроп', 'мят', 'имбир']],
-    ['Мясо и консервы',   ['тушёнк', 'тушенк', 'буженин', 'колбас', 'сосиск', 'сало', 'краб', 'гребеш', 'мидии', 'морской еж', 'морской ёж', 'устриц', 'филе', 'рыба', 'стейк']],
-    ['Молочное и яйца',   ['яйца', 'яйцо', 'желтк', 'сыр', 'масло сливочн', 'сливки', 'сгущ']],
-    ['Крупы и паста',     ['гречк', 'рис', 'овсянк', 'спагетти', 'феттучини', 'паста', 'лапш', 'хлеб', 'сухари', 'сочн', 'тесто']],
-    ['Соусы и специи',    ['соль', 'перец', 'масло раст', 'соевый соус', 'уксус', 'лавров', 'мёд', 'мед', 'сахар', 'паприка', 'тмин', 'каперс', 'васаби', 'томатная паста']],
-    ['Перекусы и сладкое',['орех', 'сухофрукт', 'шоколад', 'печенье', 'зефир', 'халв']],
-    ['Напитки',           ['кофе', 'чай', 'сок', 'вода', 'тоник', 'содов']],
-    ['Бар',               ['джин', 'виски', 'бурбон', 'ром', 'водка', 'вермут', 'кампари', 'просекко', 'ликёр', 'ликер', 'апероль', 'биттер']],
-  ];
-  const _FALLBACK_CATEGORY = 'Маркетплейсы';
-
-  function _categoryTitleFor(ingredientName) {
-    const key = String(ingredientName || '').trim().toLowerCase();
-    for (const [title, words] of _CATEGORY_KEYWORDS) {
-      if (words.some(w => key.includes(w))) return title;
-    }
-    return null;
-  }
-
-  // Находит категорию по названию среди уже существующих в поездке, а
-  // если такой ещё нет (например, новая поездка со свежей пустой
-  // Закупкой — см. modules/shopping/state.js) — создаёт её, подцепив
-  // иконку из дефолтного шаблона, если название совпадает с одной из
-  // стандартных. Мутирует cats/cat.items напрямую (не через addCategory/
-  // addItem) — те шлют свой localStorage-_save() на каждый вызов, а тут
-  // может понадобиться добавить сразу несколько категорий и позиций за
-  // один пуш; сохраняем локально одним ShoppingState.persist() в конце
-  // (см. _pushIngredientsToShopping).
-  function _findOrCreateCat(cats, title) {
-    let cat = cats.find(c => c.title === title);
-    if (cat) return cat;
-    const def = (typeof ShoppingData !== 'undefined' ? ShoppingData.getDefaults() : []).find(d => d.title === title);
-    cat = {
-      id: `cat_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-      title,
-      icon: (def && def.icon) || 'ti-list',
-      items: [],
-    };
-    cats.push(cat);
-    return cat;
-  }
-
-  // Закидывает ингредиенты блюда в Закупку этой же поездки — каждый
-  // пытаемся определить в подходящую категорию по ключевым словам
-  // (банан → "Овощи и фрукты" и т.д.), что не опознали — в "Маркетплейсы".
+  // Закидывает ингредиенты блюда в Закупку этой же поездки — категория
+  // резолвится через RecipesData.resolveShoppingCategory (каталог
+  // ингредиентов → authored category на самом ингредиенте → угадывание по
+  // ключевым словам → "Разное"), тот же резолвер использует и вставка
+  // списка текстом в самой Закупке (см. modules/shopping/render.js:
+  // _showPasteList) — одна логика на оба входа в закупку.
   // Дедуп по имени (без учёта регистра) против ВСЕХ категорий, не только
   // целевой, чтобы не плодить то, что уже кто-то вписал руками. Полный
   // overwrite categories — тот же паттерн, что и у остальных мутаций в
@@ -557,12 +516,8 @@ const MenuRender = (() => {
       const key = String(ing.name || '').trim().toLowerCase();
       if (!key || existingNames.has(key)) return;
 
-      // Авторская category на ингредиенте (проставлена в Рецептах) в
-      // приоритете — угадывание по ключевым словам остаётся запасным
-      // вариантом только для того, что её не несёт (свои рецепты,
-      // добавленные без явной категории у каждого ингредиента).
-      const title = ing.category || _categoryTitleFor(ing.name) || _FALLBACK_CATEGORY;
-      const cat = _findOrCreateCat(cats, title);
+      const title = RecipesData.resolveShoppingCategory(ing.name, ing.category);
+      const cat = ShoppingState.findOrCreateCategory(cats, title);
 
       cat.items.push({
         id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,

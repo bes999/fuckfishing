@@ -310,12 +310,15 @@
 
 .mn-add-slot i { font-size: 13px; }
 
-/* Picker overlay */
+/* Picker overlay — 1100, а не 100: .bottomnav фиксирован с z-index 1000
+   (см. shared/nav.css), с более низким z-index шит рисуется под ним и
+   нижняя часть списка (и сам скролл) становится недоступной. Тот же баг
+   уже правили в modules/auth/styles.css — держим одно и то же число. */
 .mn-picker-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.5);
-  z-index: 100;
+  z-index: 1100;
   display: flex;
   align-items: flex-end;
 }
@@ -373,13 +376,13 @@
 .mn-picker-search::placeholder { color: var(--label3); }
 
 /* Picker tabs */
-.mn-picker-packs {
+.mn-picker-tags {
   display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
   padding: 10px 12px 0;
   flex-shrink: 0;
 }
-.mn-picker-packs::-webkit-scrollbar { display: none; }
-.mn-picker-pack {
+.mn-picker-tags::-webkit-scrollbar { display: none; }
+.mn-picker-tag {
   flex-shrink: 0;
   padding: 5px 12px;
   font-size: 12px; font-weight: 500;
@@ -389,7 +392,7 @@
   border: none; border-radius: 20px;
   cursor: pointer; white-space: nowrap;
 }
-.mn-picker-pack.active {
+.mn-picker-tag.active {
   color: #fff;
   background: var(--accent);
 }

@@ -29,6 +29,22 @@
   flex-shrink: 0;
 }
 
+.sh-paste-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px;
+  margin: 10px 0;
+  background: var(--bg2);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .sh-back:active { opacity: 0.6; }
 .sh-topbar__text { flex: 1; }
 .sh-topbar__title { color: #fff; font-size: 17px; font-weight: 500; }
@@ -229,12 +245,13 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Sheet overlay */
+/* Sheet overlay — 1100, не 100: .bottomnav фиксирован с z-index 1000
+   (shared/nav.css), иначе шит рисуется под нижней навигацией. */
 .sh-overlay {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.5);
-  z-index: 100;
+  z-index: 1100;
   display: flex;
   align-items: flex-end;
 }
@@ -304,6 +321,7 @@
 .sh-sheet__input::placeholder { color: var(--label3); }
 .sh-sheet__num  { width: 80px; flex-shrink: 0; text-align: center; }
 .sh-sheet__unit { flex: 1; cursor: pointer; }
+.sh-paste-textarea { width: 100%; min-height: 140px; resize: vertical; box-sizing: border-box; }
 
 .sh-sheet__actions {
   padding: 4px 16px 0;

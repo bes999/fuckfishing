@@ -107,6 +107,27 @@ const ShoppingState = (() => {
     return cat;
   }
 
+  // Находит категорию по названию среди уже переданного массива cats, а
+  // если такой ещё нет — создаёт (иконка из дефолтного шаблона, если
+  // название совпадает со стандартным). Мутирует cats напрямую, не
+  // сохраняет сама — рассчитана на батч из нескольких позиций за один пуш
+  // (см. modules/menu/render.js:_pushIngredientsToShopping и
+  // modules/shopping/render.js:_showPasteList), после которого вызывающий
+  // код сам разово зовёт persist()+ShoppingFirebase.save().
+  function findOrCreateCategory(cats, title) {
+    let cat = cats.find(c => c.title === title);
+    if (cat) return cat;
+    const def = (typeof ShoppingData !== 'undefined' ? ShoppingData.getDefaults() : []).find(d => d.title === title);
+    cat = {
+      id: `cat_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      title,
+      icon: (def && def.icon) || 'ti-list',
+      items: [],
+    };
+    cats.push(cat);
+    return cat;
+  }
+
   function getStats(tripId) {
     const cats = getCategories(tripId);
     let total = 0, bought = 0;
@@ -114,5 +135,5 @@ const ShoppingState = (() => {
     return { total, bought, pct: total ? Math.round(bought / total * 100) : 0 };
   }
 
-  return { load, getCategories, setFromFirebase, toggleBought, updateQty, addItem, removeItem, addCategory, getStats, persist };
+  return { load, getCategories, setFromFirebase, toggleBought, updateQty, addItem, removeItem, addCategory, findOrCreateCategory, getStats, persist };
 })();

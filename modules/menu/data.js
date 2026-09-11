@@ -6,7 +6,7 @@ const MenuData = (() => {
   const SLOT_TYPES = [
     { id: 'main',    label: 'Основное', icon: 'ti-flame',   color: 'green' },
     { id: 'side',    label: 'Гарнир',   icon: 'ti-bowl',    color: 'blue'  },
-    { id: 'protein', label: 'Белок',    icon: 'ti-meat',    color: 'red'   },
+    { id: 'protein', label: 'Мясо/рыба', icon: 'ti-meat',   color: 'red'   },
     { id: 'snack',   label: 'Закуска',  icon: 'ti-salad',   color: 'blue'  },
     { id: 'drink',   label: 'Напиток',  icon: 'ti-droplet', color: 'orange'},
     { id: 'dessert', label: 'Десерт',   icon: 'ti-candy',   color: 'orange'},
@@ -91,10 +91,10 @@ const MenuData = (() => {
   function _recipeItemsForCat(catId) {
     const items = [];
     const cat = RecipesData.getCategories().find(c => c.id === catId);
-    if (cat) items.push(...cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes', pack: r.pack || 'base' })));
+    if (cat) items.push(...cat.cocktails.map(r => ({ id: r.id, name: r.name, hint: r.sub, source: 'recipes', destinations: r.destinations || [] })));
     if (typeof RecipesState !== 'undefined') {
       RecipesState.getCustomRecipes(catId).forEach(r => {
-        items.push({ id: r.id, name: r.name, hint: r.sub, source: 'recipes_custom', pack: r.pack || 'base' });
+        items.push({ id: r.id, name: r.name, hint: r.sub, source: 'recipes_custom', destinations: r.destinations || [] });
       });
     }
     return items;
@@ -111,7 +111,7 @@ const MenuData = (() => {
           result.push({
             section: `Бар · ${cat.label}`,
             items: cat.cocktails.map(c => ({
-              id: c.id, name: c.name, hint: c.sub, source: 'bar', pack: 'base'
+              id: c.id, name: c.name, hint: c.sub, source: 'bar', destinations: []
             }))
           });
         });
@@ -126,8 +126,8 @@ const MenuData = (() => {
 
     if (slotType === 'protein') {
       result.push({
-        section: 'Белок',
-        items: PROTEINS.map(p => ({ id: p.id, name: p.name, hint: p.hint, source: 'proteins', pack: 'base' }))
+        section: 'Мясо/рыба',
+        items: PROTEINS.map(p => ({ id: p.id, name: p.name, hint: p.hint, source: 'proteins', destinations: [] }))
       });
       return result;
     }
@@ -160,7 +160,7 @@ const MenuData = (() => {
 
     // main — все блюда кроме гарниров, напитков, десертов
     if (typeof RecipesData !== 'undefined') {
-      const mainCats = ['fish', 'delicacies', 'breakfast', 'soups', 'main'];
+      const mainCats = ['breakfast', 'soups', 'main', 'fish', 'delicacies'];
       mainCats.forEach(catId => {
         const cat = RecipesData.getCategories().find(c => c.id === catId);
         const items = _recipeItemsForCat(catId);

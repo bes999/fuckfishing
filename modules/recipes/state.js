@@ -28,6 +28,34 @@ const RecipesState = (() => {
   function getCustomRecipes(catId) { return _custom.filter(r => r.category === catId); }
   function getCustomRecipeById(id) { return _custom.find(r => r.id === id) || null; }
 
+  // --- Каталог рецептов (бывший встроенный data.js, теперь в Firestore —
+  // см. RecipesFirebase.subscribeCatalog/migrateSeedData) — доки пишутся
+  // со своим исходным id (fish_salted и т.д.), поэтому doc.id это и есть
+  // recipe.id, ничего нормализовать не нужно, в отличие от _custom выше. ---
+  let _catalog = [];
+  function setCatalogRecipes(arr) { _catalog = arr || []; }
+  function getCatalogRecipes(catId) { return _catalog.filter(r => r.category === catId); }
+  function getCatalogRecipeById(id) { return _catalog.find(r => r.id === id) || null; }
+
+  // --- Каталог ингредиентов — единый список "что вообще покупаем", на
+  // который ссылаются форма редактирования рецепта (автодополнение) и пуш
+  // ингредиентов в Закупку (резолв категории по имени вместо угадывания
+  // по ключевым словам). Доки с авто-id, ключ поиска — имя. ---
+  let _ingredients = [];
+  function setIngredients(arr) { _ingredients = arr || []; }
+  function getIngredients() { return _ingredients; }
+  function getIngredientByName(name) {
+    const key = String(name || '').trim().toLowerCase();
+    return _ingredients.find(i => i.name.toLowerCase() === key) || null;
+  }
+
+  // --- Порядок/видимость вкладок-категорий — тот же паттерн, что
+  // trip.guideTabs у вкладок Гида: пусто/не загружено = показываем все
+  // категории в исходном порядке (см. RecipesData.getCategories). ---
+  let _categoryOrder = null;
+  function setCategoryOrder(order) { _categoryOrder = order || []; }
+  function getCategoryOrder() { return _categoryOrder; }
+
   function get(id) { return _reviews[id] || { ratings: {}, comments: [] }; }
 
   function getAvgRating(id) {
@@ -57,5 +85,8 @@ const RecipesState = (() => {
   return {
     load, setReviews, get, getAvgRating, getUserRating, getComments, setRating, pushComment,
     setCustomRecipes, getCustomRecipes, getCustomRecipeById,
+    setCatalogRecipes, getCatalogRecipes, getCatalogRecipeById,
+    setIngredients, getIngredients, getIngredientByName,
+    setCategoryOrder, getCategoryOrder,
   };
 })();

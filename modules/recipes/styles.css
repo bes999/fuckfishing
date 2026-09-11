@@ -46,13 +46,33 @@
   margin-top: 2px;
 }
 
-.rec-packs {
+.rec-search-row {
+  background: var(--bg2);
+  padding: 10px 12px 8px;
+}
+.rec-search {
+  display: block;
+  background: var(--bg3);
+  border: 0.5px solid var(--sep);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--label);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+}
+.rec-search::placeholder { color: var(--label3); }
+
+.rec-tags {
   display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
   background: var(--bg2);
   padding: 10px 12px 8px;
 }
-.rec-packs::-webkit-scrollbar { display: none; }
-.rec-pack {
+.rec-tags::-webkit-scrollbar { display: none; }
+.rec-tag {
   flex-shrink: 0;
   padding: 5px 12px;
   font-size: 12px; font-weight: 500;
@@ -62,7 +82,7 @@
   border: none; border-radius: 20px;
   cursor: pointer; white-space: nowrap;
 }
-.rec-pack.active {
+.rec-tag.active {
   color: #fff;
   background: var(--accent);
 }
@@ -100,6 +120,53 @@
   border-bottom-color: var(--accent);
 }
 
+.rec-tab-settings {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  margin: 5px 0 5px 4px;
+  border-radius: 50%;
+  border: none;
+  background: var(--bg3);
+  color: var(--label3);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-tab-settings:active { opacity: 0.7; }
+
+/* Настройка вкладок-категорий (⚙-шит) — те же .tqp-* для обёртки/шита
+   (modules/tripcover/styles.css, уже реально загруженная таблица стилей,
+   а не инлайновая на время открытого Гида), но свой набор строк/чекбоксов/
+   стрелок — не полагаемся на .gts-*, они инлайновые в modules/tripcover/
+   index.js и не гарантированно присутствуют, когда Рецепты открыты не
+   через вкладки поездки. */
+.rcs-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; }
+.rcs-check { width: 20px; height: 20px; flex-shrink: 0; accent-color: var(--accent); }
+.rcs-label { flex: 1; font-size: 15px; color: var(--label); }
+.rcs-arrows { display: flex; gap: 4px; flex-shrink: 0; }
+.rcs-arrow {
+  width: 30px; height: 30px;
+  border-radius: 8px;
+  border: none;
+  background: var(--bg3);
+  color: var(--label2);
+  font-size: 14px;
+  cursor: pointer;
+}
+.rcs-arrow:disabled { opacity: 0.3; cursor: default; }
+.rcs-save {
+  width: 100%;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 13px;
+  font-size: 15px; font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  margin-top: 12px;
+}
+
 .rec-cards {
   padding: 10px 12px calc(83px + env(safe-area-inset-bottom));
   display: flex;
@@ -122,6 +189,20 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+
+.rec-move { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
+.rec-move-btn {
+  width: 24px; height: 20px;
+  border-radius: 6px;
+  border: none;
+  background: var(--bg3);
+  color: var(--label3);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-move-btn:disabled { opacity: 0.3; cursor: default; }
 
 .rec-card__head:active { opacity: 0.7; }
 
@@ -355,23 +436,28 @@
 }
 .rec-add-btn:active { opacity: 0.7; }
 
-.rec-del-btn {
+.rec-edit-row {
+  display: flex; gap: 16px;
+}
+.rec-edit-btn, .rec-del-btn {
   display: flex; align-items: center; gap: 6px;
-  width: 100%;
   background: none; border: none;
-  color: var(--red);
   font-size: 13px; font-weight: 600;
   padding: 10px 0;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.rec-del-btn:active { opacity: 0.6; }
+.rec-edit-btn { color: var(--accent); }
+.rec-del-btn { color: var(--red); }
+.rec-edit-btn:active, .rec-del-btn:active { opacity: 0.6; }
 
+/* 1100, не 400: .bottomnav фиксирован с z-index 1000 (shared/nav.css),
+   иначе шит рисуется под нижней навигацией. */
 .rec-add-overlay {
   position: fixed; inset: 0;
   background: rgba(0,0,0,0.5);
   display: flex; align-items: flex-end;
-  z-index: 400;
+  z-index: 1100;
   opacity: 0;
   transition: opacity var(--duration) var(--ease);
 }
@@ -412,6 +498,37 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+.rec-ing-row-edit {
+  display: grid;
+  grid-template-columns: 1.4fr 0.8fr auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.rec-ing-row-edit .rec-add-input { margin-bottom: 0; }
+.rec-ing-cat-hint {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--label3);
+  margin: -2px 0 6px 2px;
+}
+.rec-ing-row-remove {
+  width: 30px; height: 30px;
+  background: none; border: none;
+  color: var(--label3);
+  font-size: 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-ing-row-remove:active { opacity: 0.6; }
+.rec-ing-add-row {
+  background: none; border: none;
+  color: var(--accent);
+  font-size: 13px; font-weight: 600;
+  padding: 6px 0 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 .rec-add-actions { padding-top: 8px; }
 .rec-add-save {
