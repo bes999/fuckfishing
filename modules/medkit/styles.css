@@ -22,6 +22,22 @@
 }
 .tb-sync { font-size: 10px; opacity: 0.7; background: rgba(255,255,255,0.12); padding: 3px 8px; border-radius: 8px; }
 
+.mk-trip-select {
+  width: 100%;
+  background: var(--bg3);
+  border: 0.5px solid var(--sep);
+  border-radius: var(--radius-sm);
+  padding: 9px 12px;
+  color: var(--label);
+  font-size: 13px;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+}
+.mk-no-trip {
+  font-size: 13px; color: var(--label3); line-height: 1.4;
+  padding: 16px 4px;
+}
+
 .tabs { display: flex; gap: 5px; margin-bottom: 8px; }
 .tab {
   flex: 1; padding: 7px 4px; text-align: center;

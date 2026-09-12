@@ -127,6 +127,20 @@ function getMedkitProgress(mode, memberId) {
   };
 }
 
+// Сбрасывает всё в памяти к пустому состоянию — вызывается перед загрузкой
+// данных ДРУГОЙ поездки (см. modules/medkit/firebase.js:initFirebase), иначе
+// для поездки без ещё ни разу сохранённого документа applyMedkitPayload
+// просто не вызовется (doc.exists === false) и на экране на мгновение
+// останется аптечка предыдущей поездки, а не пустая.
+function resetMedkitPayload() {
+  medkitState.common = createEmptyMedkitState();
+  medkitState.personal = {};
+  MEDKIT_BASE = MEDKIT_BASE.filter(function(g) { return !g.custom; });
+  ['common', 'personal'].forEach(function(mode) {
+    MEDKIT_SLOTS[mode] = MEDKIT_SLOTS[mode].filter(function(s) { return !s.custom; });
+  });
+}
+
 function applyMedkitPayload(data) {
   data = data || {};
 
@@ -146,7 +160,8 @@ function applyMedkitPayload(data) {
 
   var personalFromServer = data.personal || {};
   var localRaw = null;
-  try { localRaw = JSON.parse(localStorage.getItem('medkit_next') || 'null'); } catch(e) {}
+  var localKey = (typeof _medkitLocalKey === 'function') ? _medkitLocalKey() : null;
+  try { if (localKey) localRaw = JSON.parse(localStorage.getItem(localKey) || 'null'); } catch(e) {}
 
   medkitState.personal = personalFromServer;
 

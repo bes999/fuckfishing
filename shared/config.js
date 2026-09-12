@@ -8,8 +8,6 @@ const FIREBASE_CONFIG = {
   appId:             "1:707438896052:web:4fb21f3821cc39a1c1c8e1"
 };
 
-const TRIP_ID = 'sakhalin2026';
-
 // Юзернейм Telegram-бота для привязки аккаунта (профиль → «Telegram-бот»).
 const TG_BOT_USERNAME = 'PlanFFbot';
 

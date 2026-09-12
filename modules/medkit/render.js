@@ -9,9 +9,43 @@ function escHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
+// Список поездок для свитчера — тот же источник и сортировка, что у
+// modules/purchases/render.js (свежие сверху по дате начала).
+function _medkitTrips() {
+  if (typeof TripsData === 'undefined') return [];
+  var uid = window.APP && window.APP.user && window.APP.user.uid;
+  return (TripsData.getMine ? TripsData.getMine(uid) : [])
+    .slice().sort(function(a, b) { return new Date(b.startDate) - new Date(a.startDate); });
+}
+
+function rMedkitTripSelect(trips) {
+  var options = trips.map(function(t) {
+    return '<option value="' + escHtml(t.id) + '"' + (t.id === medkitTripId ? ' selected' : '') + '>' + escHtml(t.name) + '</option>';
+  }).join('');
+  return '<select class="mk-trip-select" onchange="switchMedkitTrip(this.value)">' + options + '</select>';
+}
+
+function switchMedkitTrip(tripId) {
+  if (tripId === medkitTripId) return;
+  medkitTripId = tripId;
+  medkitMode = 'common';
+  medkitMemberId = '';
+  rMedkit();
+  initFirebase();
+}
+
 function rMedkit() {
   var el = document.getElementById('p-medkit');
   if (!el) return;
+
+  var trips = _medkitTrips();
+  if (!trips.length) {
+    el.innerHTML = '<div class="mk-no-trip">Нет поездок, к которым можно привязать аптечку — сначала создай поездку на вкладке «Планы».</div>';
+    return;
+  }
+  if (!medkitTripId || !trips.some(function(t) { return t.id === medkitTripId; })) {
+    medkitTripId = trips[0].id;
+  }
 
   var mode = medkitMode;
   var memberId = medkitMemberId;
@@ -23,6 +57,8 @@ function rMedkit() {
   var readOnly = mode === 'personal' && !_canEditMedkit(mode, memberId);
   el.classList.toggle('mk-readonly', readOnly);
   var h = '';
+
+  if (trips.length > 1) h += rMedkitTripSelect(trips);
 
   h += '<div class="topbar">';
   h += '<div class="tb-left"><div class="tb1">Аптечка</div>';

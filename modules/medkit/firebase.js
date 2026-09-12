@@ -1,8 +1,16 @@
 /* ===== FIREBASE ===== */
 
-
-var tripRef = db.collection('trips').doc(TRIP_ID);
-var medkitRef = tripRef.collection('modules').doc('medkit');
+// Раньше tripRef/medkitRef строились один раз при загрузке скрипта, от
+// захардкоженного TRIP_ID ('sakhalin2026') — Аптечка открывается из личного
+// гамбургера, а не как вкладка поездки, поэтому "какая поездка активна"
+// никогда и не пересчитывалось: все поездки читали и писали в один и тот же
+// документ Сахалина. medkitTripId (см. modules/medkit/index.js) теперь
+// выбирается пользователем (тот же паттерн, что и modules/purchases/
+// render.js), а medkitRef() всегда строит путь заново от него.
+function medkitRef() {
+  if (!medkitTripId) return null;
+  return db.collection('trips').doc(medkitTripId).collection('modules').doc('medkit');
+}
 
 // --- Сохранить аптечку ---
 function saveMedkit() {
@@ -11,17 +19,28 @@ function saveMedkit() {
 }
 
 // --- Локальное хранилище ---
+// Ключ включает tripId — иначе при переключении поездки успевал бы на
+// мгновение отрисоваться кэш ДРУГОЙ поездки, пока не пришёл настоящий
+// ответ Firestore для новой.
+function _medkitLocalKey() {
+  return medkitTripId ? 'medkit_next_' + medkitTripId : null;
+}
+
 function saveLocal() {
+  var key = _medkitLocalKey();
+  if (!key) return;
   try {
-    localStorage.setItem('medkit_next', JSON.stringify(buildMedkitPayload()));
+    localStorage.setItem(key, JSON.stringify(buildMedkitPayload()));
   } catch(e) {
     console.log('localStorage error:', e);
   }
 }
 
 function loadLocal() {
+  var key = _medkitLocalKey();
+  if (!key) return;
   try {
-    var raw = localStorage.getItem('medkit_next');
+    var raw = localStorage.getItem(key);
     if (raw) applyMedkitPayload(JSON.parse(raw));
   } catch(e) {
     console.log('localStorage load error:', e);
@@ -44,17 +63,19 @@ function loadLocal() {
 var _lastSavedUpdatedAt = null;
 
 function saveMedkitToFirebase() {
-  if (typeof medkitRef === 'undefined') return;
+  var ref = medkitRef();
+  if (!ref) return;
   var payload = buildMedkitPayload();
   _lastSavedUpdatedAt = payload.updatedAt;
-  medkitRef.set(payload, { merge: true })
+  ref.set(payload, { merge: true })
     .catch(function(e) { console.log('medkit save error:', e); });
 }
 
 // --- Firebase загрузка ---
 function loadMedkitFromFirebase() {
-  if (typeof medkitRef === 'undefined') return Promise.resolve();
-  return medkitRef.get()
+  var ref = medkitRef();
+  if (!ref) return Promise.resolve();
+  return ref.get()
     .then(function(doc) {
       if (doc.exists) {
         applyMedkitPayload(doc.data());
@@ -68,9 +89,16 @@ function loadMedkitFromFirebase() {
 }
 
 // --- Подписка на изменения ---
+// _unsubscribeMedkit — обязателен теперь, когда поездка может смениться:
+// без отписки от старого слушателя переключение на другую поездку оставляло
+// бы висеть слушатель предыдущей, и оба документа гонялись бы друг с другом
+// за тем, кто последний перерисует экран.
+var _unsubscribeMedkit = null;
+
 function subscribeMedkit() {
-  if (typeof medkitRef === 'undefined') return;
-  medkitRef.onSnapshot(function(doc) {
+  var ref = medkitRef();
+  if (!ref) return;
+  _unsubscribeMedkit = ref.onSnapshot(function(doc) {
     if (!doc.exists || doc.metadata.hasPendingWrites) return;
     var data = doc.data();
     if (_lastSavedUpdatedAt && data.updatedAt === _lastSavedUpdatedAt) return; // эхо своей же записи
@@ -81,8 +109,19 @@ function subscribeMedkit() {
   });
 }
 
-// --- Инициализация ---
+function unsubscribeMedkit() {
+  if (_unsubscribeMedkit) { _unsubscribeMedkit(); _unsubscribeMedkit = null; }
+}
+
+// --- Инициализация / переключение поездки ---
+// Общая точка входа что для первого открытия Аптечки, что для выбора другой
+// поездки в свитчере (modules/medkit/render.js) — оба случая одинаково
+// требуют: отписаться от прежнего документа, сбросить локальный кэш
+// применённых данных на "пусто", загрузить/подписаться заново.
 function initFirebase() {
+  unsubscribeMedkit();
+  _lastSavedUpdatedAt = null;
+  resetMedkitPayload();
   loadLocal();
   loadMedkitFromFirebase().then(function() {
     subscribeMedkit();
