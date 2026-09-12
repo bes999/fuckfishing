@@ -11,7 +11,7 @@ const MenuFirebase = (() => {
       _unsubscribe = db.collection(COLLECTION).doc(tripId)
         .onSnapshot(snap => {
           if (snap.exists && snap.data().days) {
-            MenuState.setFromFirebase(tripId, snap.data().days, snap.data().slotItems || {});
+            MenuState.setFromFirebase(tripId, snap.data().days, snap.data().slotItems || {}, snap.data().mealDuty || {});
             onUpdate();
           }
         }, () => {});
@@ -41,5 +41,15 @@ const MenuFirebase = (() => {
     } catch (_) {}
   }
 
-  return { subscribe, unsubscribe, saveDays, saveSlotItem };
+  // Дежурство на приём пищи — та же узкая map-запись, что slotItems выше,
+  // ключ day_meal (уникален в пределах поездки, оба id детерминированы:
+  // day.id = day_YYYY-MM-DD, meal.id — один из фиксированных 4).
+  async function saveMealDuty(tripId, dayId, mealId, duty) {
+    try {
+      const key = dayId + '_' + mealId;
+      await db.collection(COLLECTION).doc(tripId).set({ mealDuty: { [key]: duty } }, { merge: true });
+    } catch (_) {}
+  }
+
+  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty };
 })();

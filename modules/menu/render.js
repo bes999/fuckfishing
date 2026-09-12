@@ -139,6 +139,7 @@ const MenuRender = (() => {
     const mealData = day.meals[meal.id] || { slots: [] };
 
     const slots = mealData.slots.map(slot => _renderSlot(day.id, meal.id, slot, isEdit)).join('');
+    const hasFilled = mealData.slots.some(s => s.item);
 
     return `
       <div class="mn-meal ${isEdit ? 'edit-mode' : ''}" data-day="${day.id}" data-meal="${meal.id}">
@@ -156,6 +157,24 @@ const MenuRender = (() => {
           <div class="mn-add-slot" data-action="add-slot" data-day="${day.id}" data-meal="${meal.id}">
             <i class="ti ti-plus" aria-hidden="true"></i> добавить позицию
           </div>` : ''}
+        ${!isEdit && hasFilled ? _renderDutyRow(day.id, meal.id, mealData) : ''}
+      </div>`;
+  }
+
+  // Дежурство на весь приём пищи — показывается под слотами, только когда
+  // есть что готовить (хотя бы один заполненный слот) и не в режиме
+  // редактирования состава (там место занято кнопкой "добавить позицию",
+  // это разные действия над разными вещами).
+  function _renderDutyRow(dayId, mealId, mealData) {
+    const cookTxt    = mealData.cook    ? `Готовит <b>${_esc(mealData.cook)}</b>`    : 'Готовит — не назначено';
+    const cleanupTxt = mealData.cleanup ? `Уборка <b>${_esc(mealData.cleanup)}</b>` : 'Уборка — не назначено';
+    return `
+      <div class="mn-duty-row">
+        <div class="mn-duty-chip" data-action="edit-duty" data-day="${dayId}" data-meal="${mealId}">${cookTxt}</div>
+        <div class="mn-duty-chip" data-action="edit-duty" data-day="${dayId}" data-meal="${mealId}">${cleanupTxt}</div>
+        <button class="mn-cook-btn" data-action="cook-mode" data-day="${dayId}" data-meal="${mealId}">
+          <i class="ti ti-chef-hat" aria-hidden="true"></i> Готовка
+        </button>
       </div>`;
   }
 
@@ -171,12 +190,14 @@ const MenuRender = (() => {
       const cartBtn = !isEdit
         ? `<span class="mn-slot-cart" data-action="push-shopping" data-itemid="${_esc(slot.item.id)}" data-source="${_esc(slot.item.source||'')}" data-name="${_esc(slot.item.name)}" title="Добавить ингредиенты в закупку"><i class="ti ti-shopping-cart" aria-hidden="true"></i></span>`
         : '';
+      const leftoverTag = slot.item.leftover ? '<span class="mn-slot-leftover">Остатки</span>' : '';
       return `
         <div class="mn-slot">
           <span class="mn-slot-label">${label}</span>
           <div class="mn-slot-tag filled-${color} ${isEdit ? 'editable' : ''}"
             ${isEdit ? `data-action="edit-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}" data-type="${slot.type}"` : ''}>
             <span class="mn-slot-txt">${_esc(slot.item.name)}</span>
+            ${leftoverTag}
             ${isEdit ? `<span class="mn-slot-del" data-action="remove-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}">×</span>` : ''}
           </div>
           ${cartBtn}
@@ -208,7 +229,7 @@ const MenuRender = (() => {
   function _showPicker(dayId, mealId, slotId, slotType) {
     document.getElementById('mn-picker')?.remove();
 
-    const sections     = MenuData.getItemsForSlot(slotType);
+    const sections     = MenuData.getItemsForSlot(slotType, _days, dayId);
     const slotTypeMeta = MenuData.getSlotType(slotType);
     const tags         = _allTags(sections);
     let activeSec      = 0;
@@ -230,7 +251,8 @@ const MenuRender = (() => {
       return items.map(item => `
         <div class="mn-picker-item" data-action="pick-item"
           data-day="${dayId}" data-meal="${mealId}" data-slot="${slotId}"
-          data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}">
+          data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}"
+          data-item-leftover="${item.leftover ? '1' : ''}">
           <div class="mn-picker-name">${_esc(item.name)}</div>
           ${item.hint ? `<div class="mn-picker-hint">${_esc(item.hint)}</div>` : ''}
         </div>`).join('');
@@ -309,7 +331,8 @@ const MenuRender = (() => {
       overlay.querySelector('#mn-picker-list').innerHTML = filtered.map(item => `
         <div class="mn-picker-item" data-action="pick-item"
           data-day="${dayId}" data-meal="${mealId}" data-slot="${slotId}"
-          data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}">
+          data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}"
+          data-item-leftover="${item.leftover ? '1' : ''}">
           <div class="mn-picker-name">${_esc(item.name)}</div>
           ${item.hint ? `<div class="mn-picker-hint">${_esc(item.hint)}</div>` : ''}
         </div>`).join('') || '<div style="padding:16px;text-align:center;color:var(--label3);font-size:13px">Ничего не найдено</div>';
@@ -320,8 +343,12 @@ const MenuRender = (() => {
       overlay.querySelectorAll('[data-action="pick-item"]').forEach(el => {
         el.addEventListener('click', () => {
           UIUtils.withBusyButton(el, () => {
-            const { day, meal, slot, itemId, itemName, itemSource } = el.dataset;
+            const { day, meal, slot, itemId, itemName, itemSource, itemLeftover } = el.dataset;
             const item = { id: itemId, name: itemName, source: itemSource };
+            // Выбрали блюдо из секции "Остатки" — переносим флаг на новый
+            // слот, иначе завтрашние остатки исчезали бы из виду послезавтра
+            // даже если реально ещё остались (см. MenuData.getLeftoverItemsForSlot).
+            if (itemLeftover) item.leftover = true;
             // Точечная запись только этого слота, а не всего _syncFirebase() —
             // см. MenuFirebase.saveSlotItem про гонку при одновременном выборе.
             MenuState.updateSlot(_tripId, day, meal, slot, item);
@@ -389,6 +416,191 @@ const MenuRender = (() => {
     });
   }
 
+  // ── Дежурство: кто готовит / кто убирает за приём пищи ──────────────────
+  function _showDutyPicker(dayId, mealId) {
+    document.getElementById('mn-duty-overlay')?.remove();
+
+    const trip    = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const members = typeof TripsData !== 'undefined' ? TripsData.participantNames(trip) : [];
+    const day     = _days.find(d => d.id === dayId);
+    const meal    = day?.meals[mealId];
+    if (!meal) return;
+
+    const opts = extra => ['<option value="">— не назначено —</option>']
+      .concat(members.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`)).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mn-duty-overlay';
+    overlay.className = 'mn-picker-overlay';
+    overlay.innerHTML = `
+      <div class="mn-picker-sheet">
+        <div class="mn-picker-head">
+          <div class="mn-picker-title">Дежурство — ${_esc(day.label)}</div>
+          <button class="mn-picker-close" id="mn-duty-close" aria-label="Закрыть">
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="mn-duty-form">
+          <div class="mn-duty-field">
+            <div class="mn-duty-field-row">
+              <span class="mn-duty-field-lbl">Готовит</span>
+              <span class="mn-duty-auto" data-action="duty-auto" data-role="cook">авто</span>
+            </div>
+            <select class="mn-duty-select" id="mn-duty-cook">${opts()}</select>
+          </div>
+          <div class="mn-duty-field">
+            <div class="mn-duty-field-row">
+              <span class="mn-duty-field-lbl">Уборка</span>
+              <span class="mn-duty-auto" data-action="duty-auto" data-role="cleanup">авто</span>
+            </div>
+            <select class="mn-duty-select" id="mn-duty-cleanup">${opts()}</select>
+          </div>
+        </div>
+        <button class="mn-picker-save" id="mn-duty-save">Сохранить</button>
+      </div>`;
+
+    (_el || document.body).appendChild(overlay);
+
+    const cookSel = overlay.querySelector('#mn-duty-cook');
+    const cleanupSel = overlay.querySelector('#mn-duty-cleanup');
+    cookSel.value = meal.cook || '';
+    cleanupSel.value = meal.cleanup || '';
+
+    overlay.querySelector('#mn-duty-close').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+    // Авто-назначение — предлагает того из участников, кто реже всего был
+    // в этой роли за всю поездку (см. MenuState.getDutyCounts); при ничьей
+    // берёт первого по алфавиту, не по порядку в списке участников —
+    // детерминированно, а не "кто первый в массиве".
+    overlay.querySelectorAll('[data-action="duty-auto"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const role = btn.dataset.role;
+        const counts = MenuState.getDutyCounts(_tripId)[role] || {};
+        const sorted = members.slice().sort((a, b) => {
+          const diff = (counts[a] || 0) - (counts[b] || 0);
+          return diff !== 0 ? diff : a.localeCompare(b, 'ru');
+        });
+        if (sorted.length) (role === 'cook' ? cookSel : cleanupSel).value = sorted[0];
+      });
+    });
+
+    overlay.querySelector('#mn-duty-save').addEventListener('click', () => {
+      const cook = cookSel.value || null;
+      const cleanup = cleanupSel.value || null;
+      MenuState.setMealDuty(_tripId, dayId, mealId, 'cook', cook);
+      MenuState.setMealDuty(_tripId, dayId, mealId, 'cleanup', cleanup);
+      MenuFirebase.saveMealDuty(_tripId, dayId, mealId, { cook, cleanup });
+      overlay.remove();
+      _rerenderDay(dayId);
+    });
+  }
+
+  // ── Cook Mode — полноэкранный режим готовки конкретного приёма пищи ─────
+  function _showCookMode(dayId, mealId) {
+    document.getElementById('mn-cookmode-overlay')?.remove();
+
+    const day  = _days.find(d => d.id === dayId);
+    const meal = MenuData.getMeals().find(m => m.id === mealId);
+    const mealData = day?.meals[mealId];
+    if (!day || !meal || !mealData) return;
+
+    const filledSlots = mealData.slots.filter(s => s.item);
+
+    const dishesHtml = filledSlots.map(slot => {
+      const ingredients = _ingredientsForItem(slot.item.id, slot.item.source, slot.item.name);
+      const recipe = slot.item.source === 'recipes' && typeof RecipesData !== 'undefined'
+        ? RecipesData.getRecipeById(slot.item.id)
+        : (slot.item.source === 'recipes_custom' && typeof RecipesState !== 'undefined'
+          ? RecipesState.getCustomRecipeById(slot.item.id) : null);
+
+      const ingRows = ingredients.map((ing, i) => `
+        <div class="cm-ing-row" data-action="cm-toggle-ing" data-key="${slot.id}_${i}">
+          <div class="cm-check" data-ing="${slot.id}_${i}"></div>
+          <div class="cm-ing-name" data-ing-name="${slot.id}_${i}">${_esc(ing.name)}</div>
+          <div class="cm-ing-qty">${_esc(ing.qty || '')}</div>
+        </div>`).join('');
+
+      const currentLeftover = !!slot.item.leftover;
+
+      return `
+        <div class="cm-dish" data-slot="${slot.id}">
+          <div class="cm-dish-title">${_esc(slot.item.name)}</div>
+          ${ingRows ? `<div class="cm-ing-list">${ingRows}</div>` : '<div class="cm-no-ing">Ингредиенты не указаны в рецепте</div>'}
+          ${recipe?.method ? `<div class="cm-method">${_esc(recipe.method)}</div>` : ''}
+          <div class="cm-leftover-block">
+            <div class="cm-leftover-q">Остались излишки?</div>
+            <div class="cm-leftover-choices">
+              <div class="cm-lo-btn ${!currentLeftover ? 'picked' : ''}" data-action="cm-leftover" data-slot="${slot.id}" data-val="0">Нет</div>
+              <div class="cm-lo-btn ${currentLeftover ? 'picked' : ''}" data-action="cm-leftover" data-slot="${slot.id}" data-val="1">Да, хватит ещё</div>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'mn-cookmode-overlay';
+    overlay.className = 'cm-overlay';
+    overlay.innerHTML = `
+      <div class="cm-sheet">
+        <div class="cm-topbar">
+          <button class="cm-close" id="cm-close" aria-label="Закрыть"><i class="ti ti-x" aria-hidden="true"></i></button>
+          <div class="cm-topbar__text">
+            <div class="cm-topbar__title">${_esc(meal.label)}</div>
+            <div class="cm-topbar__sub">${_esc(day.label)}</div>
+          </div>
+        </div>
+        <div class="cm-roles">
+          <div class="cm-role">
+            <div class="cm-role-lbl">Готовит</div>
+            <div class="cm-role-name">${mealData.cook ? _esc(mealData.cook) : '—'}</div>
+          </div>
+          <div class="cm-role">
+            <div class="cm-role-lbl">Уборка</div>
+            <div class="cm-role-name">${mealData.cleanup ? _esc(mealData.cleanup) : '—'}</div>
+          </div>
+        </div>
+        <div class="cm-dishes">${dishesHtml || '<div class="cm-no-ing" style="padding:14px">Ничего не выбрано на этот приём</div>'}</div>
+        <div class="cm-actions">
+          <button class="cm-done-btn" id="cm-done">Готово</button>
+          <div class="cm-done-note">Пока просто отмечает готовку законченной — автоматического пинга уборке ещё нет.</div>
+        </div>
+      </div>`;
+
+    (_el || document.body).appendChild(overlay);
+
+    overlay.querySelector('#cm-close').addEventListener('click', () => overlay.remove());
+
+    // Чек-лист ингредиентов — локальное состояние на время готовки, не
+    // синхронизируется и не сохраняется: это "что я лично уже достал",
+    // не общие данные поездки, синк никому не нужен.
+    overlay.addEventListener('click', e => {
+      const row = e.target.closest('[data-action="cm-toggle-ing"]');
+      if (!row) return;
+      const key = row.dataset.key;
+      overlay.querySelector(`[data-ing="${key}"]`)?.classList.toggle('on');
+      overlay.querySelector(`[data-ing-name="${key}"]`)?.classList.toggle('done');
+    });
+
+    overlay.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action="cm-leftover"]');
+      if (!btn) return;
+      const slotId = btn.dataset.slot;
+      const val = btn.dataset.val === '1';
+      MenuState.setSlotLeftover(_tripId, dayId, mealId, slotId, val);
+      const slot = mealData.slots.find(s => s.id === slotId);
+      if (slot?.item) MenuFirebase.saveSlotItem(_tripId, slotId, slot.item);
+      overlay.querySelectorAll(`.cm-lo-btn[data-slot="${slotId}"]`).forEach(b => {
+        b.classList.toggle('picked', (b.dataset.val === '1') === val);
+      });
+    });
+
+    overlay.querySelector('#cm-done').addEventListener('click', () => {
+      overlay.remove();
+      _rerenderDay(dayId);
+    });
+  }
+
   // ── Events ──────────────────────────────────────────────────────────────
   function _bindEvents() {
     if (!_el) return;
@@ -451,6 +663,18 @@ const MenuRender = (() => {
       if (action === 'push-shopping') {
         e.stopPropagation();
         _pushIngredientsToShopping(target, target.dataset.itemid, target.dataset.source, target.dataset.name);
+        return;
+      }
+
+      if (action === 'edit-duty') {
+        e.stopPropagation();
+        _showDutyPicker(target.dataset.day, target.dataset.meal);
+        return;
+      }
+
+      if (action === 'cook-mode') {
+        e.stopPropagation();
+        _showCookMode(target.dataset.day, target.dataset.meal);
         return;
       }
     };

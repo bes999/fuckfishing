@@ -59,6 +59,39 @@ const MenuState = (() => {
     _save();
   }
 
+  // Дежурство на приём пищи целиком (не на слот — см. MenuData._emptyMeals).
+  // role — 'cook' | 'cleanup'.
+  function setMealDuty(tripId, dayId, mealId, role, name) {
+    const day = _data[tripId]?.days?.find(d => d.id === dayId);
+    if (!day || !day.meals[mealId]) return;
+    day.meals[mealId][role] = name || null;
+    _save();
+  }
+
+  // Сколько раз каждый участник уже готовил/убирал за эту поездку — основа
+  // для "авто-назначить" (см. MenuRender._showDutyPicker): предлагаем того,
+  // кто реже всего был в этой роли, а не первого попавшегося.
+  function getDutyCounts(tripId) {
+    const cook = {}, cleanup = {};
+    (_data[tripId]?.days || []).forEach(day => {
+      Object.values(day.meals || {}).forEach(meal => {
+        if (meal.cook)    cook[meal.cook]       = (cook[meal.cook]       || 0) + 1;
+        if (meal.cleanup) cleanup[meal.cleanup] = (cleanup[meal.cleanup] || 0) + 1;
+      });
+    });
+    return { cook, cleanup };
+  }
+
+  // Пометить/снять "остатки" на выбранном блюде слота — Cook Mode дергает
+  // это при сохранении переключателя "остались излишки".
+  function setSlotLeftover(tripId, dayId, mealId, slotId, leftover) {
+    const day = _data[tripId]?.days?.find(d => d.id === dayId);
+    const slot = day?.meals[mealId]?.slots?.find(s => s.id === slotId);
+    if (!slot || !slot.item) return;
+    slot.item = Object.assign({}, slot.item, { leftover: !!leftover });
+    _save();
+  }
+
   // Удалить слот
   function removeSlot(tripId, dayId, mealId, slotId) {
     const day = _data[tripId]?.days?.find(d => d.id === dayId);
@@ -87,7 +120,7 @@ const MenuState = (() => {
   // item) накладывается поверх days ПОСЛЕ, так же как bought-мапа в
   // Закупке: узкие точечные записи всегда должны побеждать над тем, что
   // могло прийти в самом days (который мог отстать на один снапшот).
-  function setFromFirebase(tripId, days, slotItemsMap) {
+  function setFromFirebase(tripId, days, slotItemsMap, mealDutyMap) {
     if (!_data[tripId]) _data[tripId] = {};
     if (slotItemsMap) {
       days.forEach(day => {
@@ -97,6 +130,18 @@ const MenuState = (() => {
               slot.item = slotItemsMap[slot.id];
             }
           });
+        });
+      });
+    }
+    if (mealDutyMap) {
+      days.forEach(day => {
+        Object.keys(day.meals).forEach(mealId => {
+          const key = day.id + '_' + mealId;
+          if (Object.prototype.hasOwnProperty.call(mealDutyMap, key)) {
+            const duty = mealDutyMap[key] || {};
+            day.meals[mealId].cook    = duty.cook    || null;
+            day.meals[mealId].cleanup = duty.cleanup || null;
+          }
         });
       });
     }
@@ -120,5 +165,8 @@ const MenuState = (() => {
     return 'partial';
   }
 
-  return { load, getDays, initDays, updateSlot, removeSlot, addSlot, setFromFirebase, getDayStatus };
+  return {
+    load, getDays, initDays, updateSlot, removeSlot, addSlot, setFromFirebase, getDayStatus,
+    setMealDuty, getDutyCounts, setSlotLeftover,
+  };
 })();

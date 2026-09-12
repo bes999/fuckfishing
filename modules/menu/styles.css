@@ -481,3 +481,107 @@
 .mn-type-btn i { font-size: 20px; color: var(--label3); }
 .mn-type-btn span { font-size: 12px; color: var(--label3); font-family: inherit; }
 .mn-type-btn:active { opacity: 0.7; }
+
+/* ── Дежурство под слотами приёма пищи ── */
+.mn-duty-row {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 2px 8px 8px;
+}
+.mn-duty-chip {
+  font-size: 10.5px; color: var(--label3);
+  background: var(--bg3); border-radius: 20px;
+  padding: 4px 9px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mn-duty-chip b { color: var(--label); font-weight: 600; }
+.mn-duty-chip:active { opacity: 0.7; }
+.mn-cook-btn {
+  margin-left: auto; flex-shrink: 0;
+  display: flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; color: var(--accent);
+  background: rgba(10,132,255,0.1); border: none; border-radius: 20px;
+  padding: 5px 10px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mn-cook-btn i { font-size: 12px; }
+.mn-cook-btn:active { opacity: 0.7; }
+
+.mn-slot-leftover {
+  flex-shrink: 0; font-size: 9.5px; font-weight: 600;
+  color: var(--orange); background: rgba(255,159,10,0.14);
+  border-radius: 20px; padding: 2px 7px; margin: 0 4px;
+}
+
+/* ── Пикер дежурства ── */
+.mn-duty-form { padding: 12px 16px; display: flex; flex-direction: column; gap: 14px; }
+.mn-duty-field-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.mn-duty-field-lbl { font-size: 12px; font-weight: 600; color: var(--label3); text-transform: uppercase; letter-spacing: .04em; }
+.mn-duty-auto { font-size: 11.5px; color: var(--accent); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.mn-duty-select {
+  width: 100%; background: var(--bg3); border: 0.5px solid var(--sep);
+  border-radius: 10px; padding: 10px 12px; font-size: 14px; color: var(--label);
+  font-family: inherit; -webkit-appearance: none;
+}
+.mn-picker-save {
+  margin: 8px 16px 16px; background: var(--accent); color: #fff;
+  border: none; border-radius: 12px; padding: 13px; font-size: 15px;
+  font-weight: 600; cursor: pointer; flex-shrink: 0;
+}
+
+/* ── Cook Mode — полноэкранный, а не боттом-шит: это отдельный режим на
+   время готовки, а не быстрый выбор из списка. */
+.cm-overlay {
+  position: fixed; inset: 0; background: var(--bg);
+  z-index: 1150; overflow-y: auto;
+}
+.cm-sheet { min-height: 100%; padding-bottom: 24px; }
+.cm-topbar {
+  background: var(--topbar-bg); padding: 14px 16px 12px;
+  display: flex; align-items: center; gap: 12px;
+  position: sticky; top: 0; z-index: 2;
+}
+.cm-close { background: none; border: none; color: rgba(255,255,255,0.85); cursor: pointer; padding: 2px; display: flex; }
+.cm-topbar__title { color: #fff; font-size: 17px; font-weight: 600; }
+.cm-topbar__sub { color: rgba(255,255,255,0.55); font-size: 12px; margin-top: 2px; }
+
+.cm-roles { display: flex; gap: 10px; padding: 12px 14px; }
+.cm-role { flex: 1; background: var(--bg2); border-radius: 14px; padding: 10px 12px; border: 0.5px solid var(--sep); }
+.cm-role-lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--label4); margin-bottom: 4px; }
+.cm-role-name { font-size: 14px; font-weight: 600; color: var(--label); }
+
+.cm-dishes { padding: 0 14px; display: flex; flex-direction: column; gap: 14px; }
+.cm-dish { background: var(--bg2); border-radius: 14px; border: 0.5px solid var(--sep); overflow: hidden; }
+.cm-dish-title { font-size: 15px; font-weight: 600; padding: 12px 14px 4px; color: var(--label); }
+.cm-ing-list { display: flex; flex-direction: column; }
+.cm-ing-row { display: flex; align-items: center; gap: 10px; padding: 7px 14px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cm-check {
+  width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--label4);
+  flex-shrink: 0; position: relative;
+}
+.cm-check.on { background: var(--green); border-color: var(--green); }
+.cm-check.on::after {
+  content: ''; position: absolute; left: 6px; top: 3px; width: 5px; height: 9px;
+  border: 1.5px solid #fff; border-top: none; border-left: none; transform: rotate(40deg);
+}
+.cm-ing-name { flex: 1; font-size: 14px; color: var(--label); }
+.cm-ing-name.done { text-decoration: line-through; color: var(--label3); }
+.cm-ing-qty { font-size: 12px; color: var(--label3); }
+.cm-no-ing { font-size: 12.5px; color: var(--label3); padding: 8px 14px 12px; }
+.cm-method { font-size: 13px; color: var(--label2); line-height: 1.5; padding: 6px 14px 12px; border-top: 0.5px solid var(--sep2); margin-top: 6px; }
+
+.cm-leftover-block { padding: 10px 14px 14px; border-top: 0.5px solid var(--sep2); }
+.cm-leftover-q { font-size: 12.5px; color: var(--label2); margin-bottom: 8px; }
+.cm-leftover-choices { display: flex; gap: 8px; }
+.cm-lo-btn {
+  flex: 1; text-align: center; padding: 8px; border-radius: 10px;
+  background: var(--bg3); color: var(--label3); font-size: 12.5px; font-weight: 600;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.cm-lo-btn.picked { background: var(--accent); color: #fff; }
+
+.cm-actions { padding: 18px 14px 4px; }
+.cm-done-btn {
+  width: 100%; background: var(--accent); color: #fff; border: none;
+  border-radius: 14px; padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.cm-done-note { font-size: 11px; color: var(--label4); text-align: center; margin-top: 8px; line-height: 1.4; }

@@ -76,9 +76,15 @@ const MenuData = (() => {
           return {
             id:   'slot_' + Date.now() + '_' + _slotCounter + '_' + Math.random().toString(36).slice(2),
             type: type,
-            item: null  // { id, name, source } — source: 'recipes'|'bar'|'proteins'
+            item: null  // { id, name, source, leftover? } — source: 'recipes'|'bar'|'proteins'
           };
-        })
+        }),
+        // Дежурство на весь приём пищи (не на слот — за обед в целом
+        // отвечает один повар, а не отдельно по гарниру и отдельно по
+        // мясу). Имена участников, как и everywhere else в этом модуле
+        // (paidBy/participants в Расходах) — не uid.
+        cook:    null,
+        cleanup: null,
       };
     });
     return meals;
@@ -100,8 +106,22 @@ const MenuData = (() => {
     return items;
   }
 
-  // Получить блюда для типа слота (из RecipesData + BarData + Proteins)
-  function getItemsForSlot(slotType) {
+  // Получить блюда для типа слота (из RecipesData + BarData + Proteins),
+  // плюс, если переданы days/dayId — остатки блюд того же типа слота за
+  // последние LEFTOVER_WINDOW_DAYS дней первой секцией (см.
+  // getLeftoverItemsForSlot выше). days/dayId необязательны — вызовы,
+  // которым остатки не нужны (например резолв ингредиентов вне пикера),
+  // просто не передают их.
+  function getItemsForSlot(slotType, days, dayId) {
+    const result = _baseItemsForSlot(slotType);
+    if (days && dayId) {
+      const leftovers = getLeftoverItemsForSlot(days, dayId, slotType);
+      if (leftovers.length) result.unshift({ section: 'Остатки', items: leftovers });
+    }
+    return result;
+  }
+
+  function _baseItemsForSlot(slotType) {
     const result = [];
 
     if (slotType === 'drink') {
@@ -170,10 +190,41 @@ const MenuData = (() => {
     return result;
   }
 
+  // Остатки — блюдо, отмеченное в Cook Mode как "хватит ещё на приём",
+  // становится выбираемым вариантом для того же типа слота (Основное →
+  // Основное и т.п.) на следующие LEFTOVER_WINDOW_DAYS дней, а не только
+  // сегодня. Ищем по факту (days[i].item.leftover===true), а не по
+  // отдельному хранилищу — источник правды один, дублировать нечего.
+  const LEFTOVER_WINDOW_DAYS = 2;
+
+  function getLeftoverItemsForSlot(days, dayId, slotType) {
+    const idx = days.findIndex(d => d.id === dayId);
+    if (idx < 0) return [];
+    const from = Math.max(0, idx - LEFTOVER_WINDOW_DAYS);
+    const seen = new Set();
+    const result = [];
+    for (let i = from; i < idx; i++) {
+      const day = days[i];
+      Object.values(day.meals || {}).forEach(meal => {
+        (meal.slots || []).forEach(slot => {
+          if (slot.type !== slotType || !slot.item || !slot.item.leftover) return;
+          const key = slot.item.source + '_' + slot.item.id;
+          if (seen.has(key)) return;
+          seen.add(key);
+          result.push({
+            id: slot.item.id, name: slot.item.name, source: slot.item.source,
+            hint: `Остатки · ${day.label}`, destinations: [], leftover: true,
+          });
+        });
+      });
+    }
+    return result;
+  }
+
   function getMeals()        { return MEALS; }
   function getSlotTypes()    { return SLOT_TYPES; }
   function getSlotType(id)   { return SLOT_TYPES.find(t => t.id === id) || null; }
   function getMealBaseSlots(mealId) { return MEAL_BASE_SLOTS[mealId] || []; }
 
-  return { generateDays, getItemsForSlot, getMeals, getSlotTypes, getSlotType, getMealBaseSlots };
+  return { generateDays, getItemsForSlot, getLeftoverItemsForSlot, getMeals, getSlotTypes, getSlotType, getMealBaseSlots };
 })();
