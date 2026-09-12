@@ -440,7 +440,9 @@
 .gear-check-item:last-child { border-bottom: none; }
 .gear-cb {
   width: 22px; height: 22px; border-radius: 50%;
-  border: 1.5px solid var(--sep);
+  /* var(--label4), не --sep — тот почти сливается с фоном в тёмной теме,
+     см. modules/expenses/styles.css:.exp-checkbox */
+  border: 1.5px solid var(--label4);
   flex-shrink: 0; margin-top: 1px;
   display: flex; align-items: center; justify-content: center;
   transition: background var(--duration-fast), border-color var(--duration-fast);
