@@ -23,10 +23,27 @@ const MenuRender = (() => {
     el.innerHTML = `
       <div class="mn-wrap">
         ${_topbar()}
+        <div id="mn-attendance-toggle">${_attendanceToggleRow()}</div>
         <div id="mn-today">${_todayBlock()}</div>
         <div class="mn-days" id="mn-days">${_renderDays()}</div>
       </div>`;
     _bindEvents();
+  }
+
+  // Явка — опциональная (trip.attendanceEnabled), по умолчанию выключена:
+  // тот же паттерн, что trip.inviteRestricted — простой булев флаг прямо
+  // на документе поездки. Пользователь явно попросил именно "включать по
+  // надобности", а не всегда — маленькие компании обычно и так знают, кто
+  // где, и не хотят полдня отмечаться в приложении.
+  function _attendanceToggleRow() {
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const on = !!trip?.attendanceEnabled;
+    return `
+      <div class="mn-att-toggle-row" data-action="toggle-attendance-enabled">
+        <i class="ti ti-users" aria-hidden="true"></i>
+        <span>Явка на приёмы пищи</span>
+        <span class="mn-att-toggle-state ${on ? 'on' : ''}">${on ? 'включена' : 'выключена'}</span>
+      </div>`;
   }
 
   // Карточка "Меню на сегодня" — без неё, чтобы посмотреть, что готовить
@@ -129,8 +146,39 @@ const MenuRender = (() => {
   }
 
   function _renderDayBody(day) {
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const attendance = trip?.attendanceEnabled ? _renderAttendanceMatrix(day, trip) : '';
     const meals = MenuData.getMeals().map(m => _renderMeal(day, m)).join('');
-    return `<div class="mn-day-body">${meals}</div>`;
+    return `<div class="mn-day-body">${attendance}${meals}</div>`;
+  }
+
+  // Матрица явки: участник × приём пищи, чек-бокс на пересечении. Компактнее
+  // чем отдельный тоггл на весь день — можно сразу увидеть, кто на месте
+  // к какому конкретно приёму (кто-то уезжает на рыбалку с утра и
+  // пропускает обед), а не только "тут/не тут" в целом.
+  const _MEAL_SHORT = { breakfast: 'Зав', snack: 'Пер', lunch: 'Об', dinner: 'Уж' };
+
+  function _renderAttendanceMatrix(day, trip) {
+    const names = TripsData.participantNames(trip);
+    if (!names.length) return '';
+    const meals = MenuData.getMeals();
+
+    const head = meals.map(m => `<th>${_MEAL_SHORT[m.id] || m.label}</th>`).join('');
+    const rows = names.map(name => {
+      const cells = meals.map(m => {
+        const present = MenuState.getDayAttendance(_tripId, day.id, name, m.id);
+        return `<td><div class="mn-att-check ${present ? 'on' : ''}" data-action="toggle-attendance-cell" data-day="${day.id}" data-name="${_esc(name)}" data-meal="${m.id}"></div></td>`;
+      }).join('');
+      return `<tr><td class="mn-att-name">${_esc(name)}</td>${cells}</tr>`;
+    }).join('');
+
+    return `
+      <div class="mn-att-matrix">
+        <table class="mn-att-table">
+          <tr><th></th>${head}</tr>
+          ${rows}
+        </table>
+      </div>`;
   }
 
   function _renderMeal(day, meal) {
@@ -141,11 +189,20 @@ const MenuRender = (() => {
     const slots = mealData.slots.map(slot => _renderSlot(day.id, meal.id, slot, isEdit)).join('');
     const hasFilled = mealData.slots.some(s => s.item);
 
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    let headcountHtml = '';
+    if (trip?.attendanceEnabled) {
+      const names = TripsData.participantNames(trip);
+      const hc = MenuState.getMealHeadcount(_tripId, day.id, meal.id, names);
+      headcountHtml = `<span class="mn-meal-headcount">${hc.present} из ${hc.total}</span>`;
+    }
+
     return `
       <div class="mn-meal ${isEdit ? 'edit-mode' : ''}" data-day="${day.id}" data-meal="${meal.id}">
         <div class="mn-meal-head">
           <div class="mn-meal-icon"><i class="ti ${meal.icon}" aria-hidden="true"></i></div>
           <span class="mn-meal-name">${meal.label}</span>
+          ${headcountHtml}
           <button class="mn-edit-btn ${isEdit ? 'active' : ''}"
             data-action="toggle-edit" data-day="${day.id}" data-meal="${meal.id}"
             aria-label="Редактировать">
@@ -675,6 +732,32 @@ const MenuRender = (() => {
       if (action === 'cook-mode') {
         e.stopPropagation();
         _showCookMode(target.dataset.day, target.dataset.meal);
+        return;
+      }
+
+      if (action === 'toggle-attendance-enabled') {
+        e.stopPropagation();
+        const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+        if (!trip) return;
+        const next = !trip.attendanceEnabled;
+        trip.attendanceEnabled = next;
+        if (typeof TripsData !== 'undefined') TripsData.updateTrip(_tripId, { attendanceEnabled: next });
+        const toggleEl = _el.querySelector('#mn-attendance-toggle');
+        if (toggleEl) toggleEl.innerHTML = _attendanceToggleRow();
+        const container = _el.querySelector('#mn-days');
+        if (container) container.innerHTML = _renderDays();
+        return;
+      }
+
+      if (action === 'toggle-attendance-cell') {
+        e.stopPropagation();
+        const { day, name, meal } = target.dataset;
+        const present = !MenuState.getDayAttendance(_tripId, day, name, meal);
+        MenuState.setDayAttendance(_tripId, day, name, meal, present);
+        const dayObj = _days.find(d => d.id === day);
+        if (dayObj?.attendance) MenuFirebase.saveDayAttendance(_tripId, day, dayObj.attendance);
+        target.classList.toggle('on', present);
+        _rerenderDay(day);
         return;
       }
     };

@@ -11,7 +11,7 @@ const MenuFirebase = (() => {
       _unsubscribe = db.collection(COLLECTION).doc(tripId)
         .onSnapshot(snap => {
           if (snap.exists && snap.data().days) {
-            MenuState.setFromFirebase(tripId, snap.data().days, snap.data().slotItems || {}, snap.data().mealDuty || {});
+            MenuState.setFromFirebase(tripId, snap.data().days, snap.data().slotItems || {}, snap.data().mealDuty || {}, snap.data().attendance || {});
             onUpdate();
           }
         }, () => {});
@@ -51,5 +51,16 @@ const MenuFirebase = (() => {
     } catch (_) {}
   }
 
-  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty };
+  // Явка на день — узкая запись всей attendance-карты дня целиком (не по
+  // одному участнику/приёму за раз): дёшево, а UI и так шлёт её только по
+  // явному тапу в чек-боксе одной ячейки, так что перезаписи гонкой не
+  // страшны — два человека одновременно редактируют явку друг друга не
+  // видя, что уже и так редкий сценарий для этого экрана.
+  async function saveDayAttendance(tripId, dayId, dayAttendance) {
+    try {
+      await db.collection(COLLECTION).doc(tripId).set({ attendance: { [dayId]: dayAttendance } }, { merge: true });
+    } catch (_) {}
+  }
+
+  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty, saveDayAttendance };
 })();

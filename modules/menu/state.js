@@ -92,6 +92,34 @@ const MenuState = (() => {
     _save();
   }
 
+  // Явка на приёмы пищи — опциональная, включается за поездку целиком
+  // (trip.attendanceEnabled, тот же паттерн, что trip.inviteRestricted:
+  // простой булев флаг прямо на документе поездки — см. modules/menu/
+  // render.js). По умолчанию (флаг выключен, или ячейка ещё не тронута)
+  // участник считается присутствующим — отмечать нужно только отсутствие,
+  // не каждое "да, буду".
+  function getDayAttendance(tripId, dayId, name, mealId) {
+    const day = _data[tripId]?.days?.find(d => d.id === dayId);
+    const entry = day?.attendance?.[name]?.[mealId];
+    return entry === undefined ? true : !!entry;
+  }
+
+  function setDayAttendance(tripId, dayId, name, mealId, present) {
+    const day = _data[tripId]?.days?.find(d => d.id === dayId);
+    if (!day) return;
+    if (!day.attendance) day.attendance = {};
+    if (!day.attendance[name]) day.attendance[name] = {};
+    day.attendance[name][mealId] = !!present;
+    _save();
+  }
+
+  // Сколько из переданных имён отмечены присутствующими на этот приём —
+  // для подписи "Обед: 2 из 3" под шапкой приёма пищи.
+  function getMealHeadcount(tripId, dayId, mealId, names) {
+    const present = names.filter(n => getDayAttendance(tripId, dayId, n, mealId));
+    return { present: present.length, total: names.length };
+  }
+
   // Удалить слот
   function removeSlot(tripId, dayId, mealId, slotId) {
     const day = _data[tripId]?.days?.find(d => d.id === dayId);
@@ -120,7 +148,7 @@ const MenuState = (() => {
   // item) накладывается поверх days ПОСЛЕ, так же как bought-мапа в
   // Закупке: узкие точечные записи всегда должны побеждать над тем, что
   // могло прийти в самом days (который мог отстать на один снапшот).
-  function setFromFirebase(tripId, days, slotItemsMap, mealDutyMap) {
+  function setFromFirebase(tripId, days, slotItemsMap, mealDutyMap, attendanceMap) {
     if (!_data[tripId]) _data[tripId] = {};
     if (slotItemsMap) {
       days.forEach(day => {
@@ -143,6 +171,13 @@ const MenuState = (() => {
             day.meals[mealId].cleanup = duty.cleanup || null;
           }
         });
+      });
+    }
+    if (attendanceMap) {
+      days.forEach(day => {
+        if (Object.prototype.hasOwnProperty.call(attendanceMap, day.id)) {
+          day.attendance = attendanceMap[day.id] || {};
+        }
       });
     }
     _data[tripId].days = days;
@@ -168,5 +203,6 @@ const MenuState = (() => {
   return {
     load, getDays, initDays, updateSlot, removeSlot, addSlot, setFromFirebase, getDayStatus,
     setMealDuty, getDutyCounts, setSlotLeftover,
+    getDayAttendance, setDayAttendance, getMealHeadcount,
   };
 })();

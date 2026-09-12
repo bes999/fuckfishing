@@ -585,3 +585,42 @@
   border-radius: 14px; padding: 13px; font-size: 15px; font-weight: 600; cursor: pointer;
 }
 .cm-done-note { font-size: 11px; color: var(--label4); text-align: center; margin-top: 8px; line-height: 1.4; }
+
+/* ── Явка (опциональная — trip.attendanceEnabled) ── */
+.mn-att-toggle-row {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 12px 8px; padding: 10px 12px;
+  background: var(--bg2); border-radius: var(--radius-md);
+  font-size: 13px; color: var(--label2);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.mn-att-toggle-row i { font-size: 15px; color: var(--label3); }
+.mn-att-toggle-row span:nth-child(2) { flex: 1; }
+.mn-att-toggle-state { font-size: 12px; font-weight: 600; color: var(--label4); }
+.mn-att-toggle-state.on { color: var(--accent); }
+
+.mn-att-matrix { padding: 6px 8px 10px; overflow-x: auto; }
+.mn-att-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.mn-att-table th { color: var(--label4); font-weight: 500; padding: 2px 4px 6px; text-align: center; }
+.mn-att-name { color: var(--label2); padding: 4px 6px 4px 0; white-space: nowrap; font-size: 12.5px; }
+.mn-att-table td { text-align: center; padding: 3px 4px; }
+.mn-att-check {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--label4);
+  margin: 0 auto; cursor: pointer; position: relative;
+  -webkit-tap-highlight-color: transparent;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.mn-att-check.on { background: var(--green); border-color: var(--green); }
+.mn-att-check.on::after {
+  content: ''; position: absolute; left: 5px; top: 2px;
+  width: 4px; height: 8px;
+  border: 1.5px solid #fff; border-top: none; border-left: none;
+  transform: rotate(40deg);
+}
+
+.mn-meal-headcount {
+  font-size: 10.5px; font-weight: 600; color: var(--label3);
+  background: var(--bg3); border-radius: 20px; padding: 2px 8px;
+  flex-shrink: 0;
+}
