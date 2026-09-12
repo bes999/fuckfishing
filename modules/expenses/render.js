@@ -100,6 +100,10 @@ const ExpensesRender = (() => {
           <i class="ti ti-plus" aria-hidden="true"></i> Добавить расход
         </button>
 
+        <div class="exp-cat-link" data-action="manage-cats">
+          <i class="ti ti-tag" aria-hidden="true"></i> Категории и участники по умолчанию
+        </div>
+
         ${expenses.length === 0 ? `<div class="exp-empty">Расходов пока нет</div>` : ''}
 
         <div class="exp-list">
@@ -271,12 +275,23 @@ const ExpensesRender = (() => {
     const editing = expenseId ? ExpensesState.getExpenses(_tripId).find(e => e._id === expenseId) : null;
     const e       = editing || {};
 
-    const membersChecks = members.map(name => `
+    // Новый расход — предзаполняем по настроенному для категории умолчанию
+    // (см. ExpensesState.getCategorySplitDefault; по умолчанию — все, как и
+    // раньше). При редактировании — реальные участники конкретной записи,
+    // умолчания категории тут ни при чём.
+    const initialCatId = e.category || (cats[0] && cats[0].id) || 'other';
+    const initialChecked = editing
+      ? (e.participants || [])
+      : ExpensesState.getCategorySplitDefault(_tripId, initialCatId, members);
+
+    const _checksHtml = checkedNames => members.map(name => `
       <div class="exp-check-row" data-name="${_esc(name)}">
-        <div class="exp-checkbox ${!editing || (e.participants || []).includes(name) ? 'checked' : ''}"
+        <div class="exp-checkbox ${checkedNames.includes(name) ? 'checked' : ''}"
           data-chk="1"></div>
         <span class="exp-check-name">${_esc(name)}</span>
       </div>`).join('');
+
+    const membersChecks = _checksHtml(initialChecked);
 
     const catOptions = cats.map(c =>
       `<option value="${c.id}" ${e.category === c.id ? 'selected' : ''}>${_esc(c.title)}</option>`
@@ -357,6 +372,15 @@ const ExpensesRender = (() => {
     overlay.querySelector('#exp-who').addEventListener('change', ev => {
       const manual = overlay.querySelector('#exp-who-manual');
       manual.style.display = ev.target.value === '__manual__' ? '' : 'none';
+    });
+
+    // Категория сменилась — переприменяем её умолчание по участникам
+    // (см. ExpensesState.getCategorySplitDefault). Срабатывает и при
+    // редактировании: пользователь сам явно поменял категорию прямо тут,
+    // а отметки всё ещё перед глазами и правятся тем же чек-листом ниже.
+    overlay.querySelector('#exp-cat').addEventListener('change', ev => {
+      const checked = ExpensesState.getCategorySplitDefault(_tripId, ev.target.value, members);
+      overlay.querySelector('#exp-checks').innerHTML = _checksHtml(checked);
     });
 
     // Check toggles
@@ -494,12 +518,27 @@ const ExpensesRender = (() => {
     overlay.id        = 'exp-cat-overlay';
     overlay.className = 'exp-overlay';
 
+    const members = _getMembers();
+
+    // Подпись под названием категории — что сейчас настроено по умолчанию
+    // для новых расходов этой категории (см. ExpensesState.setCategorySplit
+    // Default). Без явной настройки — молчаливое "Все", как и было раньше.
+    const _splitLabel = c => {
+      if (!Array.isArray(c.splitDefault) || !c.splitDefault.length) return 'Участники: все';
+      const names = c.splitDefault.filter(n => members.includes(n));
+      if (!names.length) return 'Участники: все';
+      return 'Участники: ' + (names.length <= 2 ? names.join(', ') : names.length + ' из ' + members.length);
+    };
+
     const _renderCatList = () => {
       const current = ExpensesState.getCategories(_tripId);
       return current.map(c => `
         <div class="exp-cat-item" data-cat-id="${c.id}">
           <i class="ti ${c.icon}" style="font-size:18px;color:var(--accent)" aria-hidden="true"></i>
-          <span class="exp-cat-item__title">${_esc(c.title)}</span>
+          <div class="exp-cat-item__body">
+            <span class="exp-cat-item__title">${_esc(c.title)}</span>
+            <span class="exp-cat-item__split" data-action="edit-split" data-id="${c.id}">${_esc(_splitLabel(c))}</span>
+          </div>
           ${c.custom ? `
             <button class="exp-cat-item__del" data-action="del-cat" data-id="${c.id}" aria-label="Удалить">
               <i class="ti ti-x" aria-hidden="true"></i>
@@ -541,6 +580,14 @@ const ExpensesRender = (() => {
       overlay.querySelector('#exp-cat-list').innerHTML = _renderCatList();
     });
 
+    overlay.addEventListener('click', ev => {
+      const btn = ev.target.closest('[data-action="edit-split"]');
+      if (!btn) return;
+      _showSplitPicker(btn.dataset.id, () => {
+        overlay.querySelector('#exp-cat-list').innerHTML = _renderCatList();
+      });
+    });
+
     const addCat = () => {
       const input = overlay.querySelector('#exp-new-cat');
       const title = input.value.trim();
@@ -554,6 +601,83 @@ const ExpensesRender = (() => {
     overlay.querySelector('#exp-add-cat-btn').addEventListener('click', addCat);
     overlay.querySelector('#exp-new-cat').addEventListener('keydown', ev => {
       if (ev.key === 'Enter') addCat();
+    });
+  }
+
+  // Мини-пикер "кто по умолчанию участвует в расходах этой категории" —
+  // тот же чек-лист, что в форме расхода (.exp-checkbox/.exp-check-row),
+  // только сохраняет не сам расход, а умолчание категории (см.
+  // ExpensesState.setCategorySplitDefault). onSaved — колбэк перерисовать
+  // список категорий у вызывающего (чтобы новая подпись подхватилась).
+  function _showSplitPicker(catId, onSaved) {
+    document.getElementById('exp-split-overlay')?.remove();
+
+    const members = _getMembers();
+    const cats    = ExpensesState.getCategories(_tripId);
+    const cat     = cats.find(c => c.id === catId);
+    if (!cat) return;
+    const checkedNames = ExpensesState.getCategorySplitDefault(_tripId, catId, members);
+
+    const overlay = document.createElement('div');
+    overlay.id        = 'exp-split-overlay';
+    overlay.className = 'exp-overlay';
+    overlay.innerHTML = `
+      <div class="exp-sheet">
+        <div class="exp-sheet__handle"></div>
+        <div class="exp-sheet__head">
+          <span class="exp-sheet__title">Участники «${_esc(cat.title)}» по умолчанию</span>
+          <button class="exp-sheet__close" id="exp-split-close" aria-label="Закрыть">
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <div class="exp-sheet__body">
+          <div class="exp-checks" id="exp-split-checks">
+            ${members.map(name => `
+              <div class="exp-check-row" data-name="${_esc(name)}">
+                <div class="exp-checkbox ${checkedNames.includes(name) ? 'checked' : ''}" data-chk="1"></div>
+                <span class="exp-check-name">${_esc(name)}</span>
+              </div>`).join('')}
+          </div>
+          <div class="exp-checks-actions">
+            <button class="exp-checks-btn" id="exp-split-all">Все</button>
+            <button class="exp-checks-btn" id="exp-split-none">Снять всех</button>
+          </div>
+        </div>
+        <div class="exp-sheet__actions">
+          <button class="exp-sheet__save" id="exp-split-save">Сохранить</button>
+        </div>
+      </div>`;
+
+    _el.appendChild(overlay);
+
+    overlay.querySelector('#exp-split-close').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
+
+    overlay.querySelector('#exp-split-checks').addEventListener('click', ev => {
+      const row = ev.target.closest('.exp-check-row');
+      if (!row) return;
+      row.querySelector('[data-chk]').classList.toggle('checked');
+    });
+    overlay.querySelector('#exp-split-all').addEventListener('click', () => {
+      overlay.querySelectorAll('[data-chk]').forEach(c => c.classList.add('checked'));
+    });
+    overlay.querySelector('#exp-split-none').addEventListener('click', () => {
+      overlay.querySelectorAll('[data-chk]').forEach(c => c.classList.remove('checked'));
+    });
+
+    overlay.querySelector('#exp-split-save').addEventListener('click', () => {
+      const picked = [...overlay.querySelectorAll('.exp-check-row')]
+        .filter(r => r.querySelector('[data-chk]').classList.contains('checked'))
+        .map(r => r.dataset.name);
+      // Отметили всех (или никого не сняли) — это то же самое, что "нет
+      // настройки", а не "настройка на конкретно всех сейчас существующих
+      // участников" (которая потом расходилась бы с новыми, кто ещё
+      // присоединится к поездке).
+      const value = (picked.length && picked.length < members.length) ? picked : null;
+      ExpensesState.setCategorySplitDefault(_tripId, catId, value);
+      ExpensesFirebase.saveCategories(_tripId, ExpensesState.getCategories(_tripId));
+      overlay.remove();
+      onSaved && onSaved();
     });
   }
 
@@ -596,6 +720,10 @@ const ExpensesRender = (() => {
 
       if (action === 'add-expense') {
         _showExpenseForm(null);
+        return;
+      }
+      if (action === 'manage-cats') {
+        _showCatManager();
         return;
       }
       if (action === 'edit-expense') {

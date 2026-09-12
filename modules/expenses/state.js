@@ -86,6 +86,34 @@ const ExpensesState = (() => {
     s.categories = s.categories.filter(c => c.id !== id);
   }
 
+  // Участники по умолчанию для категории — опциональное разбиение вместо
+  // всё-или-ничего (раньше при добавлении расхода всегда предлагались
+  // отмеченными ВСЕ участники поездки). null/отсутствует — старое
+  // поведение "все"; непустой массив имён — категория считается
+  // "настроенной" (например Топливо только на водителей). Хранится прямо
+  // на объекте категории — та же коллекция/документ, что и остальные поля
+  // категории (см. ExpensesFirebase.saveCategories), новых полей в
+  // Firestore не потребовалось.
+  function setCategorySplitDefault(tripId, catId, names) {
+    const s = _ensure(tripId);
+    const cat = s.categories.find(c => c.id === catId);
+    if (!cat) return;
+    cat.splitDefault = (names && names.length) ? names.slice() : null;
+  }
+
+  function getCategorySplitDefault(tripId, catId, allMembers) {
+    const s = _ensure(tripId);
+    const cat = s.categories.find(c => c.id === catId);
+    if (cat && Array.isArray(cat.splitDefault) && cat.splitDefault.length) {
+      const filtered = cat.splitDefault.filter(n => allMembers.includes(n));
+      // Все, кого выбрали по умолчанию для категории, с тех пор вышли из
+      // поездки — настройка стала бессмысленной, откатываемся на "все",
+      // а не молча оставляем форму без единого отмеченного участника.
+      if (filtered.length) return filtered;
+    }
+    return allMembers.slice();
+  }
+
   function computeSummary(tripId) {
     const s = _ensure(tripId);
     const expenses    = s.expenses;
@@ -207,7 +235,7 @@ const ExpensesState = (() => {
     getExpenses, getSettlements, getCategories,
     addExpense, updateExpense, removeExpense,
     addSettlement, removeSettlement,
-    addCategory, removeCategory,
+    addCategory, removeCategory, setCategorySplitDefault, getCategorySplitDefault,
     computeSummary, exportCSV,
     setMembers, getMembers,
   };
