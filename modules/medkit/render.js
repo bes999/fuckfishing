@@ -123,19 +123,28 @@ function rMedkitFilters(mode) {
 // проекте, это остаток от старой версии; тянем актуальные данные отсюда.
 var _medkitMembersCache = null;
 var _medkitMembersLoading = false;
+var _medkitMembersFetchedAt = 0;
+// Кэш живёт ограниченное время, не вечно — раньше он не инвалидировался
+// никогда, и новый участник, присоединившийся к поездке посреди сессии
+// (или изменивший имя), не появлялся бы в свитчере "Личная" без полной
+// перезагрузки страницы. getAllMembers() — реальный сетевой запрос
+// (не подписка), поэтому кэш всё ещё нужен — просто не бессрочный.
+var MEDKIT_MEMBERS_TTL_MS = 60000;
 
 function _getMedkitMembers() {
-  if (_medkitMembersCache) return _medkitMembersCache;
+  var stale = !_medkitMembersCache || (Date.now() - _medkitMembersFetchedAt) > MEDKIT_MEMBERS_TTL_MS;
+  if (!stale) return _medkitMembersCache;
   if (!_medkitMembersLoading && typeof MembersFirebase !== 'undefined' && MembersFirebase.getAllMembers) {
     _medkitMembersLoading = true;
     MembersFirebase.getAllMembers().then(function(members) {
       _medkitMembersCache = members || [];
+      _medkitMembersFetchedAt = Date.now();
       _medkitMembersLoading = false;
       // Перерисовываем, если пользователь всё ещё на личной аптечке
       if (medkitMode === 'personal' && typeof rMedkit === 'function') rMedkit();
     }).catch(function() { _medkitMembersLoading = false; });
   }
-  return [];
+  return _medkitMembersCache || [];
 }
 
 function rMedkitMemberSwitcher(currentMemberId) {

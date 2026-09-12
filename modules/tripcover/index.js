@@ -1330,7 +1330,9 @@ const TripCoverIndex = (() => {
         #g-tab-panel .sh-stats, #g-tab-panel .bar-tabs, #g-tab-panel .rec-tabs { position:static }
         .gts-row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:0.5px solid var(--sep2)}
         .gts-row:last-child{border-bottom:none}
-        .gts-check{width:20px;height:20px;flex-shrink:0;accent-color:var(--accent)}
+        .gts-check{width:20px;height:20px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--label4);display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background var(--duration-fast),border-color var(--duration-fast)}
+        .gts-check.checked{background:var(--green);border-color:var(--green)}
+        .gts-check.checked::after{content:'';width:5px;height:9px;border:1.5px solid #fff;border-top:none;border-left:none;transform:rotate(40deg) translate(-0.5px,-1px);display:block}
         .gts-label{flex:1;font-size:15px;color:var(--label)}
         .gts-arrows{display:flex;gap:4px;flex-shrink:0}
         .gts-arrow{width:30px;height:30px;border-radius:8px;border:none;background:var(--bg3);color:var(--label2);font-size:14px;cursor:pointer}
@@ -1497,7 +1499,7 @@ const TripCoverIndex = (() => {
     function renderRows() {
       return order.map((id, i) => `
         <div class="gts-row">
-          <input type="checkbox" class="gts-check" data-gts-check="${id}" ${checked.has(id) ? 'checked' : ''}>
+          <div class="gts-check ${checked.has(id) ? 'checked' : ''}" data-gts-check="${id}"></div>
           <span class="gts-label">${_esc(_ALL_TAB_DEFS[id].label)}</span>
           <div class="gts-arrows">
             <button class="gts-arrow" data-gts-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -1538,6 +1540,19 @@ const TripCoverIndex = (() => {
         if (i < order.length - 1) { [order[i + 1], order[i]] = [order[i], order[i + 1]]; rerenderList(); }
         return;
       }
+      const checkEl = e.target.closest('[data-gts-check]');
+      if (checkEl) {
+        const id = checkEl.dataset.gtsCheck;
+        const willCheck = !checkEl.classList.contains('checked');
+        // Не даём снять последний чекбокс: пустой guideTabs:[] в Firestore
+        // неотличим от "поле вообще не задано" (см. _guideTabIds выше) — то
+        // есть при перерисовке всё равно показались бы ВСЕ табы, и настройка
+        // "спрятать всё" молча откатилась бы сама собой.
+        if (!willCheck && checked.size === 1 && checked.has(id)) return;
+        if (willCheck) checked.add(id); else checked.delete(id);
+        checkEl.classList.toggle('checked', willCheck);
+        return;
+      }
       if (e.target.closest('[data-action="gts-save"]')) {
         const finalOrder = order.filter(id => checked.has(id));
         trip.guideTabs = finalOrder;
@@ -1547,20 +1562,6 @@ const TripCoverIndex = (() => {
         if (stripEl) stripEl.outerHTML = _renderTabStrip(trip);
         if (!_guideTabIds(trip).includes(_activeGuideTab)) _mountGuideTab(trip, 'info');
       }
-    });
-
-    overlay.addEventListener('change', e => {
-      const id = e.target.dataset.gtsCheck;
-      if (!id) return;
-      // Не даём снять последний чекбокс: пустой guideTabs:[] в Firestore
-      // неотличим от "поле вообще не задано" (см. _guideTabIds выше) — то
-      // есть при перерисовке всё равно покажутся ВСЕ табы, и настройка
-      // "спрятать всё" молча откатится сама собой.
-      if (!e.target.checked && checked.size === 1 && checked.has(id)) {
-        e.target.checked = true;
-        return;
-      }
-      if (e.target.checked) checked.add(id); else checked.delete(id);
     });
   }
 

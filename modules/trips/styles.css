@@ -309,7 +309,22 @@
   padding: 9px 16px; border-bottom: .5px solid var(--sep2);
 }
 .qtb-row:last-child { border-bottom: none; }
-.qtb-check { width: 19px; height: 19px; flex-shrink: 0; accent-color: var(--accent); }
+.qtb-check {
+  width: 19px; height: 19px; border-radius: 50%; flex-shrink: 0;
+  border: 1.5px solid var(--label4);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+.qtb-check.checked { background: var(--green); border-color: var(--green); }
+.qtb-check.checked::after {
+  content: '';
+  width: 5px; height: 8px;
+  border: 1.5px solid #fff;
+  border-top: none; border-left: none;
+  transform: rotate(40deg) translate(-0.5px, -1px);
+  display: block;
+}
 .qtb-label { flex: 1; font-size: 14px; color: var(--label); }
 .qtb-arrows { display: flex; gap: 4px; flex-shrink: 0; }
 .qtb-arrow {

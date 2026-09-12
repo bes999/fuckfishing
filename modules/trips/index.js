@@ -426,7 +426,7 @@ const TripsIndex = (() => {
   function _guideTabsSection() {
     const rows = _draftGuideTabOrder.map((id, i) => `
       <div class="qtb-row">
-        <input type="checkbox" class="qtb-check" data-qtb-check="${id}" ${_draftGuideTabsChecked.has(id) ? 'checked' : ''}>
+        <div class="qtb-check ${_draftGuideTabsChecked.has(id) ? 'checked' : ''}" data-qtb-check="${id}"></div>
         <span class="qtb-label">${_esc(_GUIDE_TAB_DEFS[id])}</span>
         <div class="qtb-arrows">
           <button type="button" class="qtb-arrow" data-qtb-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -607,16 +607,16 @@ const TripsIndex = (() => {
 
     // Вкладки Гида — чекбоксы видимости + стрелки порядка (шаг сводки)
     overlay.querySelectorAll('[data-qtb-check]').forEach(cb => {
-      cb.addEventListener('change', () => {
+      cb.addEventListener('click', () => {
+        const id = cb.dataset.qtbCheck;
+        const willCheck = !cb.classList.contains('checked');
         // Та же защита от пустого guideTabs, что и в настройках Гида
         // (modules/tripcover/index.js) — пустой массив неотличим от "не
         // задано" и молча покажет все табы при следующей отрисовке.
-        if (!cb.checked && _draftGuideTabsChecked.size === 1 && _draftGuideTabsChecked.has(cb.dataset.qtbCheck)) {
-          cb.checked = true;
-          return;
-        }
-        if (cb.checked) _draftGuideTabsChecked.add(cb.dataset.qtbCheck);
-        else _draftGuideTabsChecked.delete(cb.dataset.qtbCheck);
+        if (!willCheck && _draftGuideTabsChecked.size === 1 && _draftGuideTabsChecked.has(id)) return;
+        if (willCheck) _draftGuideTabsChecked.add(id);
+        else _draftGuideTabsChecked.delete(id);
+        cb.classList.toggle('checked', willCheck);
       });
     });
     overlay.querySelectorAll('[data-qtb-up]').forEach(btn => {

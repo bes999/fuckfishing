@@ -18,7 +18,12 @@ function showMedkitCategoryPicker() {
 
   requestAnimationFrame(function() { overlay.classList.add('open'); });
   overlay.addEventListener('click', function(e) {
-    if (e.target === overlay) closeMedkitCategoryPicker();
+    if (e.target === overlay) { closeMedkitCategoryPicker(); return; }
+    var row = e.target.closest('[data-action="mk-pick-toggle"]');
+    if (row) {
+      var check = row.querySelector('.mk-pick-check');
+      if (check) check.classList.toggle('checked');
+    }
   });
 }
 
@@ -36,11 +41,11 @@ function _mkPickerSheetHtml() {
     var group = MEDKIT_BASE[i];
     if (group.availableIn.indexOf('personal') < 0) continue;
     var checked = isGroupEnabled('personal', memberId, group.id);
-    rows += '<label class="mk-pick-row">' +
-      '<input type="checkbox" class="mk-pick-check" data-group="' + group.id + '"' + (checked ? ' checked' : '') + '>' +
+    rows += '<div class="mk-pick-row" data-action="mk-pick-toggle">' +
+      '<div class="mk-pick-check' + (checked ? ' checked' : '') + '" data-group="' + group.id + '"></div>' +
       '<span class="mk-pick-icon">' + escHtml(group.icon) + '</span>' +
       '<span class="mk-pick-label">' + escHtml(group.label) + '</span>' +
-      '</label>';
+      '</div>';
   }
   return '' +
     '<div class="mk-import-sheet">' +
@@ -62,7 +67,7 @@ function saveMedkitCategoryPicker() {
   var state = getMedkitState('personal', memberId);
   for (var i = 0; i < checks.length; i++) {
     var groupId = checks[i].dataset.group;
-    if (checks[i].checked) state.enabledGroups[groupId] = true;
+    if (checks[i].classList.contains('checked')) state.enabledGroups[groupId] = true;
     else delete state.enabledGroups[groupId];
   }
   saveMedkit();

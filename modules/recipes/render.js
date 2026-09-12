@@ -103,7 +103,7 @@ const RecipesRender = (() => {
         const def = defs.find(d => d.id === id);
         return `
         <div class="tqp-row rcs-row">
-          <input type="checkbox" class="rcs-check" data-rcs-check="${id}" ${checked.has(id) ? 'checked' : ''}>
+          <div class="rcs-check ${checked.has(id) ? 'checked' : ''}" data-rcs-check="${id}"></div>
           <span class="rcs-label">${_esc(def ? def.label : id)}</span>
           <div class="rcs-arrows">
             <button class="rcs-arrow" data-rcs-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
@@ -145,6 +145,17 @@ const RecipesRender = (() => {
         if (i < order.length - 1) { [order[i + 1], order[i]] = [order[i], order[i + 1]]; rerenderList(); }
         return;
       }
+      const checkEl = e.target.closest('[data-rcs-check]');
+      if (checkEl) {
+        const id = checkEl.dataset.rcsCheck;
+        const willCheck = !checkEl.classList.contains('checked');
+        // Хотя бы одна категория должна остаться видимой — снять последнюю
+        // отмеченную нельзя, иначе вкладки рецептов исчезли бы совсем.
+        if (!willCheck && checked.size === 1 && checked.has(id)) return;
+        if (willCheck) checked.add(id); else checked.delete(id);
+        checkEl.classList.toggle('checked', willCheck);
+        return;
+      }
       if (e.target.closest('[data-action="rcs-save"]')) {
         // Сохраняем только видимые id по порядку — тот же паттерн, что и
         // trip.guideTabs: скрытая категория не запоминает свою позицию,
@@ -158,16 +169,6 @@ const RecipesRender = (() => {
           render(_el);
         }
       }
-    });
-
-    overlay.addEventListener('change', e => {
-      const id = e.target.dataset.rcsCheck;
-      if (!id) return;
-      if (!e.target.checked && checked.size === 1 && checked.has(id)) {
-        e.target.checked = true;
-        return;
-      }
-      if (e.target.checked) checked.add(id); else checked.delete(id);
     });
   }
 
