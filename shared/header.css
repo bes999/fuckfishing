@@ -102,6 +102,11 @@
   text-transform: uppercase; letter-spacing: .05em;
   padding: 16px 18px 6px;
 }
+.ah-drawer-group-label--toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.ah-drawer-group-label--toggle i { font-size: 14px; }
 .ah-drawer-hint {
   font-size: 12.5px; line-height: 1.4; color: var(--label4);
   padding: 0 18px 8px;

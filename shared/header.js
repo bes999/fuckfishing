@@ -159,8 +159,13 @@ const AppHeader = (() => {
         </div>
       </div>
       <div class="ah-drawer-body">
-        <div class="ah-drawer-group-label">Личное</div>
-        ${PERSONAL_ITEMS.map(_itemHtml).join('')}
+        <div class="ah-drawer-group-label ah-drawer-group-label--toggle" data-action="ah-toggle-personal">
+          <span>Личное</span>
+          <i class="ti ${_personalCollapsed() ? 'ti-chevron-down' : 'ti-chevron-up'}" id="ah-personal-chevron"></i>
+        </div>
+        <div class="ah-drawer-personal-items" id="ah-personal-items" ${_personalCollapsed() ? 'hidden' : ''}>
+          ${PERSONAL_ITEMS.map(_itemHtml).join('')}
+        </div>
         <div class="ah-drawer-group-label">Поездка${tripName ? ' — ' + _esc(tripName) : ''}</div>
         ${tripId
           ? tripItems.map(_itemHtml).join('')
@@ -180,6 +185,13 @@ const AppHeader = (() => {
       closeDrawer();
       _cb && _cb('profile');
     });
+    drawer.querySelector('[data-action="ah-toggle-personal"]')?.addEventListener('click', () => {
+      const collapsed = !_personalCollapsed();
+      _setPersonalCollapsed(collapsed);
+      drawer.querySelector('#ah-personal-items').hidden = collapsed;
+      const chevron = drawer.querySelector('#ah-personal-chevron');
+      if (chevron) chevron.className = `ti ${collapsed ? 'ti-chevron-down' : 'ti-chevron-up'}`;
+    });
     drawer.querySelectorAll('[data-nav-id]').forEach(item => {
       item.addEventListener('click', () => {
         const id = item.dataset.navId;
@@ -187,6 +199,17 @@ const AppHeader = (() => {
         _cb && _cb(id);
       });
     });
+  }
+
+  // Свёрнуто/развёрнуто «Личное» — чисто локальная настройка отображения
+  // (не данные, синхронизировать между устройствами незачем), поэтому
+  // localStorage, а не Firestore — тот же уровень, что и тема оформления.
+  const _PERSONAL_COLLAPSED_KEY = 'ff_personal_collapsed';
+  function _personalCollapsed() {
+    try { return localStorage.getItem(_PERSONAL_COLLAPSED_KEY) === '1'; } catch (e) { return false; }
+  }
+  function _setPersonalCollapsed(val) {
+    try { localStorage.setItem(_PERSONAL_COLLAPSED_KEY, val ? '1' : '0'); } catch (e) {}
   }
 
   function _itemHtml(it) {
