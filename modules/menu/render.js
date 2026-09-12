@@ -516,7 +516,7 @@ const MenuRender = (() => {
       const key = String(ing.name || '').trim().toLowerCase();
       if (!key || existingNames.has(key)) return;
 
-      const title = RecipesData.resolveShoppingCategory(ing.name, ing.category);
+      const title = RecipesData.resolveShoppingCategory(ing.name, ing.category, ing.ingredientId);
       const cat = ShoppingState.findOrCreateCategory(cats, title);
 
       cat.items.push({

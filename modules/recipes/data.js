@@ -799,15 +799,21 @@ const RecipesData = (() => {
   ];
   const _FALLBACK_CATEGORY = 'Разное';
 
-  // Каталог ингредиентов (см. RecipesState.getIngredientByName) — единый
-  // источник правды по категории для имени, в приоритете перед всем
-  // остальным. authoredCategory — то, что уже проставлено вручную (на
-  // ингредиенте рецепта) на случай, если каталог про это имя ничего не
-  // знает. Угадывание по ключевым словам — совсем запасной вариант, и
-  // фиксированный fallback в самом конце для того, что не несёт вообще
-  // ничего.
-  function resolveShoppingCategory(name, authoredCategory) {
-    const catalogIng = (typeof RecipesState !== 'undefined') ? RecipesState.getIngredientByName(name) : null;
+  // Каталог ингредиентов — единый источник правды по категории, в
+  // приоритете перед всем остальным. Резолв по ingredientId (жёсткая
+  // ссылка на конкретный док каталога — см. project_readiness_freeform_
+  // migration-style "id вместо имени", тут аналогично для ингредиентов)
+  // предпочтительнее резолва по имени: имя может разъехаться (опечатка,
+  // регистр, синоним), а id — нет. Резолв по имени остаётся запасным для
+  // мест без id (вставка списка текстом в Закупке, старые ненормализованные
+  // ингредиенты рецептов). authoredCategory — то, что уже проставлено
+  // вручную на ингредиенте рецепта, на случай если каталог про это имя/id
+  // ничего не знает. Угадывание по ключевым словам — совсем запасной
+  // вариант, и фиксированный fallback в самом конце для того, что не несёт
+  // вообще ничего.
+  function resolveShoppingCategory(name, authoredCategory, ingredientId) {
+    const byId = (ingredientId && typeof RecipesState !== 'undefined') ? RecipesState.getIngredientById(ingredientId) : null;
+    const catalogIng = byId || ((typeof RecipesState !== 'undefined') ? RecipesState.getIngredientByName(name) : null);
     if (catalogIng && catalogIng.category) return catalogIng.category;
     if (authoredCategory) return authoredCategory;
     const key = String(name || '').trim().toLowerCase();

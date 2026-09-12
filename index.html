@@ -354,22 +354,24 @@
       // уже никто не ждёт. Здесь такой гонки нет — к моменту первой
       // подписки данные (если их не было) уже гарантированно записаны.
       const _recipesReady = (typeof RecipesFirebase !== 'undefined')
-        ? RecipesFirebase.migrateSeedData().catch(() => {}).then(() => {
-            RecipesFirebase.subscribeCatalog(() => {
-              if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
-            });
-            RecipesFirebase.subscribeIngredients(() => {});
-            RecipesFirebase.subscribeCustom(() => {
-              if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
-            });
-            // Порядок/видимость вкладок-категорий — не блокирует старт
-            // приложения (getCategories() и без неё безопасно откатывается
-            // на дефолтный порядок), просто держим кэш свежим.
-            RecipesFirebase.subscribeCategoryOrder(() => {
-              if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
-            });
-            return RecipesFirebase.catalogReady();
-          })
+        ? RecipesFirebase.migrateSeedData().catch(() => {})
+            .then(() => RecipesFirebase.migrateIngredientIds().catch(() => {}))
+            .then(() => {
+              RecipesFirebase.subscribeCatalog(() => {
+                if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
+              });
+              RecipesFirebase.subscribeIngredients(() => {});
+              RecipesFirebase.subscribeCustom(() => {
+                if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
+              });
+              // Порядок/видимость вкладок-категорий — не блокирует старт
+              // приложения (getCategories() и без неё безопасно откатывается
+              // на дефолтный порядок), просто держим кэш свежим.
+              RecipesFirebase.subscribeCategoryOrder(() => {
+                if (typeof RecipesRender !== 'undefined') RecipesRender.refresh();
+              });
+              return RecipesFirebase.catalogReady();
+            })
         : Promise.resolve();
 
       // Ждём первый снапшот (обычно почти мгновенно — офлайн-персистентность

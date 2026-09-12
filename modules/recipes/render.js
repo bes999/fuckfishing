@@ -520,9 +520,16 @@ const RecipesRender = (() => {
           } catch (_) {}
         }
       }
+      // ingredientId — жёсткая ссылка на каталог (см. RecipesData.
+      // resolveShoppingCategory) вместо сопоставления по имени при каждом
+      // использовании; category остаётся тоже, как отображаемый fallback
+      // на случай если сам каталог когда-нибудь не найдётся по id.
       const withCategory = ingredients.map(ing => {
         const catalogIng = RecipesState.getIngredientByName(ing.name);
-        return Object.assign({}, ing, { category: (catalogIng && catalogIng.category) || null });
+        return Object.assign({}, ing, {
+          ingredientId: (catalogIng && catalogIng.id) || null,
+          category: (catalogIng && catalogIng.category) || null,
+        });
       });
 
       const recipe = {

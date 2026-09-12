@@ -213,12 +213,68 @@ const RecipesFirebase = (() => {
     return { migrated: true, ingredients: ingredientMap.size, recipes: seedCats.reduce((a, c) => a + c.cocktails.length, 0) };
   }
 
+  // --- Одноразовый бэкфилл ingredientId на существующих ингредиентах
+  // рецептов (посевных + своих) — сопоставление по имени (без учёта
+  // регистра) против уже засеянного каталога ингредиентов. Новые рецепты
+  // и правки существующих проставляют ingredientId сами при сохранении
+  // (см. RecipesRender._showRecipeForm), так что это именно "закрыть дыру
+  // для того, что уже лежит в Firestore без него" — не постоянный процесс.
+  // Гейт через recipes_meta/ingredientIds — иначе каждый старт приложения
+  // читал бы целиком обе коллекции рецептов только чтобы убедиться, что
+  // делать нечего. Идемпотентно и по самому содержимому (трогает только
+  // записи без ingredientId), так что параллельный запуск с двух устройств
+  // при первом апдейте ничего не портит, даже если гейт почему-то не сработал. ---
+  async function migrateIngredientIds() {
+    const marker = db.collection(META_COLLECTION).doc('ingredientIds');
+    const markerDoc = await marker.get();
+    if (markerDoc.exists) return { migrated: false };
+
+    const ingSnap = await db.collection(INGREDIENTS_COLLECTION).get();
+    const byName = new Map();
+    ingSnap.forEach(doc => {
+      const key = String(doc.data().name || '').trim().toLowerCase();
+      if (key && !byName.has(key)) byName.set(key, doc.id);
+    });
+
+    let batch = db.batch();
+    let opCount = 0;
+    let touched = 0;
+
+    async function processCollection(collectionName) {
+      const snap = await db.collection(collectionName).get();
+      for (const doc of snap.docs) {
+        const ings = doc.data().ingredients;
+        if (!Array.isArray(ings) || !ings.length) continue;
+        let changed = false;
+        const next = ings.map(ing => {
+          if (ing.ingredientId) return ing;
+          const id = byName.get(String(ing.name || '').trim().toLowerCase());
+          if (!id) return ing;
+          changed = true;
+          return Object.assign({}, ing, { ingredientId: id });
+        });
+        if (!changed) continue;
+        batch.update(db.collection(collectionName).doc(doc.id), { ingredients: next });
+        touched++;
+        opCount++;
+        if (opCount >= 400) { await batch.commit(); batch = db.batch(); opCount = 0; }
+      }
+    }
+
+    await processCollection(CATALOG_COLLECTION);
+    await processCollection(CUSTOM_COLLECTION);
+    if (opCount > 0) await batch.commit();
+
+    await marker.set({ done: true, touched, at: new Date().toISOString() });
+    return { migrated: true, touched };
+  }
+
   return {
     subscribe, unsubscribe, saveRating, addComment,
     subscribeCustom, unsubscribeCustom, addRecipe, deleteRecipe, updateRecipe,
     subscribeCatalog, unsubscribeCatalog, updateCatalogRecipe, catalogReady,
     subscribeIngredients, unsubscribeIngredients, addIngredient,
     subscribeCategoryOrder, unsubscribeCategoryOrder, saveCategoryOrder,
-    migrateSeedData,
+    migrateSeedData, migrateIngredientIds,
   };
 })();

@@ -48,6 +48,9 @@ const RecipesState = (() => {
     const key = String(name || '').trim().toLowerCase();
     return _ingredients.find(i => i.name.toLowerCase() === key) || null;
   }
+  function getIngredientById(id) {
+    return _ingredients.find(i => i.id === id) || null;
+  }
 
   // --- Порядок/видимость вкладок-категорий — тот же паттерн, что
   // trip.guideTabs у вкладок Гида: пусто/не загружено = показываем все
@@ -86,7 +89,7 @@ const RecipesState = (() => {
     load, setReviews, get, getAvgRating, getUserRating, getComments, setRating, pushComment,
     setCustomRecipes, getCustomRecipes, getCustomRecipeById,
     setCatalogRecipes, getCatalogRecipes, getCatalogRecipeById,
-    setIngredients, getIngredients, getIngredientByName,
+    setIngredients, getIngredients, getIngredientByName, getIngredientById,
     setCategoryOrder, getCategoryOrder,
   };
 })();
