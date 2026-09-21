@@ -124,3 +124,25 @@
 }
 .ah-drawer-item-icon i { font-size: 17px; }
 .ah-drawer-item-label { font-size: 15px; font-weight: 500; color: var(--label); }
+
+/* Поиск поездок (иконка в .ah-actions, шторка через .tqp-*) */
+.ah-search-input {
+  display: block;
+  background: var(--bg3);
+  border: 0.5px solid var(--sep);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  color: var(--label);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  margin-bottom: 8px;
+}
+.ah-search-input::placeholder { color: var(--label3); }
+.ah-search-empty {
+  font-size: 13px; color: var(--label3);
+  padding: 14px 4px; text-align: center;
+}

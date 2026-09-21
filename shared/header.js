@@ -66,6 +66,9 @@ const AppHeader = (() => {
         <div class="ah-name">${_esc(name)}</div>
       </div>
       <div class="ah-actions">
+        <button class="ah-icon-btn" data-action="ah-search" aria-label="Поиск">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </button>
         <button class="ah-icon-btn" data-action="ah-theme" aria-label="Тема">
           <svg id="ahThemeSvg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">${isDark ? _sunSvg : _moonSvg}</svg>
         </button>
@@ -84,6 +87,7 @@ const AppHeader = (() => {
     _el.querySelector('[data-action="ah-profile"]')?.addEventListener('click', () => _cb && _cb('profile'));
     _el.querySelector('[data-action="ah-menu"]')?.addEventListener('click', openDrawer);
     _el.querySelector('[data-action="ah-theme"]')?.addEventListener('click', _toggleTheme);
+    _el.querySelector('[data-action="ah-search"]')?.addEventListener('click', _showSearch);
     _el.querySelector('[data-action="ah-create-trip"]')?.addEventListener('click', () => {
       if (typeof AppNav !== 'undefined') AppNav.setActive('trips');
       if (typeof AppRouter !== 'undefined') AppRouter.show('trips');
@@ -101,6 +105,54 @@ const AppHeader = (() => {
     try { localStorage.setItem('theme_ff', next); } catch (e) {}
     const svg = document.getElementById('ahThemeSvg');
     if (svg) svg.innerHTML = next === 'dark' ? _sunSvg : _moonSvg;
+  }
+
+  // ── Поиск (v1 — только по названиям поездок; у рецептов уже есть свой
+  //   поиск внутри экрана, у Атласа пока почти нет контента, чтобы искать) ──
+  function _showSearch() {
+    document.getElementById('ah-search-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'ah-search-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Поиск поездки</div>
+        <input class="ah-search-input" id="ah-search-input" type="text" placeholder="Название поездки...">
+        <div class="tqp-list" id="ah-search-results"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    const input = overlay.querySelector('#ah-search-input');
+    const resultsEl = overlay.querySelector('#ah-search-results');
+    const renderResults = q => {
+      const uid = window.APP?.user?.uid;
+      const all = (typeof TripsData !== 'undefined' ? TripsData.getMine(uid) : [])
+        .slice()
+        .sort((a, b) => new Date(b.startDate || 0) - new Date(a.startDate || 0));
+      const query = q.trim().toLowerCase();
+      const matches = query ? all.filter(t => (t.name || '').toLowerCase().includes(query)) : all;
+      resultsEl.innerHTML = matches.length
+        ? matches.map(t => `
+            <div class="tqp-row" data-trip-id="${t.id}">
+              <div class="tqp-name">${_esc(t.name)}</div>
+              <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
+            </div>`).join('')
+        : `<div class="ah-search-empty">Ничего не нашлось</div>`;
+    };
+    renderResults('');
+    input.addEventListener('input', () => renderResults(input.value));
+    setTimeout(() => input.focus(), 50);
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const row = e.target.closest('[data-trip-id]');
+      if (row) {
+        overlay.remove();
+        if (typeof TripCoverIndex !== 'undefined') TripCoverIndex.show(row.dataset.tripId);
+      }
+    });
   }
 
   function _identity() {
