@@ -3,13 +3,26 @@
 
 const MembersFirebase = (() => {
 
+  // Раньше при ошибке основного .get() падали на явный {source:'cache'} —
+  // тот же класс бага, что уронил список снаряги (см. modules/gear/data.js
+  // и memory project_known_bugs_backlog): getProfile() кормит форму
+  // редактирования профиля (_showEditSheet → _draftProfile), а сохранение
+  // там пишет ВСЕ редактируемые поля разом (displayName/phone/bloodType/
+  // allergies/...), не только реально изменённые — если бы кэш вернул
+  // устаревший снимок (например поле поменяли с другого устройства, а на
+  // этом основной .get() споткнулся о что-то помимо офлайна), сохранение
+  // тихо откатило бы это поле обратно на старое значение. Обычный офлайн
+  // и так штатно обслуживается кэшем самим SDK на основном .get() —
+  // отдельный fallback был нужен только для настоящих ошибок чтения, и
+  // именно в этом случае угадывать по устаревшим данным небезопасно.
+  // Теперь просто возвращаем null/пусто, вызывающий код уже везде на это
+  // рассчитан.
   async function getProfile(uid) {
     try {
       const s = await db.collection('members').doc(uid).get();
       return s.exists ? s.data() : null;
     } catch (_) {
-      const s = await db.collection('members').doc(uid).get({source:'cache'}).catch(()=>null);
-      return s?.exists ? s.data() : null;
+      return null;
     }
   }
 
@@ -18,8 +31,7 @@ const MembersFirebase = (() => {
       const s = await db.collection('members').orderBy('createdAt').get();
       return s.docs.map(d => d.data());
     } catch (_) {
-      const s = await db.collection('members').get({source:'cache'}).catch(()=>({docs:[]}));
-      return s.docs.map(d => d.data());
+      return [];
     }
   }
 
