@@ -284,6 +284,12 @@ const MembersRender = (() => {
 
       ${isMe ? `
       <div class="p-sec-title">Аккаунт</div>
+      <div class="p-card" style="padding:2px 14px">
+        <div class="p-row" data-action="guide-tabs-personal" style="cursor:pointer">
+          <span class="p-row-lbl">Мои вкладки Гида</span>
+          <span class="p-row-val muted">Настроить <i class="ti ti-chevron-right" style="font-size:12px"></i></span>
+        </div>
+      </div>
       <div class="p-card" style="padding:2px 14px">${_tabTelegram(p)}</div>
 
       <div class="p-card p-card--signout" style="padding:2px 14px" data-action="auth-signout">

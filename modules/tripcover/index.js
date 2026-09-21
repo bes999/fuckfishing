@@ -77,18 +77,40 @@ const TripCoverIndex = (() => {
 
   // Видимые табы этой поездки в нужном порядке, всегда с 'info' первым.
   // Фильтруем по _ALL_TAB_DEFS на случай устаревших/опечатанных id в старых
-  // сохранённых trip.guideTabs.
+  // сохранённых trip.guideTabs. Это ОБЩИЙ набор поездки (видят все её
+  // участники одинаково) — не путать с персональным фильтром ниже.
   function _guideTabIds(trip) {
     const saved = (trip.guideTabs || []).filter(id => _ALL_TAB_DEFS[id]);
     return ['info', ...(saved.length ? saved : _DEFAULT_TAB_ORDER)];
   }
 
+  // Персональный фильтр поверх общего набора поездки — "какие из
+  // включённых для поездки вкладок лично я хочу видеть", хранится на
+  // профиле участника (members/{uid}.hiddenGuideTabs), не на самой
+  // поездке. В отличие от trip.guideTabs (общая настройка, меняет её
+  // организатор для всех), это чисто личное — Дмитрию не интересен Бар ни
+  // на одной поездке, а Илье наоборот. 'info' никогда не фильтруется —
+  // всегда должна остаться хотя бы одна видимая вкладка. Настройки
+  // (_showGuideTabsSettings ниже) сознательно работают с _guideTabIds
+  // напрямую, не с этой функцией — организатор должен видеть и уметь
+  // включить/выключить ВСЕ вкладки поездки для всех, даже те, что лично
+  // сам скрыл у себя.
+  function _personallyHiddenTabIds() {
+    return (window.APP?.profile?.hiddenGuideTabs) || [];
+  }
+
+  function _personalGuideTabIds(trip) {
+    const hidden = _personallyHiddenTabIds();
+    if (!hidden.length) return _guideTabIds(trip);
+    return _guideTabIds(trip).filter(id => id === 'info' || !hidden.includes(id));
+  }
+
   // Публичная версия без 'info' — гамбургер-меню (shared/header.js)
   // фильтрует свои пункты Реки/Меню/Бар/Улов/Расходы/Закупка/Безопасность/
   // Рецепты по этому же списку, чтобы там не оставались табы, которые
-  // выключили в настройках Гида (⚙).
+  // выключили в настройках Гида (⚙) ИЛИ лично скрыл у себя пользователь.
   function visibleGuideTabs(trip) {
-    return _guideTabIds(trip).filter(id => id !== 'info');
+    return _personalGuideTabIds(trip).filter(id => id !== 'info');
   }
 
   function show(tripId) {
@@ -1273,7 +1295,7 @@ const TripCoverIndex = (() => {
   }
 
   function _renderTabStrip(trip) {
-    const ids = _guideTabIds(trip);
+    const ids = _personalGuideTabIds(trip);
     const pills = ids.map(id => {
       const label = id === 'info' ? 'Инфо' : _ALL_TAB_DEFS[id].label;
       return `<div class="g-tab ${id === _activeGuideTab ? 'active' : ''}" data-gtab="${id}">${_esc(label)}</div>`;
@@ -1560,7 +1582,7 @@ const TripCoverIndex = (() => {
         overlay.remove();
         const stripEl = document.getElementById('g-tabstrip');
         if (stripEl) stripEl.outerHTML = _renderTabStrip(trip);
-        if (!_guideTabIds(trip).includes(_activeGuideTab)) _mountGuideTab(trip, 'info');
+        if (!_personalGuideTabIds(trip).includes(_activeGuideTab)) _mountGuideTab(trip, 'info');
       }
     });
   }
@@ -1859,5 +1881,29 @@ const TripCoverIndex = (() => {
 
 
 
-  return { show, hide, enterTrip, showQuickPicker, visibleGuideTabs, getCurrentTripId: () => _tripId };
+  // Полный список настраиваемых вкладок (id+label) — источник правды один
+  // (тут же, рядом с _ALL_TAB_DEFS), нужен профилю (modules/members/*)
+  // для сборки шита персональных настроек, у себя дублировать нечего.
+  function allGuideTabDefs() {
+    return _DEFAULT_TAB_ORDER.map(id => ({ id, label: _ALL_TAB_DEFS[id].label }));
+  }
+
+  // Пересобрать полоску вкладок в уже открытом Гиде — нужно сразу после
+  // сохранения персональных настроек (modules/members/render.js), пока
+  // пользователь ещё может стоять на самой поездке; если Гид сейчас не
+  // смонтирован (trip !== _tripId или #g-tabstrip не в DOM), no-op —
+  // подтянется само при следующем enterTrip().
+  function refreshTabStripIfMounted(tripId) {
+    if (tripId !== _tripId) return;
+    const stripEl = document.getElementById('g-tabstrip');
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(tripId) : null;
+    if (!stripEl || !trip) return;
+    stripEl.outerHTML = _renderTabStrip(trip);
+    if (!_personalGuideTabIds(trip).includes(_activeGuideTab)) _mountGuideTab(trip, 'info');
+  }
+
+  return {
+    show, hide, enterTrip, showQuickPicker, visibleGuideTabs, getCurrentTripId: () => _tripId,
+    allGuideTabDefs, refreshTabStripIfMounted,
+  };
 })();

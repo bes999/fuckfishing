@@ -513,6 +513,74 @@ var MembersModule = (() => {
   }
 
   /* ══════════════════════════════════════════════
+     ЛИЧНЫЕ ВКЛАДКИ ГИДА — не путать с trip.guideTabs (общая настройка
+     поездки, меняется через ⚙ в самом Гиде): это персональный фильтр
+     поверх него, "какие из включённых для поездки вкладок лично я хочу
+     видеть" — живёт на профиле (members/{uid}.hiddenGuideTabs), не на
+     поездке, действует сразу на всех поездках. Список самих вкладок и их
+     подписи берём у TripCoverIndex.allGuideTabDefs() — единый источник
+     правды, тут не дублируем. Внешний шит — .tqp-overlay/.tqp-sheet из
+     modules/tripcover/styles.css (настоящий подключённый файл, не
+     инлайновый <style> самого Гида — тот гарантированно есть только пока
+     открыт сам Гид, сюда заходят и с экрана Профиля, где его может не
+     быть). Строки чекбоксов — свои классы .pgt-*, стилизованы в
+     modules/members/styles.css.
+  ══════════════════════════════════════════════ */
+  function _showPersonalGuideTabsSheet() {
+    document.getElementById('pgt-overlay')?.remove();
+    if (typeof TripCoverIndex === 'undefined') return;
+
+    const defs = TripCoverIndex.allGuideTabDefs();
+    const hidden = new Set(window.APP?.profile?.hiddenGuideTabs || []);
+
+    const rows = defs.map(d => `
+      <div class="pgt-row" data-action="pgt-toggle" data-id="${d.id}">
+        <div class="pgt-check ${hidden.has(d.id) ? '' : 'checked'}"></div>
+        <span class="pgt-label">${_esc(d.label)}</span>
+      </div>`).join('');
+
+    const overlay = document.createElement('div');
+    overlay.id = 'pgt-overlay';
+    overlay.className = 'tqp-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Мои вкладки Гида</div>
+        <p class="pgt-hint">Скрытые здесь вкладки не покажутся лично у тебя — ни в Гиде, ни в гамбургере — даже если включены для поездки. На то, что видят остальные участники, не влияет.</p>
+        <div class="tqp-list" id="pgt-list">${rows}</div>
+        <button class="pgt-save" data-action="pgt-save">Сохранить</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const row = e.target.closest('[data-action="pgt-toggle"]');
+      if (row) {
+        const id = row.dataset.id;
+        if (hidden.has(id)) hidden.delete(id); else hidden.add(id);
+        row.querySelector('.pgt-check').classList.toggle('checked', !hidden.has(id));
+        return;
+      }
+      if (e.target.closest('[data-action="pgt-save"]')) {
+        const profile = window.APP?.profile;
+        if (!profile) return;
+        const hiddenGuideTabs = [...hidden];
+        MembersFirebase.updateProfile(profile.uid, { hiddenGuideTabs });
+        profile.hiddenGuideTabs = hiddenGuideTabs;
+        // Если сейчас реально стоишь в Гиде какой-то поездки — полоска
+        // вкладок должна тут же отразить новый личный фильтр, а не только
+        // при следующем входе в поездку.
+        const openTripId = typeof TripCoverIndex !== 'undefined' ? TripCoverIndex.getCurrentTripId() : null;
+        if (openTripId && typeof TripCoverIndex.refreshTabStripIfMounted === 'function') {
+          TripCoverIndex.refreshTabStripIfMounted(openTripId);
+        }
+        overlay.remove();
+      }
+    });
+  }
+
+  /* ══════════════════════════════════════════════
      EVENTS
   ══════════════════════════════════════════════ */
   if (!_listenerBound) {
@@ -618,6 +686,10 @@ var MembersModule = (() => {
       if (action === 'edit-tick') {
         document.querySelectorAll('#edit-overlay [data-tick]').forEach(b => b.classList.remove('sel'));
         t.classList.add('sel');
+      }
+
+      if (action === 'guide-tabs-personal') {
+        _showPersonalGuideTabsSheet();
       }
 
       if (action === 'emerg-add') {
