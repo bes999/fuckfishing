@@ -83,13 +83,18 @@ service cloud.firestore {
         allow delete: if isMember() &&
           (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId));
       }
+      match /notes/{docId} {
+        allow read, create, update: if isMember();
+        allow delete: if isMember() &&
+          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId));
+      }
 
       // Firestore объединяет правила из ВСЕХ подходящих match-блоков через
       // OR, а не берёт самый специфичный — этот wildcard тоже совпадает с
-      // путями expenses/catches, поэтому явно исключаем их отсюда, иначе
-      // его allow write перекрывает более узкое правило на delete выше.
+      // путями expenses/catches/notes, поэтому явно исключаем их отсюда,
+      // иначе его allow write перекрывает более узкое правило на delete выше.
       match /{subcollection}/{docId} {
-        allow read, write: if isMember() && !(subcollection in ['expenses', 'catches']);
+        allow read, write: if isMember() && !(subcollection in ['expenses', 'catches', 'notes']);
       }
     }
 

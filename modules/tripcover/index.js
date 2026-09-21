@@ -8,6 +8,7 @@ const TripCoverIndex = (() => {
 
   let _tripId = null;
   let _guideHandler = null;
+  let _notesUnsub = null;
 
   // Добавить гостя без аккаунта — { name, uid: null } в participants
   // (см. TripsData.addParticipant), в хэдкаунт и списки участников, но
@@ -1277,6 +1278,34 @@ const TripCoverIndex = (() => {
         return;
       }
 
+      // Заметки поездки (таб "Инфо") — реалтайм-список, обновление DOM
+      // приходит через _listenNotes()/onSnapshot, тут только пишем в
+      // Firestore. См. modules/notes/*.
+      if (e.target.closest('[data-action="note-safety-toggle"]')) {
+        e.target.closest('[data-action="note-safety-toggle"]').classList.toggle('active');
+        return;
+      }
+      if (e.target.closest('[data-action="note-add"]')) {
+        const input = document.getElementById('g-note-input');
+        const text = input?.value.trim();
+        if (!text) return;
+        const safety = !!document.querySelector('[data-action="note-safety-toggle"]')?.classList.contains('active');
+        if (typeof NotesFirebase !== 'undefined') NotesFirebase.addNote(trip.id, { text, safety });
+        if (input) input.value = '';
+        return;
+      }
+      const pinBtn = e.target.closest('[data-action="note-pin"]');
+      if (pinBtn) {
+        const note = (typeof NotesState !== 'undefined' ? NotesState.getNotes(trip.id) : []).find(n => n._id === pinBtn.dataset.id);
+        if (note && typeof NotesFirebase !== 'undefined') NotesFirebase.setPinned(trip.id, pinBtn.dataset.id, !note.pinned);
+        return;
+      }
+      const delBtn = e.target.closest('[data-action="note-del"]');
+      if (delBtn) {
+        if (typeof NotesFirebase !== 'undefined') NotesFirebase.deleteNote(trip.id, delBtn.dataset.id);
+        return;
+      }
+
       const hd = e.target.closest('[data-target]');
       if (!hd) return;
       const body = document.getElementById(hd.dataset.target);
@@ -1445,6 +1474,58 @@ const TripCoverIndex = (() => {
       <div id="g-tab-panel"></div>`;
   }
 
+  // ── Заметки поездки (секция внутри таба "Инфо") ──────────────────────────
+  // Не отдельная вкладка Гида — Дмитрий прав, что для простой доски заметок
+  // это перебор (плюс пришлось бы добавлять в настройки видимости вкладок).
+  // Живёт в NotesState/NotesFirebase (modules/notes/*), тот же паттерн
+  // realtime-подписки с несколькими подписчиками, что у CatchesFirebase.
+
+  function _listenNotes(tripId) {
+    if (_notesUnsub) { _notesUnsub(); _notesUnsub = null; }
+    if (typeof NotesFirebase === 'undefined') return;
+    _notesUnsub = NotesFirebase.listen(tripId, arr => {
+      NotesState.setNotes(tripId, arr);
+      const section = document.getElementById('g-notes-section');
+      if (section) section.innerHTML = _notesSection(tripId);
+    });
+  }
+
+  function _canDeleteNote(tripId, note) {
+    const myUid = window.APP?.user?.uid;
+    if (myUid && note.createdBy === myUid) return true;
+    return TripsData.getById(tripId)?.ownerId === myUid;
+  }
+
+  function _notesSection(tripId) {
+    const notes = typeof NotesState !== 'undefined' ? NotesState.getNotes(tripId) : [];
+    const rows = notes.map(n => `
+      <div class="g-note-row ${n.pinned ? 'pinned' : ''}">
+        <div class="g-note-row-top">
+          <span class="g-note-author">${_esc(n.authorName)}</span>
+          ${n.safety ? '<span class="g-note-tag">🚩 Безопасность</span>' : ''}
+          ${n.pinned ? '<span class="g-note-pin-icon" title="Закреплено">📌</span>' : ''}
+        </div>
+        <div class="g-note-text">${_esc(n.text)}</div>
+        <div class="g-note-row-actions">
+          <span data-action="note-pin" data-id="${n._id}">${n.pinned ? 'Открепить' : 'Закрепить'}</span>
+          ${_canDeleteNote(tripId, n) ? `<span data-action="note-del" data-id="${n._id}">Удалить</span>` : ''}
+        </div>
+      </div>`).join('');
+
+    return `
+      <div class="cover-section g-notes">
+        <div class="cover-section-head"><div class="cover-section-title">Заметки поездки</div></div>
+        <div class="g-notes-list">${rows || '<div class="g-notes-empty">Заметок пока нет — напишите первую ниже</div>'}</div>
+        <div class="g-notes-add">
+          <textarea class="g-note-input" id="g-note-input" placeholder="Заметка для группы..."></textarea>
+          <div class="g-notes-add-row">
+            <button type="button" class="g-note-safety-btn" data-action="note-safety-toggle">🚩 Безопасность</button>
+            <button type="button" class="g-note-submit" data-action="note-add">Добавить</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
   // Переключение таба — меняет только #g-tab-panel, заголовок и полоска
   // табов остаются на месте (не теряем прокрутку/состояние соседних вкладок).
   function _mountGuideTab(trip, tabId) {
@@ -1467,20 +1548,23 @@ const TripCoverIndex = (() => {
 
     const tripId = trip.id;
     if (tabId === 'info') {
+      let bodyHtml;
       if (trip?.importData?.route?.length) {
-        panel.innerHTML = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderGuideInfo(trip);
+        bodyHtml = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderGuideInfo(trip);
         _maybeRefreshWeather(trip);
       } else if (trip.type === 'fishing') {
-        panel.innerHTML = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderFishingInfo(trip);
+        bodyHtml = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderFishingInfo(trip);
         _maybeRefreshWeather(trip);
       } else {
-        panel.innerHTML = `
+        bodyHtml = `
           <div class="g-empty">
             <div class="g-empty__icon">🗺️</div>
             <div class="g-empty__title">Маршрут ещё не добавлен</div>
             <div class="g-empty__sub">Загрузи JSON-файл от AI в настройках поездки — появятся дни, рейсы и погода по маршруту</div>
           </div>`;
       }
+      panel.innerHTML = bodyHtml + `<div id="g-notes-section">${_notesSection(tripId)}</div>`;
+      _listenNotes(tripId);
     } else if (tabId === 'rivers') {
       if (typeof RiversIndex !== 'undefined') RiversIndex.init(panel, window.APP?.currentTripData, tripId);
     } else if (tabId === 'menu') {
