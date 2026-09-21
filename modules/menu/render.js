@@ -16,6 +16,47 @@ const MenuRender = (() => {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  // Кэш профилей участников (для аллергий в Cook Mode) — тот же паттерн
+  // TTL-кэша поверх разового MembersFirebase.getAllMembers(), что уже
+  // используется в modules/medkit/render.js, но свой: Меню и Аптечка —
+  // разные модули, тянуть приватный кэш соседнего модуля не стоит.
+  let _membersCache = null;
+  let _membersFetchedAt = 0;
+  let _membersLoading = false;
+  const MEMBERS_CACHE_TTL_MS = 60000;
+  // Если Cook Mode уже открыт в момент, когда холодный кэш только грузится
+  // (самое первое открытие в сессии), аллергии молча не покажутся — сам
+  // синхронный рендер overlay уже прошёл до того, как прогрузился fetch.
+  // Держим id текущего открытого приёма и перерисовываем overlay заново,
+  // когда кэш догружается — та же идея, что rMedkit() в medkit/render.js.
+  let _cookModeOpenFor = null;
+  function _getMembersCached() {
+    const stale = !_membersCache || (Date.now() - _membersFetchedAt) > MEMBERS_CACHE_TTL_MS;
+    if (stale && !_membersLoading && typeof MembersFirebase !== 'undefined') {
+      _membersLoading = true;
+      MembersFirebase.getAllMembers().then(members => {
+        _membersCache = members || [];
+        _membersFetchedAt = Date.now();
+        _membersLoading = false;
+        if (_cookModeOpenFor) _showCookMode(_cookModeOpenFor.dayId, _cookModeOpenFor.mealId);
+      }).catch(() => { _membersLoading = false; });
+    }
+    return _membersCache || [];
+  }
+
+  // Аллергии участников поездки — предупреждение в Cook Mode. Список,
+  // не привязка к явке: лучше перестраховаться и показать аллергию
+  // человека, который в итоге не пришёл на этот приём, чем один раз не
+  // показать того, кто пришёл.
+  function _allergyWarnings() {
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const byUid = new Map(_getMembersCached().map(m => [m.uid, m]));
+    return (trip?.participants || [])
+      .map(p => byUid.get(p.uid))
+      .filter(m => m && m.allergies)
+      .map(m => ({ name: m.displayName || 'Участник', allergies: m.allergies }));
+  }
+
   function render(el, tripId) {
     _el     = el;
     _tripId = tripId;
@@ -560,9 +601,11 @@ const MenuRender = (() => {
     const day  = _days.find(d => d.id === dayId);
     const meal = MenuData.getMeals().find(m => m.id === mealId);
     const mealData = day?.meals[mealId];
-    if (!day || !meal || !mealData) return;
+    if (!day || !meal || !mealData) { _cookModeOpenFor = null; return; }
 
+    _cookModeOpenFor = { dayId, mealId };
     const filledSlots = mealData.slots.filter(s => s.item);
+    const allergyWarnings = _allergyWarnings();
 
     const dishesHtml = filledSlots.map(slot => {
       const ingredients = _ingredientsForItem(slot.item.id, slot.item.source, slot.item.name);
@@ -617,6 +660,11 @@ const MenuRender = (() => {
             <div class="cm-role-name">${mealData.cleanup ? _esc(mealData.cleanup) : '—'}</div>
           </div>
         </div>
+        ${allergyWarnings.length ? `
+        <div class="cm-allergy-warn">
+          <div class="cm-allergy-warn__title">⚠️ Аллергии в группе</div>
+          ${allergyWarnings.map(a => `<div class="cm-allergy-warn__row"><b>${_esc(a.name)}</b> — ${_esc(a.allergies)}</div>`).join('')}
+        </div>` : ''}
         <div class="cm-dishes">${dishesHtml || '<div class="cm-no-ing" style="padding:14px">Ничего не выбрано на этот приём</div>'}</div>
         <div class="cm-actions">
           <button class="cm-done-btn" id="cm-done">Готово</button>
@@ -626,7 +674,7 @@ const MenuRender = (() => {
 
     (_el || document.body).appendChild(overlay);
 
-    overlay.querySelector('#cm-close').addEventListener('click', () => overlay.remove());
+    overlay.querySelector('#cm-close').addEventListener('click', () => { _cookModeOpenFor = null; overlay.remove(); });
 
     // Чек-лист ингредиентов — локальное состояние на время готовки, не
     // синхронизируется и не сохраняется: это "что я лично уже достал",
@@ -653,6 +701,7 @@ const MenuRender = (() => {
     });
 
     overlay.querySelector('#cm-done').addEventListener('click', () => {
+      _cookModeOpenFor = null;
       overlay.remove();
       _rerenderDay(dayId);
     });
