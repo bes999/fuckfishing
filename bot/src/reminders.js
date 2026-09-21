@@ -37,6 +37,102 @@ async function sendToTrip(bot, trip, text) {
   }
 }
 
+// ── Дежурства по Меню (повар/уборка) ─────────────────────────────
+// Отдельный от checkReminders поллинг (тот же часовой тик, см. index.js) —
+// там "за N дней"/"в день старта" на весь остаток жизни поездки, тут "кто
+// сегодня дежурит" каждый день заезда заново, поэтому свой флаг-мапа по
+// датам (trip.dutyRemindersSent.<YYYY-MM-DD>), а не trip.remindersSent.
+//
+// Дежурство в modules/menu хранится именем участника (day.meals[mealId].cook
+// /.cleanup — строка, как paidBy в Расходах), не uid — резолвим через
+// trip.participants (см. project_participants_schema_migration). Участник
+// без привязанного Telegram (гость без аккаунта, вручную вписанное имя,
+// опечатка) просто тихо пропускается — слать некуда.
+
+const MEAL_LABELS = { breakfast: 'Завтрак', snack: 'Перекус', lunch: 'Обед', dinner: 'Ужин' };
+
+function todayStr() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().slice(0, 10);
+}
+
+async function getTelegramIdByUid(uid) {
+  if (!uid) return null;
+  try {
+    const doc = await db.collection('members').doc(uid).get();
+    return doc.exists ? doc.data().telegramId || null : null;
+  } catch (err) {
+    console.error(`dutyReminders: не удалось прочитать members/${uid}:`, err.message);
+    return null;
+  }
+}
+
+export async function checkDutyReminders(bot) {
+  const today = todayStr();
+  const dayId = `day_${today}`;
+
+  let snap;
+  try {
+    snap = await db.collection('trips').get();
+  } catch (err) {
+    console.error('dutyReminders: не удалось прочитать trips:', err.message);
+    return;
+  }
+
+  for (const doc of snap.docs) {
+    const trip = doc.data();
+    const endDate = trip.endDate || trip.startDate;
+    if (!trip.startDate || !endDate) continue;
+    if (today < trip.startDate || today > endDate) continue;
+
+    const dutySent = trip.dutyRemindersSent || {};
+    if (dutySent[today]) continue;
+
+    let menuSnap;
+    try {
+      menuSnap = await db.collection('menu').doc(doc.id).get();
+    } catch (err) {
+      console.error(`dutyReminders: не удалось прочитать menu/${doc.id}:`, err.message);
+      continue;
+    }
+    const mealDuty = menuSnap.exists ? (menuSnap.data().mealDuty || {}) : {};
+
+    // Имя участника -> список строк "Приём пищи — роль" на сегодня.
+    const byPerson = {};
+    for (const mealId of Object.keys(MEAL_LABELS)) {
+      const duty = mealDuty[`${dayId}_${mealId}`];
+      if (!duty) continue;
+      if (duty.cook) {
+        (byPerson[duty.cook] = byPerson[duty.cook] || []).push(`${MEAL_LABELS[mealId]} — повар 🍳`);
+      }
+      if (duty.cleanup) {
+        (byPerson[duty.cleanup] = byPerson[duty.cleanup] || []).push(`${MEAL_LABELS[mealId]} — уборка 🧽`);
+      }
+    }
+
+    const names = Object.keys(byPerson);
+    if (names.length) {
+      const participants = trip.participants || [];
+      for (const name of names) {
+        const p = participants.find((pp) => pp.name.toLowerCase() === name.toLowerCase());
+        const chatId = p ? await getTelegramIdByUid(p.uid) : null;
+        if (!chatId) continue;
+        const text = `📋 Сегодня твоё дежурство в «${trip.name}»:\n${byPerson[name].join('\n')}`;
+        try {
+          await bot.api.sendMessage(chatId, text);
+        } catch (err) {
+          console.error(`dutyReminders: не удалось отправить chatId=${chatId}:`, err.message);
+        }
+      }
+    }
+
+    // Флаг ставим и когда дежурств на сегодня нет — иначе на каждый следующий
+    // часовой тик снова читаем menu/{tripId} впустую до конца дня.
+    await doc.ref.set({ dutyRemindersSent: { ...dutySent, [today]: true } }, { merge: true });
+  }
+}
+
 export async function checkReminders(bot) {
   let snap;
   try {
