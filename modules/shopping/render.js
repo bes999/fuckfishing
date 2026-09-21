@@ -52,13 +52,50 @@ const ShoppingRender = (() => {
           <div class="sh-progress-fill" style="width:${stats.pct}%"></div>
         </div>
       </div>
+      <div id="sh-dayone-section">${_dayOneSection()}</div>
       <div class="sh-paste-row" id="sh-paste" data-action="paste-list">
         <i class="ti ti-clipboard-list" aria-hidden="true"></i> вставить список текстом
+      </div>
+      <div class="sh-paste-row" id="sh-load-defaults" data-action="load-defaults">
+        <i class="ti ti-download" aria-hidden="true"></i> загрузить стандартный список
       </div>
       <div class="sh-cats">
         ${catsHtml}
         <div class="sh-add-cat" data-action="add-cat">
           <i class="ti ti-plus" aria-hidden="true"></i> добавить категорию
+        </div>
+      </div>`;
+  }
+
+  // ── "Первый день" — нужно сразу по приезду: либо уже везём, либо надо
+  //    успеть купить в дороге. Отдельная секция над обычными категориями,
+  //    свой узкий список в состоянии/Firestore (см. ShoppingState/
+  //    ShoppingFirebase — dayOneItems), не подкатегория "обычной" закупки.
+  function _dayOneSection() {
+    const items = ShoppingState.getDayOneItems(_tripId);
+    const rows = items.map(item => `
+      <div class="sh-item" data-item="${item.id}">
+        <div class="sh-checkbox ${item.ready ? 'checked' : ''}"
+          data-action="dayone-toggle" data-item="${item.id}" aria-label="Отметить">
+          ${item.ready ? '<i class="ti ti-check" aria-hidden="true"></i>' : ''}
+        </div>
+        <span class="sh-item__name ${item.ready ? 'bought' : ''}">${_esc(item.name)}</span>
+        <span class="sh-qty-tag">${_esc(item.qty || '—')}</span>
+        <button class="sh-del" data-action="dayone-del" data-item="${item.id}" aria-label="Удалить">×</button>
+      </div>`).join('');
+
+    return `
+      <div class="sh-dayone">
+        <div class="sh-dayone__head">
+          <i class="ti ti-backpack" aria-hidden="true"></i>
+          <span class="sh-dayone__title">Первый день</span>
+        </div>
+        <p class="sh-dayone__hint">Что нужно сразу по приезду — отмечай «везём», когда уже собрано</p>
+        ${rows}
+        <div class="sh-dayone__add">
+          <input class="sh-dayone__input" id="sh-dayone-name" type="text" placeholder="Название...">
+          <input class="sh-dayone__qty" id="sh-dayone-qty" type="text" placeholder="Кол-во">
+          <button type="button" class="sh-dayone__addbtn" data-action="dayone-add">+</button>
         </div>
       </div>`;
   }
@@ -139,6 +176,11 @@ const ShoppingRender = (() => {
     if (!bodyEl) return;
     bodyEl.innerHTML = _body();
     _bindBody();
+  }
+
+  function _rebuildDayOne() {
+    const el = _el?.querySelector('#sh-dayone-section');
+    if (el) el.innerHTML = _dayOneSection();
   }
 
   function _rebuildCat(catId) {
@@ -225,6 +267,32 @@ _bodyHandler = e => {
     _showPasteList();
     return;
   }
+  if (action === 'load-defaults') {
+    _loadDefaults(target);
+    return;
+  }
+  if (action === 'dayone-toggle') {
+    const newVal = ShoppingState.toggleDayOneReady(_tripId, itemId);
+    if (newVal !== null) ShoppingFirebase.saveDayOne(_tripId, ShoppingState.getDayOneItems(_tripId));
+    _rebuildDayOne();
+    return;
+  }
+  if (action === 'dayone-del') {
+    ShoppingState.removeDayOneItem(_tripId, itemId);
+    ShoppingFirebase.saveDayOne(_tripId, ShoppingState.getDayOneItems(_tripId));
+    _rebuildDayOne();
+    return;
+  }
+  if (action === 'dayone-add') {
+    const nameEl = body.querySelector('#sh-dayone-name');
+    const qtyEl  = body.querySelector('#sh-dayone-qty');
+    const name = nameEl?.value.trim();
+    if (!name) return;
+    ShoppingState.addDayOneItem(_tripId, name, qtyEl?.value.trim() || '');
+    ShoppingFirebase.saveDayOne(_tripId, ShoppingState.getDayOneItems(_tripId));
+    _rebuildDayOne();
+    return;
+  }
 };
 body.addEventListener('click', _bodyHandler, true);
   }
@@ -288,6 +356,40 @@ body.addEventListener('click', _bodyHandler, true);
   // ингредиентов рецепта из Меню — независимо от того, выбраны ли вообще
   // какие-то блюда в Меню этой поездки. Дедуп по имени против ВСЕХ
   // категорий, тот же паттерн, что у _pushIngredientsToShopping.
+  // Стандартный набор категорий/позиций (ShoppingData.getDefaults —
+  // тот же список, что раньше жил как дефолтный чек-лист новой поездки,
+  // убран оттуда осознанно, см. ShoppingState). Тут — по клику, разово,
+  // добавляет то, чего ещё нет по имени, той же дедуп-логикой, что и
+  // вставка списка текстом ниже, не трогая уже отмеченное/отредактированное.
+  async function _loadDefaults(btn) {
+    await UIUtils.withBusyButton(btn, async () => {
+      const cats = ShoppingState.getCategories(_tripId);
+      const existingNames = new Set();
+      cats.forEach(c => c.items.forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
+
+      let added = 0;
+      ShoppingData.getDefaults().forEach(defCat => {
+        defCat.items.forEach(defItem => {
+          const key = defItem.name.trim().toLowerCase();
+          if (existingNames.has(key)) return;
+          const cat = ShoppingState.findOrCreateCategory(cats, defCat.title);
+          cat.items.push({
+            id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            name: defItem.name, qty: defItem.qty, bought: false,
+          });
+          existingNames.add(key);
+          added++;
+        });
+      });
+
+      if (added) {
+        ShoppingState.persist();
+        await ShoppingFirebase.save(_tripId, cats);
+        _rebuildBody();
+      }
+    });
+  }
+
   function _showPasteList() {
     document.getElementById('sh-paste-overlay')?.remove();
 

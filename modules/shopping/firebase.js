@@ -10,8 +10,12 @@ const ShoppingFirebase = (() => {
     try {
       _unsubscribe = db.collection(COLLECTION).doc(tripId)
         .onSnapshot(snap => {
-          if (snap.exists && snap.data().categories) {
-            ShoppingState.setFromFirebase(tripId, snap.data().categories, snap.data().bought || {});
+          // exists-check без require на categories: раньше без него
+          // "Первый день" не долетал бы до onUpdate, если в документе
+          // ещё нет ни одной обычной категории (частый случай — список
+          // на первый день начинают заполнять раньше, чем основной).
+          if (snap.exists) {
+            ShoppingState.setFromFirebase(tripId, snap.data().categories || [], snap.data().bought || {}, snap.data().dayOneItems || []);
             onUpdate();
           }
         }, () => {});
@@ -41,5 +45,17 @@ const ShoppingFirebase = (() => {
     } catch (_) {}
   }
 
-  return { subscribe, unsubscribe, save, saveBought };
+  // "Первый день" — отдельный от categories массив, свой же полный
+  // ресейв на структурные правки (add/remove/rename), как save() выше
+  // для categories. Список из считанных позиций, заполняется разово
+  // перед выездом, а не во время одновременного шопинга в магазине —
+  // тот самый риск гонки, из-за которого bought вынесли в saveBought,
+  // тут ощутимо ниже, отдельного узкого поля пока не заводим.
+  async function saveDayOne(tripId, dayOneItems) {
+    try {
+      await db.collection(COLLECTION).doc(tripId).set({ dayOneItems }, { merge: true });
+    } catch (_) {}
+  }
+
+  return { subscribe, unsubscribe, save, saveBought, saveDayOne };
 })();

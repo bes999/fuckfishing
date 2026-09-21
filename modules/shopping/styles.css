@@ -249,6 +249,47 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Первый день */
+.sh-dayone {
+  background: var(--bg2);
+  border-radius: var(--radius-md);
+  border: 0.5px solid var(--sep);
+  margin: 10px 0;
+  overflow: hidden;
+}
+.sh-dayone__head {
+  display: flex; align-items: center; gap: 7px;
+  padding: 11px 12px 2px;
+  font-size: 14px; font-weight: 600; color: var(--label);
+}
+.sh-dayone__head i { color: var(--orange); font-size: 15px; }
+.sh-dayone__hint {
+  font-size: 12px; color: var(--label3); margin: 0;
+  padding: 0 12px 8px;
+}
+.sh-dayone .sh-item:first-of-type { border-top: 0.5px solid var(--sep); }
+.sh-dayone__add {
+  display: flex; gap: 6px; padding: 10px 12px;
+}
+.sh-dayone__input {
+  flex: 1; min-width: 0;
+  background: var(--bg3); border: 0.5px solid var(--sep);
+  border-radius: 8px; padding: 7px 10px; font-size: 13px;
+  color: var(--label); font-family: inherit; box-sizing: border-box;
+}
+.sh-dayone__qty {
+  width: 72px; flex-shrink: 0;
+  background: var(--bg3); border: 0.5px solid var(--sep);
+  border-radius: 8px; padding: 7px 10px; font-size: 13px;
+  color: var(--label); font-family: inherit; box-sizing: border-box;
+}
+.sh-dayone__addbtn {
+  width: 32px; flex-shrink: 0;
+  background: var(--accent); border: none; border-radius: 8px;
+  color: #fff; font-size: 18px; font-weight: 600; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Sheet overlay — 1100, не 100: .bottomnav фиксирован с z-index 1000
    (shared/nav.css), иначе шит рисуется под нижней навигацией. */
 .sh-overlay {

@@ -40,7 +40,7 @@ const ShoppingState = (() => {
   // единственное место, где хранился статус). Без boughtMap (старый
   // документ, ещё никто не отмечал после обновления) просто оставляем
   // то, что уже в categories.
-  function setFromFirebase(tripId, categories, boughtMap) {
+  function setFromFirebase(tripId, categories, boughtMap, dayOneItems) {
     if (!_data[tripId]) _data[tripId] = {};
     if (boughtMap) {
       categories.forEach(cat => {
@@ -52,7 +52,45 @@ const ShoppingState = (() => {
       });
     }
     _data[tripId].categories = categories;
+    _data[tripId].dayOneItems = dayOneItems || _data[tripId].dayOneItems || [];
     _save();
+  }
+
+  // ── "Первый день" — что нужно сразу по прибытии: либо уже везём, либо
+  //    надо успеть купить в дороге/по приезду. Отдельно от обычных
+  //    категорий (см. modules/shopping/firebase.js:saveDayOne). ──
+
+  function getDayOneItems(tripId) {
+    if (!_data[tripId]) _data[tripId] = { categories: [], dayOneItems: [] };
+    if (!_data[tripId].dayOneItems) _data[tripId].dayOneItems = [];
+    return _data[tripId].dayOneItems;
+  }
+
+  function addDayOneItem(tripId, name, qty) {
+    const items = getDayOneItems(tripId);
+    const item = {
+      id: `d1_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      name, qty: qty || '', ready: false,
+    };
+    items.push(item);
+    _save();
+    return item;
+  }
+
+  function removeDayOneItem(tripId, itemId) {
+    const items = getDayOneItems(tripId);
+    _data[tripId].dayOneItems = items.filter(i => i.id !== itemId);
+    _save();
+  }
+
+  // Возвращает новое значение ready (или null, если не нашли) — тем же
+  // манером, что toggleBought возвращает bought вызывающему коду.
+  function toggleDayOneReady(tripId, itemId) {
+    const item = getDayOneItems(tripId).find(i => i.id === itemId);
+    if (!item) return null;
+    item.ready = !item.ready;
+    _save();
+    return item.ready;
   }
 
   // Возвращает новое значение bought (или null, если позиция не найдена) —
@@ -135,5 +173,8 @@ const ShoppingState = (() => {
     return { total, bought, pct: total ? Math.round(bought / total * 100) : 0 };
   }
 
-  return { load, getCategories, setFromFirebase, toggleBought, updateQty, addItem, removeItem, addCategory, findOrCreateCategory, getStats, persist };
+  return {
+    load, getCategories, setFromFirebase, toggleBought, updateQty, addItem, removeItem, addCategory, findOrCreateCategory, getStats, persist,
+    getDayOneItems, addDayOneItem, removeDayOneItem, toggleDayOneReady,
+  };
 })();

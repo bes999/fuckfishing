@@ -103,6 +103,22 @@ const ShoppingData = (() => {
       ]
     },
     {
+      id: 'kitchen',
+      title: 'Снаряжение кухни',
+      icon: 'ti-flame',
+      items: [
+        { id: 'kt1', name: 'Фольга',                 qty: '1 рулон', bought: false },
+        { id: 'kt2', name: 'Проволока мягкая',       qty: '3–4 м',   bought: false },
+        { id: 'kt3', name: 'Пакеты зип-лок',          qty: '10 шт',   bought: false },
+        { id: 'kt4', name: 'Перчатки одноразовые',    qty: '10 пар',  bought: false },
+        { id: 'kt5', name: 'Пакеты мусорные',         qty: '1 рулон', bought: false },
+        { id: 'kt6', name: 'Губки + средство для мытья посуды', qty: '3 шт', bought: false },
+        { id: 'kt7', name: 'Скотч / изолента',        qty: '1 шт',    bought: false },
+        { id: 'kt8', name: 'Зажигалки',               qty: '3 шт',    bought: false },
+        { id: 'kt9', name: 'Влажные салфетки',        qty: '3 пачки', bought: false },
+      ]
+    },
+    {
       id: 'bar',
       title: 'Бар',
       icon: 'ti-glass-full',
