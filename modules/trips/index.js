@@ -1081,6 +1081,16 @@ const TripsIndex = (() => {
     _closeCreate();
     render();
     if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+
+    // Новую поездку почти никогда не создают в одиночку, но пригласить
+    // приходится отдельным заходом потом, если не вписал реальных
+    // участников на шаге 2 — так поездка тихо остаётся без единого
+    // реально приглашённого человека. Не спрашиваем при редактировании
+    // (там это уже не "новая" поездка) и не лезем, если реальных
+    // участников (с uid) и так уже минимум двое.
+    if (!_editMode && memberIds.length < 2 && typeof MembersRender !== 'undefined') {
+      MembersRender.showInvite(trip.id, trip.name);
+    }
   }
 
   function _closeCreate() {
