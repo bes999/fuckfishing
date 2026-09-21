@@ -176,6 +176,15 @@ const TripsData = (() => {
     return (trip?.participants || []).map(p => p.name);
   }
 
+  // Как participantNames, но без тех, кто отмечен dutyExempt (дети,
+  // пожилые, гости-однодневки — участвуют в поездке, но не должны
+  // попадать ни в дропдаун назначения дежурства, ни в авто-подбор). Для
+  // всего остального (явка, расходы, улов) участник остаётся обычным —
+  // используют participantNames как раньше, не этот аксессор.
+  function dutyEligibleNames(trip) {
+    return (trip?.participants || []).filter(p => !p.dutyExempt).map(p => p.name);
+  }
+
   // --- Запись — асинхронно, через Firestore ---
   function addTrip(trip) {
     trip.id = trip.id || 'trip_' + Date.now();
@@ -283,7 +292,7 @@ const TripsData = (() => {
 
   return {
     migrateFromLocalStorage, backfillOwnerId,
-    getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames,
+    getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames, dutyEligibleNames,
     addTrip, updateTrip, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
     statusLabel, statusClass,
   };

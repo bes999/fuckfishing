@@ -519,7 +519,7 @@ const MenuRender = (() => {
     document.getElementById('mn-duty-overlay')?.remove();
 
     const trip    = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
-    const members = typeof TripsData !== 'undefined' ? TripsData.participantNames(trip) : [];
+    const members = typeof TripsData !== 'undefined' ? TripsData.dutyEligibleNames(trip) : [];
     const day     = _days.find(d => d.id === dayId);
     const meal    = day?.meals[mealId];
     if (!meal) return;

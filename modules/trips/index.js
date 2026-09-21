@@ -1138,6 +1138,10 @@ const TripsIndex = (() => {
             Как показывать в этой поездке — не меняет имя аккаунта.
           </p>
           <input type="text" class="invite-email-input" id="rename-part-input" value="${_esc(p.name)}">
+          <div class="qtb-row" style="margin-top:12px" data-action="rename-part-exempt-toggle">
+            <div class="qtb-check ${p.dutyExempt ? 'checked' : ''}" data-qtb-check="exempt"></div>
+            <span class="qtb-label">Не дежурит (дети, пожилые, гости на день)</span>
+          </div>
           <div class="sheet-actions-row">
             <button class="picker-cancel" data-action="rename-part-close">Отмена</button>
             <button class="action-btn" data-action="rename-part-save">Сохранить</button>
@@ -1148,14 +1152,21 @@ const TripsIndex = (() => {
     const input = overlay.querySelector('#rename-part-input');
     input?.focus();
     input?.select();
+    let exempt = !!p.dutyExempt;
     overlay.addEventListener('click', e => {
       if (e.target === overlay) { overlay.remove(); return; }
+      if (e.target.closest('[data-action="rename-part-exempt-toggle"]')) {
+        exempt = !exempt;
+        overlay.querySelector('[data-qtb-check="exempt"]')?.classList.toggle('checked', exempt);
+        return;
+      }
       const a = e.target.closest('[data-action]')?.dataset.action;
       if (a === 'rename-part-close') { overlay.remove(); return; }
       if (a === 'rename-part-save') {
         const trimmed = input?.value.trim();
         if (!trimmed) { input?.focus(); return; }
         p.name = trimmed;
+        p.dutyExempt = exempt;
         overlay.remove();
         _refreshCreate();
       }
