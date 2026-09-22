@@ -227,7 +227,35 @@
 
     // Навигация — единая точка входа для нижнего таббара И для
     // выезжающего меню (AppHeader) — оба вызывают onNavigate(id).
+    //
+    // История браузера (свайп-назад на телефоне, кнопка "назад" на
+    // Android) — раньше её не было вообще: экраны переключались прямым
+    // show/hide без единой записи в history, так что свайпнуть назад было
+    // физически некуда. Обёртка ниже пушит запись на каждый onNavigate(id)
+    // и слушает popstate, просто заново вызывая ту же _doNavigate(id) —
+    // это ПЕРВЫЙ шаг (только уровень onNavigate: нижний таббар + все
+    // пункты гамбургера — Атлас/Снаряга/Аптечка/Справка/Профиль/Меню/Реки/
+    // и т.д.). НЕ покрывает: обложка поездки ⇄ Гид (TripCoverIndex.show,
+    // отдельная оверлей-система вне AppRouter) и переключение табов
+    // ВНУТРИ уже открытого Гида (modules/tripcover/index.js _mountGuideTab)
+    // — та же идея, но заходить туда отдельным увеличением, не разом.
+    let _inPopstate = false;
     function onNavigate(pageId) {
+      _doNavigate(pageId);
+      if (_inPopstate) return;
+      if (history.state && history.state.ffPageId === pageId) {
+        history.replaceState({ ffPageId: pageId }, '');
+      } else {
+        history.pushState({ ffPageId: pageId }, '');
+      }
+    }
+    window.addEventListener('popstate', e => {
+      _inPopstate = true;
+      _doNavigate(e.state?.ffPageId || 'home');
+      _inPopstate = false;
+    });
+
+    function _doNavigate(pageId) {
       // Закрываем любые открытые оверлеи при навигации
       document.getElementById('create-overlay')?.remove();
       document.getElementById('trip-cover')?.remove();
@@ -394,6 +422,11 @@
           AppHeader.init(onNavigate);
 
           AppRouter.show('home');
+          // Базовая запись в истории — свайп-назад с самого первого экрана
+          // не должен выкидывать из приложения совсем, ему нужно куда-то
+          // "назад" попасть; replaceState, а не push, чтобы не плодить
+          // лишний шаг ещё до какой-либо реальной навигации.
+          history.replaceState({ ffPageId: 'home' }, '');
           HomeIndex.init(document.getElementById('p-home'), user);
 
           TripsIndex.init(document.getElementById('p-trips'));
