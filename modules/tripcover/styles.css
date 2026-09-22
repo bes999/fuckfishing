@@ -322,3 +322,27 @@
   padding: 9px 12px; font-family: inherit; cursor: pointer;
 }
 .tc-edit-textarea { min-height: 110px; resize: vertical; }
+
+/* Прилёт и отъезд (секция в табе "Инфо") */
+.g-travel-list { padding: 4px 16px; }
+.g-travel-row {
+  padding: 10px 0; border-bottom: 0.5px solid var(--sep2);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.g-travel-row:last-child { border-bottom: none; }
+.g-travel-row-name { font-size: 14px; font-weight: 600; color: var(--label); }
+.g-travel-row-line { font-size: 13px; color: var(--label2); margin-top: 2px; }
+.g-travel-row-note { font-size: 12px; color: var(--label3); margin-top: 3px; font-style: italic; }
+.g-travel-row-empty { font-size: 12px; color: var(--label4); margin-top: 2px; }
+.g-travel-field-label {
+  font-size: 12px; font-weight: 600; color: var(--label3);
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px;
+}
+.g-travel-row-2 { display: flex; gap: 8px; margin-bottom: 8px; }
+.g-travel-input {
+  width: 100%; background: var(--bg3); border: 0.5px solid var(--sep);
+  border-radius: var(--radius-md); padding: 10px 12px; font-size: 14px;
+  color: var(--label); font-family: inherit; box-sizing: border-box;
+  margin-bottom: 8px;
+}
+.g-travel-note { resize: none; min-height: 44px; }

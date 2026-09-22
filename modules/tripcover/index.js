@@ -1278,6 +1278,13 @@ const TripCoverIndex = (() => {
         return;
       }
 
+      // Прилёт/отъезд (таб "Инфо") — открыть форму на конкретного участника.
+      const travelRow = e.target.closest('[data-action="travel-edit"]');
+      if (travelRow) {
+        _showTravelEdit(trip.id, travelRow.dataset.name);
+        return;
+      }
+
       // Заметки поездки (таб "Инфо") — реалтайм-список, обновление DOM
       // приходит через _listenNotes()/onSnapshot, тут только пишем в
       // Firestore. См. modules/notes/*.
@@ -1474,6 +1481,107 @@ const TripCoverIndex = (() => {
       <div id="g-tab-panel"></div>`;
   }
 
+  // ── Прилёт и отъезд (секция внутри таба "Инфо") ──────────────────────────
+  // Даты самой поездки — общие на всех, но реальные перемещения людей до
+  // точки сбора часто разные (пример Дмитрия: он + Лёха прилетели в Москву
+  // заранее и поехали в аэропорт вместе, Илья — отдельно, с пересадкой
+  // через Шереметьево). Один общий диапазон дат поездки этого не покрывает.
+  // Хранится прямо на trip.travel — узкая запись по ключу-имени (см.
+  // _saveTravel), тот же паттерн mealDuty/slotItems: Firestore мёржит
+  // вложенные map-поля при merge:true, правка одного человека не задевает
+  // остальных. Редактировать может любой участник за любого — данные не
+  // приватные и не требуют владения (как и заметки рядом).
+  function _travelSection(trip) {
+    const travel = trip.travel || {};
+    const participants = trip.participants || [];
+    const rows = participants.map(p => {
+      const t = travel[p.name] || {};
+      const arr = t.arrDate ? `${_esc(t.arrDate)}${t.arrTime ? ', ' + _esc(t.arrTime) : ''}${t.arrLoc ? ' · ' + _esc(t.arrLoc) : ''}` : '';
+      const dep = t.depDate ? `${_esc(t.depDate)}${t.depTime ? ', ' + _esc(t.depTime) : ''}${t.depLoc ? ' · ' + _esc(t.depLoc) : ''}` : '';
+      return `
+        <div class="g-travel-row" data-action="travel-edit" data-name="${_esc(p.name)}">
+          <div class="g-travel-row-name">${_esc(p.name)}</div>
+          ${arr ? `<div class="g-travel-row-line">✈️ ${arr}</div>` : ''}
+          ${dep ? `<div class="g-travel-row-line">🛫 ${dep}</div>` : ''}
+          ${t.note ? `<div class="g-travel-row-note">${_esc(t.note)}</div>` : ''}
+          ${!arr && !dep ? `<div class="g-travel-row-empty">Не указано — нажми, чтобы заполнить</div>` : ''}
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="cover-section g-travel">
+        <div class="cover-section-head"><div class="cover-section-title">Прилёт и отъезд</div></div>
+        <div class="g-travel-list">${rows || '<div class="g-notes-empty">Участников пока нет</div>'}</div>
+      </div>`;
+  }
+
+  function _saveTravel(tripId, name, data) {
+    TripsData.updateTrip(tripId, { travel: { [name]: data } });
+    // Локально патчим кэш и перерисовываем секцию сразу — не ждём эхо
+    // реального снапшота (та же оптимистичная логика, что в остальном
+    // приложении: узкая запись + мгновенный локальный ререндер).
+    const trip = TripsData.getById(tripId);
+    if (trip) {
+      trip.travel = trip.travel || {};
+      trip.travel[name] = data;
+      const section = document.getElementById('g-travel-section');
+      if (section) section.innerHTML = _travelSection(trip);
+    }
+  }
+
+  function _showTravelEdit(tripId, name) {
+    document.getElementById('g-travel-overlay')?.remove();
+    const trip = TripsData.getById(tripId);
+    const t = (trip?.travel || {})[name] || {};
+
+    const overlay = document.createElement('div');
+    overlay.className = 'tqp-overlay';
+    overlay.id = 'g-travel-overlay';
+    overlay.innerHTML = `
+      <div class="tqp-sheet">
+        <div class="tqp-handle"></div>
+        <div class="tqp-title">Прилёт и отъезд — ${_esc(name)}</div>
+        <div class="g-travel-field-label">Прилёт</div>
+        <div class="g-travel-row-2">
+          <input type="date" class="g-travel-input" id="gt-arr-date" value="${_esc(t.arrDate || '')}">
+          <input type="time" class="g-travel-input" id="gt-arr-time" value="${_esc(t.arrTime || '')}">
+        </div>
+        <input type="text" class="g-travel-input" id="gt-arr-loc" placeholder="Место (аэропорт, вокзал...)" value="${_esc(t.arrLoc || '')}">
+
+        <div class="g-travel-field-label" style="margin-top:12px">Отъезд</div>
+        <div class="g-travel-row-2">
+          <input type="date" class="g-travel-input" id="gt-dep-date" value="${_esc(t.depDate || '')}">
+          <input type="time" class="g-travel-input" id="gt-dep-time" value="${_esc(t.depTime || '')}">
+        </div>
+        <input type="text" class="g-travel-input" id="gt-dep-loc" placeholder="Место" value="${_esc(t.depLoc || '')}">
+
+        <div class="g-travel-field-label" style="margin-top:12px">Заметка</div>
+        <textarea class="g-travel-input g-travel-note" id="gt-note" placeholder="Лечу с Лёхой, встречайте у выхода...">${_esc(t.note || '')}</textarea>
+
+        <button class="tqp-all" data-action="travel-save" data-name="${_esc(name)}">Сохранить</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('open'));
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) { overlay.remove(); return; }
+      const saveBtn = e.target.closest('[data-action="travel-save"]');
+      if (saveBtn) {
+        const data = {
+          arrDate: overlay.querySelector('#gt-arr-date').value || null,
+          arrTime: overlay.querySelector('#gt-arr-time').value || null,
+          arrLoc:  overlay.querySelector('#gt-arr-loc').value.trim() || null,
+          depDate: overlay.querySelector('#gt-dep-date').value || null,
+          depTime: overlay.querySelector('#gt-dep-time').value || null,
+          depLoc:  overlay.querySelector('#gt-dep-loc').value.trim() || null,
+          note:    overlay.querySelector('#gt-note').value.trim() || null,
+        };
+        _saveTravel(tripId, saveBtn.dataset.name, data);
+        overlay.remove();
+      }
+    });
+  }
+
   // ── Заметки поездки (секция внутри таба "Инфо") ──────────────────────────
   // Не отдельная вкладка Гида — Дмитрий прав, что для простой доски заметок
   // это перебор (плюс пришлось бы добавлять в настройки видимости вкладок).
@@ -1563,7 +1671,9 @@ const TripCoverIndex = (() => {
             <div class="g-empty__sub">Загрузи JSON-файл от AI в настройках поездки — появятся дни, рейсы и погода по маршруту</div>
           </div>`;
       }
-      panel.innerHTML = bodyHtml + `<div id="g-notes-section">${_notesSection(tripId)}</div>`;
+      panel.innerHTML = bodyHtml
+        + `<div id="g-travel-section">${_travelSection(trip)}</div>`
+        + `<div id="g-notes-section">${_notesSection(tripId)}</div>`;
       _listenNotes(tripId);
     } else if (tabId === 'rivers') {
       if (typeof RiversIndex !== 'undefined') RiversIndex.init(panel, window.APP?.currentTripData, tripId);
