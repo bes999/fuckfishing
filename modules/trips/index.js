@@ -88,7 +88,13 @@ const TripsIndex = (() => {
     _createStep = 0;
     _importedData = trip.importData || null;
     _expMode = _importedData ? 'file' : 'quiz';
-    _quizRivers = [];
+    // Без этого квиз при редактировании стартовал с пустого списка рек,
+    // хотя в поездке они уже были — первое же добавление новой реки через
+    // квиз при сохранении тихо ЗАМЕНЯЛО весь trip.rivers (см. _save), а не
+    // дополняло его, и уже сохранённые реки пропадали.
+    _quizRivers = trip.type === 'expedition'
+      ? (trip.rivers || []).map(r => ({ id: r.id || _genRiverId(), name: r.name, region: r.region || '' }))
+      : [];
     _quizRouteText = '';
     const savedTabs = (trip.guideTabs || []).filter(id => _GUIDE_TAB_DEFS[id]);
     const hiddenTabs = _GUIDE_TAB_DEFAULT_ORDER.filter(id => !savedTabs.includes(id));
@@ -676,7 +682,7 @@ const TripsIndex = (() => {
       const regionInp = document.getElementById('f-quiz-river-region');
       const name = nameInp?.value.trim();
       if (!name) { nameInp?.focus(); return; }
-      _quizRivers.push({ name, region: regionInp?.value.trim() || '' });
+      _quizRivers.push({ id: _genRiverId(), name, region: regionInp?.value.trim() || '' });
       _refreshCreate();
     });
 
@@ -831,6 +837,10 @@ const TripsIndex = (() => {
 
   // ─── Вспомогательные ─────────────────────────────────────────────────────
 
+  function _genRiverId() {
+    return 'river_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  }
+
   // id обязателен — Реки открывают карточку по data-rv-open="r.id"
   // (modules/rivers/render.js:56 / index.js:_openDetail). Без него тап по
   // реке молча ничего не делал для КАЖДОЙ вручную заведённой поездки —
@@ -838,7 +848,7 @@ const TripsIndex = (() => {
   function _addRiver(name, region, lat, lon, type) {
     if (!_rivers.find(r => r.name === name)) {
       _rivers.push({
-        id: 'river_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        id: _genRiverId(),
         name, region,
         lat: lat != null ? lat : null,
         lon: lon != null ? lon : null,
@@ -972,7 +982,7 @@ const TripsIndex = (() => {
     return {
       meta:   { title: _draft.name || '' },
       // id обязателен — Реки открывают карточку по data-rv-open="r.id"
-      rivers: _quizRivers.map((r, i) => ({ id: 'quiz_river_' + i, name: r.name, type: r.region })),
+      rivers: _quizRivers.map(r => ({ id: r.id || _genRiverId(), name: r.name, type: r.region })),
       route:  days,
       menu:    prior?.menu,
       flights: prior?.flights,
@@ -1040,8 +1050,10 @@ const TripsIndex = (() => {
     // был этот код раньше: importedData тут почти всегда null при
     // редактировании чего-то помимо самого импорта, и пустой fallback
     // тихо обнулял rivers на КАЖДОЕ сохранение формы).
+    // id сохраняем как есть — иначе Реки открывают карточку по
+    // data-rv-open="r.id" и молча ничего не делают (см. _addRiver выше).
     const rivers = isExp
-      ? (_importedData?.rivers?.map(r => ({ name: r.name, region: r.type || '' })) || existing?.rivers || [])
+      ? (_importedData?.rivers?.map(r => ({ id: r.id || _genRiverId(), name: r.name, region: r.type || '' })) || existing?.rivers || [])
       : _rivers;
 
     const ownerUid = _editMode ? (existing?.ownerId || null) : (window.APP?.user?.uid || null);
