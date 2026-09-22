@@ -1481,19 +1481,37 @@ const TripCoverIndex = (() => {
       <div id="g-tab-panel"></div>`;
   }
 
-  // ── Прибытие и отъезд (секция внутри таба "Инфо") ────────────────────────
+  // ── Как добираются (секция внутри таба "Инфо") ───────────────────────────
   // Даты самой поездки — общие на всех, но реальные перемещения людей до
-  // точки сбора часто разные (пример Дмитрия: он + Лёха прилетели в Москву
-  // заранее и поехали в аэропорт вместе, Илья — отдельно, с пересадкой
-  // через Шереметьево). Один общий диапазон дат поездки этого не покрывает.
-  // Не всегда это перелёт — в Ханты, например, едут на машине — поэтому
-  // нейтральные "Прибытие/Отъезд", не "Прилёт/Вылет", и стрелки вместо
-  // самолётных эмодзи.
-  // Хранится прямо на trip.travel — узкая запись по ключу-имени (см.
-  // _saveTravel), тот же паттерн mealDuty/slotItems: Firestore мёржит
+  // точки сбора часто разные и не всегда в один заход: пример Дмитрия —
+  // Кольский, где сам маршрут многосоставной (Москва → все вместе в
+  // Архангельск → машиной в Северодвинск → яхтой через море), плюс более
+  // простой случай (Сахалин) — он и Лёха прилетели в Москву заранее и
+  // поехали в аэропорт вместе, Илья отдельно, с пересадкой через
+  // Шереметьево. Ни один общий диапазон дат поездки, ни фиксированная пара
+  // "прилёт/отъезд" это не покрывают — поэтому список произвольных ЭТАПОВ
+  // на человека (дата/время/место/заметка), а не жёсткая структура.
+  // Не всегда это перелёт (Ханты — машиной) — нейтральные названия и
+  // стрелки вместо самолётных эмодзи.
+  // Хранится на trip.travel.<имя>.legs — узкая запись по ключу-имени (см.
+  // _saveTravelLegs), тот же паттерн mealDuty/slotItems: Firestore мёржит
   // вложенные map-поля при merge:true, правка одного человека не задевает
   // остальных. Редактировать может любой участник за любого — данные не
   // приватные и не требуют владения (как и заметки рядом).
+
+  function _travelLegLine(l) {
+    return `${l.date ? _esc(l.date) : ''}${l.time ? ', ' + _esc(l.time) : ''}${l.location ? ' · ' + _esc(l.location) : ''}${l.note ? ' — ' + _esc(l.note) : ''}`;
+  }
+
+  function _travelSplitLegs(legs) {
+    const today = new Date().toISOString().slice(0, 10);
+    const sorted = (legs || []).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    return {
+      upcoming: sorted.filter(l => !l.date || l.date >= today),
+      past: sorted.filter(l => l.date && l.date < today),
+    };
+  }
+
   function _travelSection(trip) {
     const travel = trip.travel || {};
     // Только те, кого отметили "свои даты" при создании поездки (см.
@@ -1503,44 +1521,75 @@ const TripCoverIndex = (() => {
     if (!participants.length) return '';
 
     const rows = participants.map(p => {
-      const t = travel[p.name] || {};
-      const arr = t.arrDate ? `${_esc(t.arrDate)}${t.arrTime ? ', ' + _esc(t.arrTime) : ''}${t.arrLoc ? ' · ' + _esc(t.arrLoc) : ''}` : '';
-      const dep = t.depDate ? `${_esc(t.depDate)}${t.depTime ? ', ' + _esc(t.depTime) : ''}${t.depLoc ? ' · ' + _esc(t.depLoc) : ''}` : '';
+      const legs = (travel[p.name]?.legs) || [];
+      const { upcoming, past } = _travelSplitLegs(legs);
       return `
         <div class="g-travel-row" data-action="travel-edit" data-name="${_esc(p.name)}">
           <div class="g-travel-row-name">${_esc(p.name)}</div>
-          ${arr ? `<div class="g-travel-row-line">→ ${arr}</div>` : ''}
-          ${dep ? `<div class="g-travel-row-line">← ${dep}</div>` : ''}
-          ${t.note ? `<div class="g-travel-row-note">${_esc(t.note)}</div>` : ''}
-          ${!arr && !dep ? `<div class="g-travel-row-empty">Не указано — нажми, чтобы заполнить</div>` : ''}
+          ${upcoming.length
+            ? upcoming.map(l => `<div class="g-travel-row-line">${_travelLegLine(l)}</div>`).join('')
+            : `<div class="g-travel-row-empty">${past.length ? 'Все этапы прошли' : 'Не указано'} — нажми, чтобы заполнить</div>`}
+          ${past.length ? `<div class="g-travel-row-past-hint">+ ${past.length} прошедших</div>` : ''}
         </div>`;
     }).join('');
 
     return `
       <div class="cover-section g-travel">
-        <div class="cover-section-head"><div class="cover-section-title">Прибытие и отъезд</div></div>
+        <div class="cover-section-head"><div class="cover-section-title">Как добираются</div></div>
         <div class="g-travel-list">${rows}</div>
       </div>`;
   }
 
-  function _saveTravel(tripId, name, data) {
-    TripsData.updateTrip(tripId, { travel: { [name]: data } });
+  function _saveTravelLegs(tripId, name, legs) {
+    TripsData.updateTrip(tripId, { travel: { [name]: { legs } } });
     // Локально патчим кэш и перерисовываем секцию сразу — не ждём эхо
     // реального снапшота (та же оптимистичная логика, что в остальном
     // приложении: узкая запись + мгновенный локальный ререндер).
     const trip = TripsData.getById(tripId);
     if (trip) {
       trip.travel = trip.travel || {};
-      trip.travel[name] = data;
+      trip.travel[name] = { legs };
       const section = document.getElementById('g-travel-section');
       if (section) section.innerHTML = _travelSection(trip);
     }
   }
 
+  let _travelPastOpen = false;
+
+  function _travelEditBody(tripId, name) {
+    const trip = TripsData.getById(tripId);
+    const legs = (trip?.travel?.[name]?.legs) || [];
+    const { upcoming, past } = _travelSplitLegs(legs);
+
+    const legRow = l => `
+      <div class="g-travel-leg-row">
+        <div class="g-travel-leg-text">${_travelLegLine(l) || '<span class="g-travel-row-empty">Без даты</span>'}</div>
+        <button class="sh-del" data-action="travel-leg-del" data-id="${_esc(l.id)}" aria-label="Удалить">×</button>
+      </div>`;
+
+    return `
+      <div class="g-travel-legs" id="g-travel-legs">
+        ${upcoming.length ? upcoming.map(legRow).join('') : '<div class="g-notes-empty">Этапов пока нет</div>'}
+        ${past.length ? `
+          <div class="g-travel-past-toggle" data-action="travel-past-toggle">
+            Прошедшее (${past.length}) <i class="ti ti-chevron-${_travelPastOpen ? 'up' : 'down'}"></i>
+          </div>
+          ${_travelPastOpen ? past.map(legRow).join('') : ''}
+        ` : ''}
+      </div>
+      <div class="g-travel-field-label" style="margin-top:12px">Добавить этап</div>
+      <div class="g-travel-row-2">
+        <input type="date" class="g-travel-input" id="gt-leg-date">
+        <input type="time" class="g-travel-input" id="gt-leg-time">
+      </div>
+      <input type="text" class="g-travel-input" id="gt-leg-loc" placeholder="Место (аэропорт, город...)">
+      <input type="text" class="g-travel-input" id="gt-leg-note" placeholder="Заметка — «прилёт», «дальше на яхте»...">
+      <button class="tqp-all" data-action="travel-leg-add" data-name="${_esc(name)}">+ Добавить этап</button>`;
+  }
+
   function _showTravelEdit(tripId, name) {
     document.getElementById('g-travel-overlay')?.remove();
-    const trip = TripsData.getById(tripId);
-    const t = (trip?.travel || {})[name] || {};
+    _travelPastOpen = false;
 
     const overlay = document.createElement('div');
     overlay.className = 'tqp-overlay';
@@ -1548,44 +1597,48 @@ const TripCoverIndex = (() => {
     overlay.innerHTML = `
       <div class="tqp-sheet">
         <div class="tqp-handle"></div>
-        <div class="tqp-title">Прибытие и отъезд — ${_esc(name)}</div>
-        <div class="g-travel-field-label">Прибытие</div>
-        <div class="g-travel-row-2">
-          <input type="date" class="g-travel-input" id="gt-arr-date" value="${_esc(t.arrDate || '')}">
-          <input type="time" class="g-travel-input" id="gt-arr-time" value="${_esc(t.arrTime || '')}">
-        </div>
-        <input type="text" class="g-travel-input" id="gt-arr-loc" placeholder="Место (где встречаемся)" value="${_esc(t.arrLoc || '')}">
-
-        <div class="g-travel-field-label" style="margin-top:12px">Отъезд</div>
-        <div class="g-travel-row-2">
-          <input type="date" class="g-travel-input" id="gt-dep-date" value="${_esc(t.depDate || '')}">
-          <input type="time" class="g-travel-input" id="gt-dep-time" value="${_esc(t.depTime || '')}">
-        </div>
-        <input type="text" class="g-travel-input" id="gt-dep-loc" placeholder="Место" value="${_esc(t.depLoc || '')}">
-
-        <div class="g-travel-field-label" style="margin-top:12px">Заметка</div>
-        <textarea class="g-travel-input g-travel-note" id="gt-note" placeholder="Лечу с Лёхой, встречайте у выхода...">${_esc(t.note || '')}</textarea>
-
-        <button class="tqp-all" data-action="travel-save" data-name="${_esc(name)}">Сохранить</button>
+        <div class="tqp-title">Как добирается — ${_esc(name)}</div>
+        <div id="g-travel-edit-body">${_travelEditBody(tripId, name)}</div>
       </div>`;
     document.body.appendChild(overlay);
     requestAnimationFrame(() => overlay.classList.add('open'));
 
+    const rerenderBody = () => {
+      const body = overlay.querySelector('#g-travel-edit-body');
+      if (body) body.innerHTML = _travelEditBody(tripId, name);
+    };
+
     overlay.addEventListener('click', e => {
       if (e.target === overlay) { overlay.remove(); return; }
-      const saveBtn = e.target.closest('[data-action="travel-save"]');
-      if (saveBtn) {
-        const data = {
-          arrDate: overlay.querySelector('#gt-arr-date').value || null,
-          arrTime: overlay.querySelector('#gt-arr-time').value || null,
-          arrLoc:  overlay.querySelector('#gt-arr-loc').value.trim() || null,
-          depDate: overlay.querySelector('#gt-dep-date').value || null,
-          depTime: overlay.querySelector('#gt-dep-time').value || null,
-          depLoc:  overlay.querySelector('#gt-dep-loc').value.trim() || null,
-          note:    overlay.querySelector('#gt-note').value.trim() || null,
-        };
-        _saveTravel(tripId, saveBtn.dataset.name, data);
-        overlay.remove();
+
+      if (e.target.closest('[data-action="travel-past-toggle"]')) {
+        _travelPastOpen = !_travelPastOpen;
+        rerenderBody();
+        return;
+      }
+
+      const delBtn = e.target.closest('[data-action="travel-leg-del"]');
+      if (delBtn) {
+        const trip = TripsData.getById(tripId);
+        const legs = ((trip?.travel?.[name]?.legs) || []).filter(l => l.id !== delBtn.dataset.id);
+        _saveTravelLegs(tripId, name, legs);
+        rerenderBody();
+        return;
+      }
+
+      const addBtn = e.target.closest('[data-action="travel-leg-add"]');
+      if (addBtn) {
+        const date = overlay.querySelector('#gt-leg-date').value || null;
+        const time = overlay.querySelector('#gt-leg-time').value || null;
+        const location = overlay.querySelector('#gt-leg-loc').value.trim() || null;
+        const note = overlay.querySelector('#gt-leg-note').value.trim() || null;
+        if (!date && !time && !location && !note) return;
+        const leg = { id: `leg_${Date.now()}_${Math.random().toString(36).slice(2)}`, date, time, location, note };
+        const trip = TripsData.getById(tripId);
+        const legs = [...((trip?.travel?.[name]?.legs) || []), leg];
+        _saveTravelLegs(tripId, addBtn.dataset.name, legs);
+        rerenderBody();
+        return;
       }
     });
   }
