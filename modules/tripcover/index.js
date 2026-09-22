@@ -1986,8 +1986,24 @@ const TripCoverIndex = (() => {
     if (!_personalGuideTabIds(trip).includes(_activeGuideTab)) _mountGuideTab(trip, 'info');
   }
 
+  // Переключить вкладку Гида изнутри вложенного модуля (например "Улов" →
+  // "Реки" по клику на реку в статистике) без выхода из самого Гида —
+  // модуль сам не знает, встроен ли он сейчас в Гид или открыт отдельным
+  // полноэкранным заходом через гамбургер, поэтому решение и переключение
+  // тут, а не в вызывающем коде. Возвращает false, если Гид сейчас не
+  // смонтирован на этой же поездке (значит вызывающий модуль открыт не
+  // внутри Гида) — тогда вызывающая сторона сама решает, как перейти
+  // (обычно старым способом — onNavigate + отдельная страница).
+  function switchGuideTab(tripId, tabId) {
+    if (tripId !== _tripId) return false;
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(tripId) : null;
+    if (!trip || !document.getElementById('g-tabstrip')) return false;
+    _mountGuideTab(trip, tabId);
+    return true;
+  }
+
   return {
     show, hide, enterTrip, showQuickPicker, visibleGuideTabs, getCurrentTripId: () => _tripId,
-    allGuideTabDefs, refreshTabStripIfMounted,
+    allGuideTabDefs, refreshTabStripIfMounted, switchGuideTab,
   };
 })();

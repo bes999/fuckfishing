@@ -521,10 +521,18 @@ const CatchesRender = (() => {
       }
 
       if (action === 'goto-river') {
-        // Переходим в раздел Реки и открываем карточку конкретной реки
+        // Переходим в раздел Реки и открываем карточку конкретной реки.
+        // Если Улов сейчас встроен в таб-стрип Гида (см. modules/tripcover/
+        // index.js:_mountGuideTab), переключаем таб на месте — раньше тут
+        // всегда был onNavigate('rivers'), который уводил на отдельную
+        // полноэкранную страницу и выкидывал из Гида целиком. Отдельный
+        // заход в Улов через гамбургер (вне Гида) продолжает работать
+        // старым способом — switchGuideTab вернёт false, раз таб-стрип не
+        // смонтирован на этой поездке.
         const riverName = btn.dataset.river;
         CatchesFirebase.stopListening();
-        if (typeof onNavigate === 'function') {
+        const switchedInPlace = typeof TripCoverIndex !== 'undefined' && TripCoverIndex.switchGuideTab(_tripId, 'rivers');
+        if (!switchedInPlace && typeof onNavigate === 'function') {
           onNavigate('rivers');
         }
         // Небольшая задержка чтобы rivers успел инициализироваться

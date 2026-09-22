@@ -20,17 +20,13 @@ const CatchesIndex = (() => {
       // Загружаем реки из данных поездки
       _loadRivers();
 
-      // Миграция старых данных из localStorage (один раз)
-      CatchesFirebase.migrateFromLocalStorage(tripId).then(() => {
-
-        // Подписываемся на поимки
-        CatchesFirebase.listen(tripId, arr => {
-          CatchesState.setCatches(tripId, arr);
-          if (typeof CatchesRender !== 'undefined') CatchesRender.refresh();
-        });
-
-        CatchesRender.render(el, tripId);
+      // Подписываемся на поимки
+      CatchesFirebase.listen(tripId, arr => {
+        CatchesState.setCatches(tripId, arr);
+        if (typeof CatchesRender !== 'undefined') CatchesRender.refresh();
       });
+
+      CatchesRender.render(el, tripId);
     });
   }
 

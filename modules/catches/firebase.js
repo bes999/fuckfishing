@@ -102,39 +102,8 @@ const CatchesFirebase = (() => {
       .catch(e => console.warn('deleteCatch:', e));
   }
 
-  // ── Миграция из localStorage ─────────────────────────────────
-  // Вызывается один раз при первом открытии, переносит старые данные
-
-  function migrateFromLocalStorage(tripId) {
-    const LS_KEY = 'ff_catches';
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return Promise.resolve();
-      const arr = JSON.parse(raw) || [];
-      if (!arr.length) return Promise.resolve();
-
-      // Только записи относящиеся к этой поездке (river совпадает)
-      const promises = arr.map(c => {
-        const data = Object.assign({}, c);
-        delete data._id;
-        data.createdAt = data.createdAt || new Date().toISOString();
-        return _ref(tripId).collection('catches').add(data).catch(() => {});
-      });
-
-      return Promise.all(promises).then(() => {
-        // Очищаем localStorage после успешной миграции
-        localStorage.removeItem(LS_KEY);
-        console.log('catches: migrated', arr.length, 'records from localStorage');
-      });
-    } catch (e) {
-      console.warn('migrateFromLocalStorage:', e);
-      return Promise.resolve();
-    }
-  }
-
   return {
     listen, stopListening, listenAll, getOnce,
     addCatch, deleteCatch,
-    migrateFromLocalStorage,
   };
 })();
