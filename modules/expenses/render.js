@@ -410,7 +410,18 @@ const ExpensesRender = (() => {
         const date = overlay.querySelector('#exp-date').value;
 
         let paidBy = overlay.querySelector('#exp-who').value;
-        if (paidBy === '__manual__') paidBy = overlay.querySelector('#exp-who-manual').value.trim();
+        if (paidBy === '__manual__') {
+          paidBy = overlay.querySelector('#exp-who-manual').value.trim();
+          // Вручную вписанное имя, случайно совпадающее (без учёта регистра)
+          // с уже существующим участником — подставляем его точное имя,
+          // а не заводим отдельную строку-двойника (реальный кейс: "Дмитрий"
+          // вписали руками вместо выбора уже существующего "Dmitry" —
+          // разбивка "кто кому должен" после этого считала его отдельным
+          // человеком). Настоящих новых гостей (кого в списке правда нет)
+          // это не трогает — они как вписывались вручную, так и вписываются.
+          const match = members.find(m => m.toLowerCase() === paidBy.toLowerCase());
+          if (match) paidBy = match;
+        }
 
         const participants = [...overlay.querySelectorAll('.exp-check-row')]
           .filter(r => r.querySelector('[data-chk]').classList.contains('checked'))
