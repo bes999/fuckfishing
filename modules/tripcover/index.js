@@ -1352,7 +1352,9 @@ const TripCoverIndex = (() => {
     // подключённого в приложении шрифта Tabler (не эмодзи: цветные эмодзи
     // вроде ✏️ выбиваются на фоне монохромной остальной полоски, а ➕ на
     // тёмном фоне почти не видно). Снаряга — словом, не иконкой-рюкзаком.
-    let icons = `<button class="g-tab-settings" data-action="open-print" title="Печать">🖨</button>`
+    let icons = `<button class="g-tab-settings" data-action="open-print" title="Печать">
+                <svg viewBox="0 0 24 24"><path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2"/><rect x="7" y="13" width="10" height="8" rx="1"/><path d="M7 9v-4a1 1 0 0 1 1 -1h5l3 3v2"/></svg>
+              </button>`
               + `<button class="g-tab-settings" data-action="guide-tabs-settings" title="Настроить вкладки">⚙</button>`;
     if (trip.type === 'fishing') {
       const isOwner = window.APP?.user?.uid === trip.ownerId;
@@ -1385,6 +1387,7 @@ const TripCoverIndex = (() => {
         .g-info-bottom-pad{height:calc(83px + env(safe-area-inset-bottom))}
         .g-tab-settings{flex:0 0 auto;margin-left:2px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;display:inline-flex;align-items:center;justify-content:center}
         .g-tab-settings:active{background:rgba(255,255,255,.16)}
+        .g-tab-settings svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
         .g-tab-word{width:auto;border-radius:15px;padding:0 12px;font-size:13px;font-weight:600;font-family:inherit;white-space:nowrap}
         #g-tab-panel .mn-topbar, #g-tab-panel .sh-topbar,
         #g-tab-panel .exp-topbar, #g-tab-panel .ct-topbar,
