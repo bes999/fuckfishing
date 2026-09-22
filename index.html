@@ -243,7 +243,12 @@
     function onNavigate(pageId) {
       _doNavigate(pageId);
       if (_inPopstate) return;
-      if (history.state && history.state.ffPageId === pageId) {
+      // Внутри поездки (обложка/Гид, см. modules/tripcover/index.js
+      // _pushTripHistory — вторая фаза этой же истории) history.state несёт
+      // ffTripId, которого нет в обычном {ffPageId}. Не считаем это "тем же
+      // состоянием" только потому что ffPageId у обоих 'guide' — иначе
+      // replaceState тут стёр бы ffTripId/ffCover и свайп-назад сломался бы.
+      if (history.state && history.state.ffPageId === pageId && !history.state.ffTripId) {
         history.replaceState({ ffPageId: pageId }, '');
       } else {
         history.pushState({ ffPageId: pageId }, '');
@@ -251,7 +256,14 @@
     }
     window.addEventListener('popstate', e => {
       _inPopstate = true;
-      _doNavigate(e.state?.ffPageId || 'home');
+      const state = e.state || {};
+      if (state.ffTripId && typeof TripCoverIndex !== 'undefined') {
+        if (window.APP) window.APP.currentTripId = state.ffTripId;
+        if (state.ffCover) TripCoverIndex.show(state.ffTripId, { silent: true });
+        else TripCoverIndex.enterTrip(state.ffTripId, { silent: true });
+      } else {
+        _doNavigate(state.ffPageId || 'home');
+      }
       _inPopstate = false;
     });
 

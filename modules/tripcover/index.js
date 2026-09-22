@@ -51,7 +51,7 @@ const TripCoverIndex = (() => {
           return;
         }
         overlay.remove();
-        show(_tripId);
+        show(_tripId, { silent: true }); // рефреш обложки, не новый переход — истории не трогаем
       }
     });
   }
@@ -114,7 +114,21 @@ const TripCoverIndex = (() => {
     return _personalGuideTabIds(trip).filter(id => id !== 'info');
   }
 
-  function show(tripId) {
+  // История браузера для обложка⇄Гид — свайп-назад/кнопка "назад" на
+  // телефоне (см. index.html onNavigate для того же самого на уровне
+  // страниц верхнего уровня, сделано раньше). opts.silent — реплей из
+  // popstate (см. index.html), тогда НЕ пушим ещё раз поверх того, что
+  // уже и так стало текущим состоянием истории.
+  function _pushTripHistory(tripId, isCover) {
+    const newState = { ffPageId: 'guide', ffTripId: tripId, ffCover: !!isCover };
+    const cur = history.state;
+    const same = cur && cur.ffTripId === tripId && !!cur.ffCover === !!isCover;
+    if (same) history.replaceState(newState, '');
+    else history.pushState(newState, '');
+  }
+
+  function show(tripId, opts) {
+    opts = opts || {};
     _tripId = tripId;
     const trip = TripsData.getById(tripId);
     if (!trip) return;
@@ -135,13 +149,14 @@ const TripCoverIndex = (() => {
     // сразу в Гид; всё, что раньше показывала обложка, теперь живёт в
     // табе "Инфо" (см. _renderFishingInfo). Экспедиции — обложка как была.
     if (trip.type === 'fishing') {
-      prefetchDone.then(() => enterTrip(tripId));
+      prefetchDone.then(() => enterTrip(tripId, opts));
       return;
     }
 
     prefetchDone.then(() => {
       _renderCover(trip);
       _maybeRefreshWeather(trip);
+      if (!opts.silent) _pushTripHistory(tripId, true);
     });
   }
 
@@ -1018,7 +1033,11 @@ const TripCoverIndex = (() => {
   }
 
   function _bind(el, trip) {
-    el.querySelector('#coverBack')?.addEventListener('click', hide);
+    // Реальный "назад" (не просто закрыть оверлей) — раз обложка теперь
+    // сама пушит запись в историю (см. _pushTripHistory), кнопка должна
+    // её же и попнуть, а не звать hide() напрямую в обход history.state
+    // (иначе history.state продолжит врать, что обложка ещё открыта).
+    el.querySelector('#coverBack')?.addEventListener('click', () => history.back());
 
     // Добавить участника — выбор между приглашением по ссылке (реальный
     // аккаунт) и гостем без аккаунта (просто имя, через TripsData.addParticipant).
@@ -1213,7 +1232,13 @@ const TripCoverIndex = (() => {
   // Реки/Меню/Расходы и др.), рендерит сам Гид. Вынесено из обработчика
   // #coverEnter, чтобы им же мог пользоваться быстрый попап выбора поездки
   // (showQuickPicker) — минуя саму обложку.
-  function enterTrip(tripId) {
+  function enterTrip(tripId, opts) {
+    opts = opts || {};
+    // Обычно обложку убирает сам клик по #coverEnter (hide() до этого
+    // вызова) — но popstate-реплей (свайп вперёд с ffCover:false, см.
+    // index.html) зовёт enterTrip() напрямую, в обход того клика, и без
+    // этого обложка так и осталась бы висеть поверх уже смонтированного Гида.
+    document.getElementById('trip-cover')?.remove();
     if (typeof AppNav !== 'undefined') AppNav.setActive('guide');
     if (typeof AppRouter !== 'undefined') AppRouter.show('guide');
 
@@ -1238,6 +1263,7 @@ const TripCoverIndex = (() => {
 
     _activeGuideTab = 'info';
     guideEl.innerHTML = _renderGuideShell(trip);
+    if (!opts.silent) _pushTripHistory(tripId, false);
 
     if (_guideHandler) guideEl.removeEventListener('click', _guideHandler);
     _guideHandler = e => {
