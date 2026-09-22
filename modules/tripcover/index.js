@@ -1278,7 +1278,7 @@ const TripCoverIndex = (() => {
         return;
       }
 
-      // Прилёт/отъезд (таб "Инфо") — открыть форму на конкретного участника.
+      // Прибытие/отъезд (таб "Инфо") — открыть форму на конкретного участника.
       const travelRow = e.target.closest('[data-action="travel-edit"]');
       if (travelRow) {
         _showTravelEdit(trip.id, travelRow.dataset.name);
@@ -1481,11 +1481,14 @@ const TripCoverIndex = (() => {
       <div id="g-tab-panel"></div>`;
   }
 
-  // ── Прилёт и отъезд (секция внутри таба "Инфо") ──────────────────────────
+  // ── Прибытие и отъезд (секция внутри таба "Инфо") ────────────────────────
   // Даты самой поездки — общие на всех, но реальные перемещения людей до
   // точки сбора часто разные (пример Дмитрия: он + Лёха прилетели в Москву
   // заранее и поехали в аэропорт вместе, Илья — отдельно, с пересадкой
   // через Шереметьево). Один общий диапазон дат поездки этого не покрывает.
+  // Не всегда это перелёт — в Ханты, например, едут на машине — поэтому
+  // нейтральные "Прибытие/Отъезд", не "Прилёт/Вылет", и стрелки вместо
+  // самолётных эмодзи.
   // Хранится прямо на trip.travel — узкая запись по ключу-имени (см.
   // _saveTravel), тот же паттерн mealDuty/slotItems: Firestore мёржит
   // вложенные map-поля при merge:true, правка одного человека не задевает
@@ -1493,7 +1496,12 @@ const TripCoverIndex = (() => {
   // приватные и не требуют владения (как и заметки рядом).
   function _travelSection(trip) {
     const travel = trip.travel || {};
-    const participants = trip.participants || [];
+    // Только те, кого отметили "свои даты" при создании поездки (см.
+    // modules/trips/index.js:_participantsField) — если едут все вместе
+    // (обычный случай), карточка вообще не показывается, не мозолит глаза.
+    const participants = (trip.participants || []).filter(p => p.travelSeparate);
+    if (!participants.length) return '';
+
     const rows = participants.map(p => {
       const t = travel[p.name] || {};
       const arr = t.arrDate ? `${_esc(t.arrDate)}${t.arrTime ? ', ' + _esc(t.arrTime) : ''}${t.arrLoc ? ' · ' + _esc(t.arrLoc) : ''}` : '';
@@ -1501,8 +1509,8 @@ const TripCoverIndex = (() => {
       return `
         <div class="g-travel-row" data-action="travel-edit" data-name="${_esc(p.name)}">
           <div class="g-travel-row-name">${_esc(p.name)}</div>
-          ${arr ? `<div class="g-travel-row-line">✈️ ${arr}</div>` : ''}
-          ${dep ? `<div class="g-travel-row-line">🛫 ${dep}</div>` : ''}
+          ${arr ? `<div class="g-travel-row-line">→ ${arr}</div>` : ''}
+          ${dep ? `<div class="g-travel-row-line">← ${dep}</div>` : ''}
           ${t.note ? `<div class="g-travel-row-note">${_esc(t.note)}</div>` : ''}
           ${!arr && !dep ? `<div class="g-travel-row-empty">Не указано — нажми, чтобы заполнить</div>` : ''}
         </div>`;
@@ -1510,8 +1518,8 @@ const TripCoverIndex = (() => {
 
     return `
       <div class="cover-section g-travel">
-        <div class="cover-section-head"><div class="cover-section-title">Прилёт и отъезд</div></div>
-        <div class="g-travel-list">${rows || '<div class="g-notes-empty">Участников пока нет</div>'}</div>
+        <div class="cover-section-head"><div class="cover-section-title">Прибытие и отъезд</div></div>
+        <div class="g-travel-list">${rows}</div>
       </div>`;
   }
 
@@ -1540,13 +1548,13 @@ const TripCoverIndex = (() => {
     overlay.innerHTML = `
       <div class="tqp-sheet">
         <div class="tqp-handle"></div>
-        <div class="tqp-title">Прилёт и отъезд — ${_esc(name)}</div>
-        <div class="g-travel-field-label">Прилёт</div>
+        <div class="tqp-title">Прибытие и отъезд — ${_esc(name)}</div>
+        <div class="g-travel-field-label">Прибытие</div>
         <div class="g-travel-row-2">
           <input type="date" class="g-travel-input" id="gt-arr-date" value="${_esc(t.arrDate || '')}">
           <input type="time" class="g-travel-input" id="gt-arr-time" value="${_esc(t.arrTime || '')}">
         </div>
-        <input type="text" class="g-travel-input" id="gt-arr-loc" placeholder="Место (аэропорт, вокзал...)" value="${_esc(t.arrLoc || '')}">
+        <input type="text" class="g-travel-input" id="gt-arr-loc" placeholder="Место (где встречаемся)" value="${_esc(t.arrLoc || '')}">
 
         <div class="g-travel-field-label" style="margin-top:12px">Отъезд</div>
         <div class="g-travel-row-2">

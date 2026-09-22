@@ -465,11 +465,24 @@ const TripsIndex = (() => {
   // Тап по имени — переименовать (ник на эту поездку, не трогает
   // displayName аккаунта); тап по × — убрать из участников.
   function _participantsField() {
+    const participants = _draft.participants || [];
+    // "У кого свои даты" — прямо тут, а не отдельным шагом с датами: на
+    // шаге дат участников ещё нет физически, а по факту создающий поездку
+    // почти всегда уже знает состав (Дмитрий: "я когда создаю поездку, уже
+    // точно знаю кто участвует на 90%"). Сразу видно конкретных людей,
+    // отмечаешь кто с отдельным расписанием — детали (дата/время/место)
+    // заполняются потом, в Гиде → Инфо (см. _travelSection).
+    const travelRows = participants.map((p, i) => `
+      <div class="qtb-row" data-action="toggle-travel-separate" data-idx="${i}">
+        <div class="qtb-check ${p.travelSeparate ? 'checked' : ''}" data-travel-check="${i}"></div>
+        <span class="qtb-label">${_esc(p.name)}</span>
+      </div>`).join('');
+
     return `
       <div class="field-group" style="margin-bottom:8px">
         <div class="field-label">Участники</div>
         <div class="parts-wrap" id="partsList">
-          ${(_draft.participants || []).map((p,i) => `
+          ${participants.map((p,i) => `
             <div class="part-chip-sel">
               <span data-part-rename-idx="${i}">${_esc(p.name)}</span>
               <span data-part-idx="${i}" class="part-chip-x"> ×</span>
@@ -478,7 +491,13 @@ const TripsIndex = (() => {
           <input class="field-input" id="f-participant" type="text"
                  placeholder="Или впиши имя гостя..." style="width:auto;flex:1;min-width:120px">
         </div>
-      </div>`;
+      </div>
+      ${participants.length ? `
+      <div class="field-group" style="margin-bottom:8px">
+        <div class="field-label">У кого свои даты приезда/отъезда?</div>
+        <div class="field-hint" style="margin-bottom:8px">Если едут не все вместе — отметь, у кого расписание отличается. Детали (дата/время/место) заполняются потом, в Гиде.</div>
+        ${travelRows}
+      </div>` : ''}`;
   }
 
   function _privacyToggleField() {
@@ -748,6 +767,18 @@ const TripsIndex = (() => {
       nameEl.addEventListener('click', () => {
         const idx = parseInt(nameEl.dataset.partRenameIdx);
         _showRenameSheet(idx);
+      });
+    });
+
+    // "У кого свои даты" — чекбокс прямо в списке, без полного ререндера
+    // шага (как qtb-check у вкладок Гида чуть выше в этом же файле).
+    overlay.querySelectorAll('[data-action="toggle-travel-separate"]').forEach(row => {
+      row.addEventListener('click', () => {
+        const idx = parseInt(row.dataset.idx);
+        const p = _draft.participants[idx];
+        if (!p) return;
+        p.travelSeparate = !p.travelSeparate;
+        row.querySelector('[data-travel-check]')?.classList.toggle('checked', !!p.travelSeparate);
       });
     });
 
@@ -1152,6 +1183,10 @@ const TripsIndex = (() => {
             <div class="qtb-check ${p.dutyExempt ? 'checked' : ''}" data-qtb-check="exempt"></div>
             <span class="qtb-label">Не дежурит (дети, пожилые, гости на день)</span>
           </div>
+          <div class="qtb-row" data-action="rename-part-travel-toggle">
+            <div class="qtb-check ${p.travelSeparate ? 'checked' : ''}" data-qtb-check="travel"></div>
+            <span class="qtb-label">Свои даты приезда/отъезда</span>
+          </div>
           <div class="sheet-actions-row">
             <button class="picker-cancel" data-action="rename-part-close">Отмена</button>
             <button class="action-btn" data-action="rename-part-save">Сохранить</button>
@@ -1163,11 +1198,17 @@ const TripsIndex = (() => {
     input?.focus();
     input?.select();
     let exempt = !!p.dutyExempt;
+    let travelSeparate = !!p.travelSeparate;
     overlay.addEventListener('click', e => {
       if (e.target === overlay) { overlay.remove(); return; }
       if (e.target.closest('[data-action="rename-part-exempt-toggle"]')) {
         exempt = !exempt;
         overlay.querySelector('[data-qtb-check="exempt"]')?.classList.toggle('checked', exempt);
+        return;
+      }
+      if (e.target.closest('[data-action="rename-part-travel-toggle"]')) {
+        travelSeparate = !travelSeparate;
+        overlay.querySelector('[data-qtb-check="travel"]')?.classList.toggle('checked', travelSeparate);
         return;
       }
       const a = e.target.closest('[data-action]')?.dataset.action;
@@ -1177,6 +1218,7 @@ const TripsIndex = (() => {
         if (!trimmed) { input?.focus(); return; }
         p.name = trimmed;
         p.dutyExempt = exempt;
+        p.travelSeparate = travelSeparate;
         overlay.remove();
         _refreshCreate();
       }
