@@ -1245,6 +1245,8 @@ const TripCoverIndex = (() => {
       if (tabBtn) { _mountGuideTab(trip, tabBtn.dataset.gtab); return; }
       const settingsBtn = e.target.closest('[data-action="guide-tabs-settings"]');
       if (settingsBtn) { _showGuideTabsSettings(trip); return; }
+      const printBtn = e.target.closest('[data-action="open-print"]');
+      if (printBtn) { if (typeof PrintIndex !== 'undefined') PrintIndex.showPicker(trip); return; }
       // Назад к обложке — раньше единственный путь назад из Гида был
       // полностью выйти через гамбургер/нижнее меню и кликнуть по поездке
       // заново (Дмитрий сам наткнулся). Только для экспедиций — у "Рыбалки"
@@ -1350,7 +1352,8 @@ const TripCoverIndex = (() => {
     // подключённого в приложении шрифта Tabler (не эмодзи: цветные эмодзи
     // вроде ✏️ выбиваются на фоне монохромной остальной полоски, а ➕ на
     // тёмном фоне почти не видно). Снаряга — словом, не иконкой-рюкзаком.
-    let icons = `<button class="g-tab-settings" data-action="guide-tabs-settings" title="Настроить вкладки">⚙</button>`;
+    let icons = `<button class="g-tab-settings" data-action="open-print" title="Печать">🖨</button>`
+              + `<button class="g-tab-settings" data-action="guide-tabs-settings" title="Настроить вкладки">⚙</button>`;
     if (trip.type === 'fishing') {
       const isOwner = window.APP?.user?.uid === trip.ownerId;
       icons = `<button class="g-tab-settings g-tab-word" data-action="info-gear" title="Снаряга">Снаряга</button>`
