@@ -24,7 +24,7 @@ const Shopping = await import('./src/shopping.js');
 const { parseDateFlexible } = await import('./src/dates.js');
 const { escapeHtml, formatMoney, formatDateRu, MAIN_MENU, MENU_LABELS } = await import('./src/ui.js');
 const AI = await import('./src/ai.js');
-const { checkReminders, checkDutyReminders } = await import('./src/reminders.js');
+const { checkReminders, checkDutyReminders, checkCookDonePings } = await import('./src/reminders.js');
 
 const WEB_URL = process.env.WEB_URL || 'https://plan.fuckfishing.ru';
 
@@ -810,6 +810,16 @@ setInterval(() => {
 }, REMINDER_CHECK_MS);
 checkReminders(bot).catch((err) => console.error('reminders: ошибка проверки:', err));
 checkDutyReminders(bot).catch((err) => console.error('dutyReminders: ошибка проверки:', err));
+
+// "Готово" в Cook Mode — своя, более частая проверка: пинг уборке нужен
+// почти сразу, часовой тик выше для этого слишком редкий. Ограничено только
+// активными сегодня поездками (см. checkCookDonePings), так что частый опрос
+// не значит частое чтение всей базы.
+const DONE_PING_CHECK_MS = 2 * 60 * 1000;
+setInterval(() => {
+  checkCookDonePings(bot).catch((err) => console.error('cookDonePings: ошибка проверки:', err));
+}, DONE_PING_CHECK_MS);
+checkCookDonePings(bot).catch((err) => console.error('cookDonePings: ошибка проверки:', err));
 
 bot
   .start({

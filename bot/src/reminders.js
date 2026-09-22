@@ -133,6 +133,71 @@ export async function checkDutyReminders(bot) {
   }
 }
 
+// ── Cook Mode "Готово" → мгновенный (в пределах опроса) пинг уборке ──────
+// Отдельная, более частая проверка от checkDutyReminders выше (тот раз в
+// час, тут DONE_PING_CHECK_MS в index.js) — "повар закончил готовить"
+// человеку с ролью "уборка" нужно узнать сейчас, а не через час. Очередь —
+// menu/{tripId}.cookDonePings.<dayId>_<mealId> (см. modules/menu/firebase.js
+// saveCookDone), с флагом sent — идемпотентность тем же принципом, что и
+// dutyRemindersSent выше: опрос может застать запись уже отправленной.
+export async function checkCookDonePings(bot) {
+  const today = todayStr();
+
+  let tripsSnap;
+  try {
+    tripsSnap = await db.collection('trips').get();
+  } catch (err) {
+    console.error('cookDonePings: не удалось прочитать trips:', err.message);
+    return;
+  }
+
+  for (const doc of tripsSnap.docs) {
+    const trip = doc.data();
+    const endDate = trip.endDate || trip.startDate;
+    if (!trip.startDate || !endDate) continue;
+    if (today < trip.startDate || today > endDate) continue; // только активные сейчас поездки — не гонять всю базу menu впустую
+
+    let menuSnap;
+    try {
+      menuSnap = await db.collection('menu').doc(doc.id).get();
+    } catch (err) {
+      console.error(`cookDonePings: не удалось прочитать menu/${doc.id}:`, err.message);
+      continue;
+    }
+    if (!menuSnap.exists) continue;
+
+    const pings = menuSnap.data().cookDonePings || {};
+    const pending = Object.entries(pings).filter(([, p]) => p && !p.sent);
+    if (!pending.length) continue;
+
+    const participants = trip.participants || [];
+    const updates = {};
+    for (const [key, ping] of pending) {
+      updates[key] = { ...ping, sent: true };
+      if (!ping.cleanup) continue; // уборка не назначена — слать некому
+
+      const p = participants.find((pp) => pp.name.toLowerCase() === ping.cleanup.toLowerCase());
+      const chatId = p ? await getTelegramIdByUid(p.uid) : null;
+      if (!chatId) continue;
+
+      const mealLabel = MEAL_LABELS[ping.mealId] || 'Приём пищи';
+      const cookPart = ping.cook ? `${ping.cook} закончил(а) готовить` : 'Готовка закончена';
+      const text = `🍽 ${cookPart} — ${mealLabel} в «${trip.name}».\nТвоя очередь: уборка 🧽`;
+      try {
+        await bot.api.sendMessage(chatId, text);
+      } catch (err) {
+        console.error(`cookDonePings: не удалось отправить chatId=${chatId}:`, err.message);
+      }
+    }
+
+    try {
+      await db.collection('menu').doc(doc.id).set({ cookDonePings: updates }, { merge: true });
+    } catch (err) {
+      console.error(`cookDonePings: не удалось обновить menu/${doc.id}:`, err.message);
+    }
+  }
+}
+
 export async function checkReminders(bot) {
   let snap;
   try {

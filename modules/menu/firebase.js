@@ -62,5 +62,23 @@ const MenuFirebase = (() => {
     } catch (_) {}
   }
 
-  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty, saveDayAttendance };
+  // "Готово" в Cook Mode — узкая запись в очередь для бота (см.
+  // bot/src/reminders.js checkCookDonePings), не мгновенная отправка из
+  // клиента: у клиента нет и не должно быть доступа к Telegram-токену.
+  // Бот поллит эту мапу отдельно от часового checkDutyReminders (чаще,
+  // см. index.js DONE_PING_CHECK_MS), помечает sent:true и шлёт того, кто
+  // назначен на уборку — тот же принцип идемпотентности через флаг, что и
+  // у остальных напоминалок.
+  async function saveCookDone(tripId, dayId, mealId, cook, cleanup) {
+    try {
+      const key = dayId + '_' + mealId;
+      await db.collection(COLLECTION).doc(tripId).set({
+        cookDonePings: {
+          [key]: { dayId, mealId, cook: cook || null, cleanup: cleanup || null, sent: false, at: firebase.firestore.FieldValue.serverTimestamp() }
+        }
+      }, { merge: true });
+    } catch (_) {}
+  }
+
+  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty, saveDayAttendance, saveCookDone };
 })();

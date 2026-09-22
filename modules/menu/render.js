@@ -668,7 +668,7 @@ const MenuRender = (() => {
         <div class="cm-dishes">${dishesHtml || '<div class="cm-no-ing" style="padding:14px">Ничего не выбрано на этот приём</div>'}</div>
         <div class="cm-actions">
           <button class="cm-done-btn" id="cm-done">Готово</button>
-          <div class="cm-done-note">Пока просто отмечает готовку законченной — автоматического пинга уборке ещё нет.</div>
+          <div class="cm-done-note">${mealData.cleanup ? 'Уборке придёт пуш в Telegram, если привязан бот.' : 'Уборка не назначена — пинговать некого.'}</div>
         </div>
       </div>`;
 
@@ -701,6 +701,9 @@ const MenuRender = (() => {
     });
 
     overlay.querySelector('#cm-done').addEventListener('click', () => {
+      if (typeof MenuFirebase !== 'undefined') {
+        MenuFirebase.saveCookDone(_tripId, dayId, mealId, mealData.cook, mealData.cleanup);
+      }
       _cookModeOpenFor = null;
       overlay.remove();
       _rerenderDay(dayId);
