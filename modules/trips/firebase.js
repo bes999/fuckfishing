@@ -104,5 +104,44 @@ const TripsFirebase = (() => {
       .catch(e => { console.warn('updateTrip:', e); throw e; });
   }
 
-  return { listen, stopListening, ready, addTrip, updateTrip };
+  // Удаление поездки насовсем — сам документ trips/{id} плюс все его
+  // подколлекции (Firestore их не удаляет каскадно) и данные, разбросанные
+  // по другим верхнеуровневым коллекциям тем же id (см. остальные *firebase.js
+  // модулей: у каждого свой db.collection(...).doc(tripId) — единого списка
+  // "что принадлежит поездке" в кодовой базе не было, собран здесь).
+  // batch ограничен 500 операциями — с запасом для одной поездки.
+  //
+  // currentUid — ТОЛЬКО тот, кто реально жмёт "Удалить", не все участники:
+  // gear_trip_snapshots/personal_purchases по правилам может писать (в т.ч.
+  // удалять) исключительно владелец конкретного документа. Первая версия
+  // пыталась удалить эти данные и за остальных участников — Firestore batch
+  // атомарный, одно нарушение правила валит ВЕСЬ batch, включая то, что
+  // само по себе было разрешено (сама поездка, её уловы/расходы и т.д.), и
+  // "Удалить поездку" молча ничего не делало. Личные данные чужих
+  // участников для уже удалённой поездки просто остаются висеть у них —
+  // никому кроме них не видны, не страшно.
+  async function deleteTrip(id, currentUid) {
+    const tripRef = _col().doc(id);
+    const batch = firebase.firestore().batch();
+
+    const subcollections = ['catches', 'expenses', 'settlements', 'notes', 'river_points', 'river_notes'];
+    for (const name of subcollections) {
+      const snap = await tripRef.collection(name).get();
+      snap.forEach(doc => batch.delete(doc.ref));
+    }
+    batch.delete(tripRef.collection('modules').doc('medkit'));
+
+    batch.delete(firebase.firestore().collection('menu').doc(id));
+    batch.delete(firebase.firestore().collection('shopping').doc(id));
+    batch.delete(firebase.firestore().collection('gear_trip_shared').doc(id));
+    if (currentUid) {
+      batch.delete(firebase.firestore().collection('gear_trip_snapshots').doc(currentUid + '_' + id));
+      batch.delete(firebase.firestore().collection('personal_purchases').doc(currentUid).collection('trips').doc(id));
+    }
+
+    batch.delete(tripRef);
+    await batch.commit();
+  }
+
+  return { listen, stopListening, ready, addTrip, updateTrip, deleteTrip };
 })();

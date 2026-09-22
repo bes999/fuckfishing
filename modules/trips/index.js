@@ -452,17 +452,24 @@ const TripsIndex = (() => {
     const isLast = _createStep === 2;
     const isExp  = _draft.type === 'expedition';
 
+    // Кнопка удаления — на любом шаге редактирования, не только на
+    // последнем: раньше висела только на "Проверьте данные" (шаг 3), и
+    // чтобы удалить, приходилось сначала пройти весь визард — Дмитрий
+    // сам на это наткнулся и справедливо назвал бредом.
+    const deleteHtml = _editMode ? `<button class="btn-text-danger" id="createDelete">Удалить поездку</button>` : '';
+
     if (!isLast) {
       // На шаге импорта файлом для экспедиции — можно пропустить (в квизе
       // поля и так помечены необязательными, отдельная кнопка не нужна)
       const skipHtml = (_createStep === 1 && isExp && _expMode === 'file' && !_importedData)
         ? `<button class="btn-secondary" id="createSkip">Пропустить →</button>`
         : '';
-      return `<button class="btn-primary" id="createNext">Далее →</button>${skipHtml}`;
+      return `<button class="btn-primary" id="createNext">Далее →</button>${skipHtml}${deleteHtml}`;
     }
     return `
       <button class="btn-primary" id="createSave">${isExp ? 'Создать экспедицию' : 'Создать рыбалку'}</button>
-      <button class="btn-secondary" id="createPrev">← Назад</button>`;
+      <button class="btn-secondary" id="createPrev">← Назад</button>
+      ${deleteHtml}`;
   }
 
   // Поле "Участники" — чипы уже выбранных + кнопка открыть пикер
@@ -628,6 +635,38 @@ const TripsIndex = (() => {
     document.getElementById('createPrev')?.addEventListener('click', () => {
       _createStep--;
       _refreshCreate();
+    });
+
+    // Удалить поездку насовсем — только в режиме редактирования. Одно
+    // подтверждение (UIUtils.confirmSheet, красная кнопка по умолчанию) с
+    // названием поездки в тексте, чтобы точно было видно что удаляешь.
+    document.getElementById('createDelete')?.addEventListener('click', async e => {
+      // e.currentTarget теряется после первого await (событие уже
+      // отработало) — ловим кнопку синхронно, до подтверждения, а не
+      // после. Из-за этого удаление раньше молча ничего не делало: клик
+      // по "Удалить насовсем" закрывал шторку подтверждения, но
+      // withBusyButton(null, ...) сразу выходил, ни разу не вызвав сам
+      // TripsData.deleteTrip.
+      const btn = e.currentTarget;
+      const tripId = _editTripId;
+      const tripName = _draft.name || 'эту поездку';
+      const ok = await UIUtils.confirmSheet(
+        `«${tripName}» и всё внутри — уловы, расходы, меню, закупка, заметки — удалится без возможности восстановить.`,
+        { title: 'Удалить поездку?', okLabel: 'Удалить насовсем' }
+      );
+      if (!ok || !tripId) return;
+      UIUtils.withBusyButton(btn, async () => {
+        try {
+          await TripsData.deleteTrip(tripId);
+        } catch (err) {
+          console.error('deleteTrip:', err);
+          alert('Не удалось удалить поездку. Проверь соединение и попробуй ещё раз.');
+          return;
+        }
+        _closeCreate();
+        if (typeof onNavigate === 'function') onNavigate('trips');
+        else if (typeof TripsIndex !== 'undefined') TripsIndex.render();
+      });
     });
 
     // Вкладки Гида — чекбоксы видимости + стрелки порядка (шаг сводки)

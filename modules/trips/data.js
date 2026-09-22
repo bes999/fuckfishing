@@ -196,6 +196,14 @@ const TripsData = (() => {
     return TripsFirebase.updateTrip(id, changes);
   }
 
+  // Насовсем — сама поездка и все её уловы/расходы/меню/закупка/etc (см.
+  // TripsFirebase.deleteTrip). Локальный кэш (TripsState) ничего трогать
+  // не нужно — тот же паттерн, что addTrip/updateTrip выше: приходит
+  // само, следующим снапшотом от уже активной live-подписки trips.
+  function deleteTrip(id) {
+    return TripsFirebase.deleteTrip(id, window.APP?.user?.uid || null);
+  }
+
   // Готовность к поездке — свободный список пунктов под конкретную поездку
   // (id/label/done), не фиксированный набор из 6 ключей: у разных поездок
   // реально разные сборы (канистры для катера/бронь домика вместо билетов,
@@ -293,7 +301,7 @@ const TripsData = (() => {
   return {
     migrateFromLocalStorage, backfillOwnerId,
     getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames, dutyEligibleNames,
-    addTrip, updateTrip, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
+    addTrip, updateTrip, deleteTrip, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
     statusLabel, statusClass,
   };
 })();

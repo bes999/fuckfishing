@@ -359,6 +359,14 @@
   font-size: 15px; font-weight: 600; font-family: inherit; cursor: pointer;
   margin-top: 8px;
 }
+/* Удалить поездку — только при редактировании, намеренно тише двух кнопок
+   выше (не хочется, чтобы палец случайно попадал сюда вместо "Назад") */
+.btn-text-danger {
+  width: 100%; background: none; border: none; color: var(--red);
+  font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+  padding: 12px; margin-top: 4px;
+}
+.btn-text-danger:active { opacity: .7; }
 /* ═══════════════════════════════════════════════
    ДОБАВИТЬ В КОНЕЦ modules/trips/styles.css
    Стили для импорта JSON экспедиции
