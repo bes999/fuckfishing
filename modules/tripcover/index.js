@@ -119,11 +119,20 @@ const TripCoverIndex = (() => {
   // страниц верхнего уровня, сделано раньше). opts.silent — реплей из
   // popstate (см. index.html), тогда НЕ пушим ещё раз поверх того, что
   // уже и так стало текущим состоянием истории.
+  //
+  // Тот же tripId, что уже в history.state — ЗАМЕНЯЕМ запись, а не
+  // добавляем новую, даже если ffCover при этом меняется. Обложка и Гид
+  // внутри одной поездки — это переключение вида, не новый уровень стека:
+  // раньше "← к обложке" (форс-пуш поверх Гида) + собственная кнопка "←"
+  // обложки (history.back()) вместе давали Дом→Обложка→Гид→Обложка(пуш) —
+  // и назад с этой второй обложки уводило обратно в Гид, а не домой,
+  // ощущалось как баг. С заменой вместо пуша переключение
+  // обложка⇄Гид сколько угодно раз всегда остаётся на одном уровне стека —
+  // "назад" с любого из них уходит туда, откуда зашли в саму поездку.
   function _pushTripHistory(tripId, isCover) {
     const newState = { ffPageId: 'guide', ffTripId: tripId, ffCover: !!isCover };
     const cur = history.state;
-    const same = cur && cur.ffTripId === tripId && !!cur.ffCover === !!isCover;
-    if (same) history.replaceState(newState, '');
+    if (cur && cur.ffTripId === tripId) history.replaceState(newState, '');
     else history.pushState(newState, '');
   }
 
