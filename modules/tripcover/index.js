@@ -1245,6 +1245,12 @@ const TripCoverIndex = (() => {
       if (tabBtn) { _mountGuideTab(trip, tabBtn.dataset.gtab); return; }
       const settingsBtn = e.target.closest('[data-action="guide-tabs-settings"]');
       if (settingsBtn) { _showGuideTabsSettings(trip); return; }
+      // Назад к обложке — раньше единственный путь назад из Гида был
+      // полностью выйти через гамбургер/нижнее меню и кликнуть по поездке
+      // заново (Дмитрий сам наткнулся). Только для экспедиций — у "Рыбалки"
+      // отдельной обложки нет, show() для неё сразу же снова зайдёт в Гид.
+      const backBtn = e.target.closest('[data-action="guide-back-to-cover"]');
+      if (backBtn) { show(trip.id); return; }
       const geoBtn = e.target.closest('[data-action="geo-weather"]');
       if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
 
@@ -1473,9 +1479,15 @@ const TripCoverIndex = (() => {
         .g-chart-scroll svg{display:block}
         .g-info-gap{margin-top:14px}
       </style>
-      <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10">
-        <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
-        <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
+      <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px">
+        ${trip.type === 'expedition' ? `
+        <button class="g-tab-settings" data-action="guide-back-to-cover" aria-label="Назад к обложке поездки" style="flex-shrink:0">
+          <i class="ti ti-chevron-left" aria-hidden="true"></i>
+        </button>` : ''}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
+          <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
+        </div>
       </div>
       ${_renderTabStrip(trip)}
       <div id="g-tab-panel"></div>`;
