@@ -24,7 +24,7 @@ const Shopping = await import('./src/shopping.js');
 const { parseDateFlexible } = await import('./src/dates.js');
 const { escapeHtml, formatMoney, formatDateRu, MAIN_MENU, MENU_LABELS } = await import('./src/ui.js');
 const AI = await import('./src/ai.js');
-const { checkReminders, checkDutyReminders, checkCookDonePings } = await import('./src/reminders.js');
+const { checkReminders, checkDutyReminders, checkCookDonePings, checkTripDeletions } = await import('./src/reminders.js');
 
 const WEB_URL = process.env.WEB_URL || 'https://plan.fuckfishing.ru';
 
@@ -818,8 +818,10 @@ checkDutyReminders(bot).catch((err) => console.error('dutyReminders: ошибк�
 const DONE_PING_CHECK_MS = 2 * 60 * 1000;
 setInterval(() => {
   checkCookDonePings(bot).catch((err) => console.error('cookDonePings: ошибка проверки:', err));
+  checkTripDeletions(bot).catch((err) => console.error('tripDeletions: ошибка проверки:', err));
 }, DONE_PING_CHECK_MS);
 checkCookDonePings(bot).catch((err) => console.error('cookDonePings: ошибка проверки:', err));
+checkTripDeletions(bot).catch((err) => console.error('tripDeletions: ошибка проверки:', err));
 
 bot
   .start({

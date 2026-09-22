@@ -198,6 +198,39 @@ export async function checkCookDonePings(bot) {
   }
 }
 
+// ── "Поездка удалена" → пуш остальным участникам ─────────────────────────
+// Очередь в trip_deletions (см. modules/trips/data.js deleteTrip) — сама
+// поездка к этому моменту уже удалена, так что писать флаг некуда, кроме
+// отдельной коллекции; sent на самой записи очереди — та же идемпотентность,
+// что у cookDonePings выше.
+export async function checkTripDeletions(bot) {
+  let snap;
+  try {
+    snap = await db.collection('trip_deletions').where('sent', '==', false).get();
+  } catch (err) {
+    console.error('tripDeletions: не удалось прочитать trip_deletions:', err.message);
+    return;
+  }
+
+  for (const doc of snap.docs) {
+    const { tripName, deletedByName, memberIds } = doc.data();
+    const ids = await getTelegramIds(memberIds);
+    const text = `🗑 ${deletedByName || 'Участник'} удалил(а) поездку «${tripName || 'без названия'}»`;
+    for (const chatId of ids) {
+      try {
+        await bot.api.sendMessage(chatId, text);
+      } catch (err) {
+        console.error(`tripDeletions: не удалось отправить chatId=${chatId}:`, err.message);
+      }
+    }
+    try {
+      await doc.ref.update({ sent: true });
+    } catch (err) {
+      console.error(`tripDeletions: не удалось обновить ${doc.id}:`, err.message);
+    }
+  }
+}
+
 export async function checkReminders(bot) {
   let snap;
   try {

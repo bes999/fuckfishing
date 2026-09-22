@@ -67,7 +67,15 @@ service cloud.firestore {
     }
 
     match /trips/{tripId} {
-      allow read, write: if isMember();
+      allow read: if isMember();
+      // Создать/редактировать может любой участник, как раньше — только
+      // удалить саму поездку насовсем ограничено её создателем
+      // (trip.ownerId), не любым, кто её просто открыл на редактирование
+      // (см. modules/trips/index.js — там та же проверка на UI, но кнопку
+      // спрятать не значит запретить: без этого правила любой участник
+      // всё ещё мог бы удалить чужую поездку напрямую через API/консоль).
+      allow create, update: if isMember();
+      allow delete: if isMember() && resource.data.ownerId == request.auth.uid;
 
       // Удалить чужую запись расхода/улова может только организатор ЭТОЙ
       // поездки — свою запись (createdBy == себя) может удалить любой.
@@ -108,6 +116,16 @@ service cloud.firestore {
     // покрыто правилом выше.
     match /{path=**}/catches/{docId} {
       allow read: if isMember();
+    }
+
+    // Очередь пуша "поездка удалена" боту (см. modules/trips/data.js
+    // deleteTrip, bot/src/reminders.js checkTripDeletions) — клиент
+    // только пишет запись после успешного удаления самой поездки, читает
+    // и помечает sent бот через admin SDK (обходит правила, read/update
+    // клиенту не нужны вообще).
+    match /trip_deletions/{id} {
+      allow create: if isMember();
+      allow read, update, delete: if false;
     }
 
     match /menu/{tripId}        { allow read, write: if isMember(); }

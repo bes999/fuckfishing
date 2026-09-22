@@ -200,8 +200,28 @@ const TripsData = (() => {
   // TripsFirebase.deleteTrip). Локальный кэш (TripsState) ничего трогать
   // не нужно — тот же паттерн, что addTrip/updateTrip выше: приходит
   // само, следующим снапшотом от уже активной live-подписки trips.
+  //
+  // Остальных участников (кроме того, кто удалил) уведомляем через бота —
+  // очередь в trip_deletions, тот же принцип, что у пинга "Готово" в Cook
+  // Mode (см. modules/menu/firebase.js saveCookDone): клиенту нельзя
+  // слать в Telegram напрямую, бот вычитывает отдельным поллингом (см.
+  // bot/src/reminders.js checkTripDeletions). Пишем это ПОСЛЕ успешного
+  // удаления, не до — иначе при сбое удаления улетело бы ложное "удалено".
   function deleteTrip(id) {
-    return TripsFirebase.deleteTrip(id, window.APP?.user?.uid || null);
+    const trip = getById(id);
+    const uid = window.APP?.user?.uid || null;
+    return TripsFirebase.deleteTrip(id, uid).then(() => {
+      const memberIds = (trip?.memberIds || []).filter(m => m && m !== uid);
+      if (!memberIds.length) return;
+      const deletedByName = window.APP?.profile?.displayName || 'Участник';
+      firebase.firestore().collection('trip_deletions').add({
+        tripName: trip?.name || 'Поездка',
+        deletedByName,
+        memberIds,
+        sent: false,
+        createdAt: new Date().toISOString(),
+      }).catch(() => {});
+    });
   }
 
   // Готовность к поездке — свободный список пунктов под конкретную поездку

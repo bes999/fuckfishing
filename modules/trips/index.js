@@ -455,8 +455,12 @@ const TripsIndex = (() => {
     // Кнопка удаления — на любом шаге редактирования, не только на
     // последнем: раньше висела только на "Проверьте данные" (шаг 3), и
     // чтобы удалить, приходилось сначала пройти весь визард — Дмитрий
-    // сам на это наткнулся и справедливо назвал бредом.
-    const deleteHtml = _editMode ? `<button class="btn-text-danger" id="createDelete">Удалить поездку</button>` : '';
+    // сам на это наткнулся и справедливо назвал бредом. Только у того, кто
+    // создал поездку (trip.ownerId) — не у любого участника, кто просто
+    // зашёл её отредактировать.
+    const editingTrip = _editMode && _editTripId ? TripsData.getById(_editTripId) : null;
+    const isTripOwner = !!editingTrip && editingTrip.ownerId === (window.APP?.user?.uid || null);
+    const deleteHtml = isTripOwner ? `<button class="btn-text-danger" id="createDelete">Удалить поездку</button>` : '';
 
     if (!isLast) {
       // На шаге импорта файлом для экспедиции — можно пропустить (в квизе
