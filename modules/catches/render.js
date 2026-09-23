@@ -79,14 +79,6 @@ const CatchesRender = (() => {
         </div>`;
     }
 
-    // Цвета для баров
-    const COLORS = ['var(--accent)','var(--green)','var(--orange)','var(--red)',
-                    '#BF5AF2','#64D2FF','#FF6961','#5AC8FA'];
-
-    const maxFish   = stats.topFish[0]?.count   || 1;
-    const maxMember = stats.topMembers[0]?.count || 1;
-    const maxRiver  = stats.topRivers[0]?.count  || 1;
-
     return `
       <div class="ct-scroll">
 
@@ -124,9 +116,6 @@ const CatchesRender = (() => {
               <div class="ct-member-info">
                 <div class="ct-member-name">${_esc(m.name)}</div>
               </div>
-              <div class="ct-member-bar-wrap">
-                <div class="ct-member-bar" style="width:${Math.round(m.count / maxMember * 100)}%;background:${COLORS[i % COLORS.length]}"></div>
-              </div>
               <div class="ct-member-count">${m.count} <span class="ct-member-unit">рыб</span></div>
             </div>`).join('')}
         </div>` : ''}
@@ -137,9 +126,6 @@ const CatchesRender = (() => {
           ${stats.topFish.map((f, i) => `
             <div class="ct-bar-row">
               <div class="ct-bar-label">${_esc(f.name)}</div>
-              <div class="ct-bar-track">
-                <div class="ct-bar-fill" style="width:${Math.round(f.count / maxFish * 100)}%;background:${COLORS[i % COLORS.length]}"></div>
-              </div>
               <div class="ct-bar-count">${f.count}</div>
             </div>`).join('')}
         </div>
@@ -152,9 +138,6 @@ const CatchesRender = (() => {
             <div class="ct-river-row" data-action="goto-river" data-river="${_esc(r.name)}">
               <div class="ct-river-info">
                 <div class="ct-river-name">${_esc(r.name)}</div>
-                <div class="ct-river-bar-wrap">
-                  <div class="ct-river-bar" style="width:${Math.round(r.count / maxRiver * 100)}%"></div>
-                </div>
               </div>
               <div class="ct-river-right">
                 <span class="ct-river-count">${r.count} рыб</span>

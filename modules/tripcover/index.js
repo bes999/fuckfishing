@@ -2033,21 +2033,21 @@ const TripCoverIndex = (() => {
     return Math.round(val || 0).toLocaleString('ru-RU') + ' ₽';
   }
 
-  // Общая полоска "имя + бар + число" — переиспользуется для видового
-  // состава, разбивки по участникам и по рекам (modules/catches/state.js
-  // computeStats уже отдаёт эти три списка в одинаковой форме).
+  // Общая строка "имя + число" — переиспользуется для видового состава,
+  // разбивки по участникам и по рекам (modules/catches/state.js computeStats
+  // уже отдаёт эти три списка в одинаковой форме). Раньше тут были полоски
+  // сравнения — убрали по просьбе Дмитрия: визуально неотличимы от
+  // прогресс-баров чек-листов (закупка/снаряга), где длина = доля
+  // выполненного, а тут длина была просто "больше/меньше других строк" —
+  // путало. Просто ранжированный список тем же смыслом, без шкалы.
   function _barSection(title, items, icon, unit) {
     if (!items || !items.length) return '';
-    const max = Math.max(...items.map(i => i.count));
     return `
       <div class="cover-section">
         <div class="cover-section-head"><div class="cover-section-title">${_esc(title)}</div></div>
         ${items.map(i => `
           <div class="cover-fish-row">
             <div class="cover-fish-name">${icon} ${_esc(i.name)}</div>
-            <div class="cover-fish-bar-wrap">
-              <div class="cover-fish-bar" style="width:${Math.round(i.count/max*100)}%"></div>
-            </div>
             <div class="cover-fish-count">${i.count} ${unit}</div>
           </div>`).join('')}
       </div>`;

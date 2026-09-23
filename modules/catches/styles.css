@@ -118,33 +118,23 @@
 .ct-avatar-3 { background: rgba(255,69,58,0.15);   color: var(--red);    }
 .ct-avatar-4 { background: rgba(191,90,242,0.15);  color: #BF5AF2;       }
 
-.ct-member-info  { min-width: 60px; flex-shrink: 0; }
+.ct-member-info  { flex: 1; }
 .ct-member-name  { font-size: 13px; font-weight: 600; color: var(--label); }
-
-.ct-member-bar-wrap {
-  flex: 1; height: 6px;
-  background: var(--bg3);
-  border-radius: 3px; overflow: hidden;
-}
-.ct-member-bar { height: 100%; border-radius: 3px; transition: width var(--duration) var(--ease); }
 
 .ct-member-count { font-size: 14px; font-weight: 700; color: var(--label); flex-shrink: 0; }
 .ct-member-unit  { font-size: 11px; font-weight: 400; color: var(--label3); }
 
-/* ── Fish bars ── */
+/* ── Fish — просто строка "имя ... число", без полоски сравнения (была,
+   убрали — путала с прогресс-барами чек-листов, см. modules/tripcover
+   _barSection для той же правки на обложке поездки). ── */
 .ct-bar-row {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 9px 14px;
   border-bottom: 0.5px solid var(--sep);
 }
 .ct-bar-row:last-child { border-bottom: none; }
-.ct-bar-label { font-size: 13px; color: var(--label); min-width: 80px; }
-.ct-bar-track {
-  flex: 1; height: 6px;
-  background: var(--bg3); border-radius: 3px; overflow: hidden;
-}
-.ct-bar-fill  { height: 100%; border-radius: 3px; transition: width var(--duration) var(--ease); }
-.ct-bar-count { font-size: 13px; font-weight: 600; color: var(--label); min-width: 24px; text-align: right; }
+.ct-bar-label { font-size: 13px; color: var(--label); }
+.ct-bar-count { font-size: 13px; font-weight: 600; color: var(--label); }
 
 /* ── Rivers ── */
 .ct-river-row {
@@ -159,9 +149,7 @@
 .ct-river-row:active { background: var(--bg3); }
 
 .ct-river-info  { flex: 1; }
-.ct-river-name  { font-size: 13px; font-weight: 600; color: var(--label); margin-bottom: 4px; }
-.ct-river-bar-wrap { height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
-.ct-river-bar   { height: 100%; border-radius: 2px; background: var(--accent); transition: width var(--duration) var(--ease); }
+.ct-river-name  { font-size: 13px; font-weight: 600; color: var(--label); }
 
 .ct-river-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: 12px; }
 .ct-river-count { font-size: 13px; font-weight: 600; color: var(--accent); }
