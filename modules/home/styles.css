@@ -79,6 +79,28 @@
 }
 .cal-leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
+/* Год целиком — 12 плиток-месяцев вместо дней (см. _renderCalYear).
+   Заголовок над сеткой кликабельный (курсор — подсказка, что это тоже
+   кнопка, не просто текст). */
+.cal-month-name { cursor: pointer; }
+.cal-year-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  padding: 12px 14px 14px;
+}
+.cal-year-month {
+  text-align: center; padding: 14px 0;
+  border-radius: var(--radius-md);
+  background: var(--bg3);
+  font-size: 13px; font-weight: 600; color: var(--label2);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: background var(--duration-fast);
+}
+.cal-year-month:active { background: var(--bg4); }
+.cal-year-month.current { box-shadow: 0 0 0 1.5px var(--accent) inset; color: var(--label); }
+.cal-year-month.my-exp   { background: var(--accent); color: #fff; }
+.cal-year-month.my-small { background: var(--accent-bg); color: var(--accent); }
+.cal-year-month.my-soon  { background: rgba(255,159,10,.15); color: var(--orange); box-shadow: 0 0 0 1px var(--orange) inset; }
+
 /* ===== UPCOMING BANNER ===== */
 .upcoming-banner {
   margin: 0 16px;

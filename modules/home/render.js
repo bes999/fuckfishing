@@ -7,6 +7,7 @@ const HomeRender = (() => {
   const DOWS = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 
   let _calYear, _calMonth;
+  let _calView = 'month'; // 'month' | 'year' — год целиком, см. _renderCalYear
   let _calendarHandler = null;
   let _tripCardsHandler = null;
 
@@ -15,6 +16,7 @@ const HomeRender = (() => {
     const now = new Date();
     _calYear  = now.getFullYear();
     _calMonth = now.getMonth();
+    _calView  = 'month';
 
     const uid = window.APP?.user?.uid;
     const upcoming = TripsData.getUpcoming(uid);
@@ -43,17 +45,21 @@ const HomeRender = (() => {
   }
 
   // ── Calendar ──
+  // Заголовок ("Сентябрь 2026" / просто "2026") кликабельный — переключает
+  // месяц⇄год целиком (Дмитрий: раньше можно было долистать до другого
+  // года только по месяцу за раз, 12 тапов ‹ до соседнего сентября).
+  // В год-режиме ‹› листают годами, в месяц-режиме как раньше — месяцами.
   function _calendar() {
     return `
       <div class="cal-wrap">
         <div class="cal-head">
-          <div class="cal-month-name" id="calTitle"></div>
+          <div class="cal-month-name" id="calTitle" data-cal="toggle-view" title="Показать год целиком"></div>
           <div class="cal-nav">
             <button class="cal-nav-btn" data-cal="prev">‹</button>
             <button class="cal-nav-btn" data-cal="next">›</button>
           </div>
         </div>
-        <div class="cal-grid" id="calGrid"></div>
+        <div id="calBody"></div>
         <div class="cal-legend">
           <div class="cal-leg">
             <div class="cal-leg-dot" style="background:var(--accent);box-shadow:0 0 0 2px var(--accent-bg)"></div>
@@ -69,6 +75,32 @@ const HomeRender = (() => {
           </div>
         </div>
       </div>`;
+  }
+
+  // Год целиком — 12 плиток-месяцев, подсвечена та, где есть хоть один
+  // день поездки (без разбивки по дням внутри месяца — то, что нужно
+  // "посмотреть весь год", не полноценный мини-календарь на 365 клеток).
+  // Тап по плитке — нырнуть в обычный месяц-режим на этот месяц.
+  function _renderCalYear(el) {
+    const markers = TripsData.getCalendarMarkers(window.APP?.user?.uid);
+    document.getElementById('calTitle').textContent = String(_calYear);
+
+    const now = new Date();
+    const isCurrentYear = _calYear === now.getFullYear();
+
+    let h = '<div class="cal-year-grid">';
+    for (let m = 0; m < 12; m++) {
+      const prefix = `${_calYear}-${_pad(m + 1)}-`;
+      const monthMarkers = Object.keys(markers).filter(k => k.startsWith(prefix)).map(k => markers[k]);
+      let cls = '';
+      if (monthMarkers.some(mk => mk.type === 'expedition' && !mk.isFuture)) cls = 'my-exp';
+      else if (monthMarkers.some(mk => mk.type === 'fishing' && !mk.isFuture)) cls = 'my-small';
+      else if (monthMarkers.some(mk => mk.isFuture)) cls = 'my-soon';
+      const isCurrent = isCurrentYear && m === now.getMonth();
+      h += `<div class="cal-year-month ${cls} ${isCurrent ? 'current' : ''}" data-cal-month="${m}">${MONTHS[m].slice(0, 3)}</div>`;
+    }
+    h += '</div>';
+    document.getElementById('calBody').innerHTML = h;
   }
 
   function _renderCalGrid(el) {
@@ -111,7 +143,13 @@ const HomeRender = (() => {
     for (let d = 1; d <= rem; d++)
       h += `<div class="cal-day other"><div class="cn">${d}</div></div>`;
 
-    document.getElementById('calGrid').innerHTML = h;
+    document.getElementById('calBody').innerHTML = `<div class="cal-grid">${h}</div>`;
+  }
+
+  // Диспетчер — что сейчас показывать в #calBody, месяц или год целиком.
+  function _renderCalBody(el) {
+    if (_calView === 'year') _renderCalYear(el);
+    else _renderCalGrid(el);
   }
 
   // ── Upcoming banner ──
@@ -344,20 +382,36 @@ const HomeRender = (() => {
   }
 
   // ── Bindings ──
+  // prev/next и заголовок биндятся один раз здесь (сама оболочка _calendar()
+  // рендерится один раз на весь заход на Главную) — дальше переключение
+  // месяц⇄год и навигация просто меняют #calBody, кнопки/заголовок никуда
+  // не деваются. Поэтому читают _calView/_calYear/_calMonth заново на
+  // каждый клик из замыкания, а не один раз при биндинге.
   function _bindCalendar(el) {
-    _renderCalGrid(el);
+    _renderCalBody(el);
     el.querySelector('[data-cal="prev"]')?.addEventListener('click', () => {
-      _calMonth--;
-      if (_calMonth < 0) { _calMonth = 11; _calYear--; }
-      _renderCalGrid(el);
+      if (_calView === 'year') { _calYear--; }
+      else { _calMonth--; if (_calMonth < 0) { _calMonth = 11; _calYear--; } }
+      _renderCalBody(el);
     });
     el.querySelector('[data-cal="next"]')?.addEventListener('click', () => {
-      _calMonth++;
-      if (_calMonth > 11) { _calMonth = 0; _calYear++; }
-      _renderCalGrid(el);
+      if (_calView === 'year') { _calYear++; }
+      else { _calMonth++; if (_calMonth > 11) { _calMonth = 0; _calYear++; } }
+      _renderCalBody(el);
+    });
+    el.querySelector('[data-cal="toggle-view"]')?.addEventListener('click', () => {
+      _calView = _calView === 'year' ? 'month' : 'year';
+      _renderCalBody(el);
     });
     if (_calendarHandler) el.removeEventListener('click', _calendarHandler);
     _calendarHandler = e => {
+      const monthTile = e.target.closest('.cal-year-month[data-cal-month]');
+      if (monthTile) {
+        _calMonth = parseInt(monthTile.dataset.calMonth, 10);
+        _calView = 'month';
+        _renderCalBody(el);
+        return;
+      }
       const day = e.target.closest('.cal-day[data-date]');
       if (!day || day.classList.contains('other')) return;
       const date = day.dataset.date;
