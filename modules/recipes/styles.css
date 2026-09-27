@@ -300,7 +300,8 @@
 
 /* ── Экран рецепта (V2Recipe) ── */
 .rec-det-topbar {
-  background: var(--topbar-bg);
+  background: var(--bg);
+  border-bottom: 1px solid var(--sep2);
   padding: 8px 8px;
   display: flex;
   align-items: center;
@@ -309,13 +310,14 @@
   top: 0;
   z-index: 10;
 }
-.rec-det-crumb { flex: 1; font-size: 14px; color: rgba(255,255,255,0.6); }
+.rec-det-crumb { flex: 1; font-size: 14px; color: var(--label3); }
+.rec-det-topbar .rec-back-btn { color: var(--label); }
 .rec-det-edit {
   width: 40px; height: 40px;
   border-radius: 50%;
   border: none;
   background: none;
-  color: #fff;
+  color: var(--label2);
   display: flex; align-items: center; justify-content: center;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;

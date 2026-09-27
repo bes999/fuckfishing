@@ -188,7 +188,8 @@
 
 /* ── Экран коктейля (V2Cocktail) ── */
 .bar-det-topbar {
-  background: var(--topbar-bg);
+  background: var(--bg);
+  border-bottom: 1px solid var(--sep2);
   padding: 8px 8px;
   display: flex;
   align-items: center;
@@ -197,7 +198,8 @@
   top: 0;
   z-index: 10;
 }
-.bar-det-crumb { flex: 1; font-size: 14px; color: rgba(255,255,255,0.6); }
+.bar-det-crumb { flex: 1; font-size: 14px; color: var(--label3); }
+.bar-det-topbar .bar-back-btn { color: var(--label); }
 
 .bar-det-body {
   padding: 8px 14px calc(24px + env(safe-area-inset-bottom));

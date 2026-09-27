@@ -628,3 +628,6 @@
 }
 .tc-swipe-row.swiped > .tc-swipe-del { transform: translateX(0); }
 .tc-leg-text { padding: 12px 14px; font-size: 15px; line-height: 1.4; color: var(--label); background: var(--bg2); }
+
+/* «Перенести в Меню» под планом меню из импорта */
+.tc-menu-imp { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px 14px; }

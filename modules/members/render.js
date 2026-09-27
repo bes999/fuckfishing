@@ -104,7 +104,7 @@ const MembersRender = (() => {
     const sorted = [...members].sort((a, b) => (b.uid === currentUid) - (a.uid === currentUid));
     const rows = sorted.map(m => {
       const isMe = m.uid === currentUid;
-      const sub = 'участник' + (m.telegramId ? ' · Telegram привязан' : '');
+      const sub = (m.role === 'organizer' ? 'админ' : 'участник') + (m.telegramId ? ' · Telegram привязан' : '');
       return `
         <button type="button" class="mb-person" data-action="member-open" data-uid="${_esc(m.uid)}">
           ${_ava(m, isMe ? 'mb-ava--me' : '')}
@@ -201,7 +201,7 @@ const MembersRender = (() => {
         ${_ava(p, 'mb-ava--xl' + (isMe ? ' mb-ava--me' : ''))}
         <div class="mb-hero-txt">
           <span class="mb-hero-name">${_esc(p.displayName)}</span>
-          <span class="mb-hero-sub">${[nick, 'участник'].filter(Boolean).join(' · ')}</span>
+          <span class="mb-hero-sub">${[nick, p.role === 'organizer' ? 'админ' : 'участник'].filter(Boolean).join(' · ')}</span>
           ${p.phone ? `<a class="mb-hero-phone" href="tel:${_esc(p.phone.replace(/[^\d+]/g, ''))}">${_esc(p.phone)}</a>` : ''}
           ${tgLine || otherMsgrs ? `<span class="mb-hero-msgr">${tgLine}${otherMsgrs}</span>` : ''}
           ${p.email ? `<span class="mb-hero-mail">${_esc(p.email)}</span>` : ''}

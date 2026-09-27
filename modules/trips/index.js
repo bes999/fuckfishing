@@ -7,6 +7,7 @@ const TripsIndex = (() => {
   let _draft = {};
   let _rivers = [];
   let _importedData = null;   // JSON от AI для экспедиций (или собранный из квиза — та же форма)
+  let _importFileLoaded = false; // в этом сеансе мастера загрузили файл — план меню уйдёт в «Меню»
   let _expMode = 'quiz';      // 'quiz' | 'file' — способ заполнения данных маршрута экспедиции
   let _quizRivers = [];       // реки, добавленные вручную в квизе (name+region, без карты)
   let _quizRouteText = '';    // сырой текст маршрута по дням из квиза, парсится в route[]
@@ -58,6 +59,7 @@ const TripsIndex = (() => {
     _editMode   = false;
     _editTripId = null;
     _createStep = 0;
+    _importFileLoaded = false;
     _importedData = null;
     _expMode = 'quiz';
     _quizRivers = [];
@@ -92,6 +94,7 @@ const TripsIndex = (() => {
 
     _editMode   = true;
     _editTripId = tripId;
+    _importFileLoaded = false;
     _createStep = 0;
     _importedData = trip.importData || null;
     _expMode = _importedData ? 'file' : 'quiz';
@@ -933,6 +936,7 @@ const TripsIndex = (() => {
         }
 
         _importedData = data;
+        _importFileLoaded = true;
 
         // Автозаполнение полей из meta если пустые
         if (data.meta) {
@@ -1103,6 +1107,9 @@ const TripsIndex = (() => {
     return {
       // Всё, чего квиз не касается (меню, рейсы, приливы, погода…), — как было
       ...(prior || {}),
+      // Собрано вручную — не показывать «импортирован ИИ» (у поездки из файла
+      // source уже нет и остаётся как было)
+      ...(prior ? {} : { source: 'manual' }),
       meta:   { ...(prior?.meta || {}), title: _draft.name || '' },
       // id обязателен — Реки открывают карточку по data-rv-open="r.id".
       // Уже импортированная река сохраняет свои подробности (координаты,
@@ -1266,6 +1273,13 @@ const TripsIndex = (() => {
       trip.ownerId = ownerUid;
       await TripsData.addTrip(trip);
     }
+    // Решение 2026-09-25: план меню из файла ИИ сразу раскладывается в
+    // «Меню» (в пустые позиции), а не висит только для просмотра в Инфо.
+    const savedId = _editMode && _editTripId ? _editTripId : trip.id;
+    if (isExp && _importFileLoaded && _importedData?.menu?.length && typeof MenuFirebase !== 'undefined' && MenuFirebase.importPlan) {
+      MenuFirebase.importPlan(savedId, trip.startDate, trip.endDate, _importedData.menu)
+        .catch(e => console.error('menu importPlan:', e));
+    }
     _closeCreate();
     render();
     if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
@@ -1288,6 +1302,7 @@ const TripsIndex = (() => {
       setTimeout(() => overlay.remove(), 350);
     }
     _importedData = null;
+    _importFileLoaded = false;
     _editMode   = false;
     _editTripId = null;
   }

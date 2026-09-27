@@ -80,5 +80,59 @@ const MenuFirebase = (() => {
     } catch (_) {}
   }
 
-  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty, saveDayAttendance, saveCookDone };
+  // План меню из AI-импорта поездки (importData.menu: [{day:'День N',
+  // meals:[{type:'Утро'|'Обед'|'Ужин'|…, text, cocktail, editable}]}]) —
+  // раскладываем по дням Меню «своими блюдами» (source:'manual').
+  // Только в ПУСТЫЕ позиции: уже выбранное не трогаем. Пункты с
+  // editable:false («Самолёт», «Дома») — не еда, пропускаем.
+  // Транзакция: читаем свежие days/slotItems, пишем узко в slotItems (и
+  // days, только если меню ещё ни разу не создавалось). Возвращает число
+  // заполненных позиций.
+  const _IMPORT_MEAL = { 'утро': 'breakfast', 'завтрак': 'breakfast', 'перекус': 'snack',
+    'обед': 'lunch', 'ужин': 'dinner' };
+  async function importPlan(tripId, startDate, endDate, plan) {
+    if (!tripId || !Array.isArray(plan) || !plan.length) return 0;
+    const ref = db.collection(COLLECTION).doc(tripId);
+    return db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() : {};
+      const fresh = !(data.days && data.days.length);
+      const days = fresh ? MenuData.generateDays(startDate, endDate || startDate) : data.days;
+      const slotItems = data.slotItems || {};
+      const updates = {};
+      const isEmpty = slot => {
+        const it = Object.prototype.hasOwnProperty.call(slotItems, slot.id) ? slotItems[slot.id] : slot.item;
+        return !it;
+      };
+      const put = (meal, type, name) => {
+        const slot = (meal.slots || []).find(sl => sl.type === type && isEmpty(sl) && !updates[sl.id]);
+        if (!slot) return;
+        updates[slot.id] = { id: 'manual_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, source: 'manual' };
+      };
+      plan.forEach((pd, i) => {
+        const n = parseInt(String(pd.day || '').replace(/\D+/g, ''), 10);
+        const day = days[(n > 0 ? n : i + 1) - 1];
+        if (!day) return;
+        (pd.meals || []).forEach(m => {
+          if (m.editable === false) return;
+          const mealId = _IMPORT_MEAL[String(m.type || '').trim().toLowerCase()];
+          const meal = mealId && day.meals && day.meals[mealId];
+          if (!meal) return;
+          const text = String(m.text || '').trim();
+          if (text) put(meal, meal.slots.some(sl => sl.type === 'main') ? 'main' : meal.slots[0]?.type, text);
+          const drink = String(m.cocktail || '').trim();
+          if (drink) put(meal, 'drink', drink);
+        });
+      });
+      const count = Object.keys(updates).length;
+      if (count || fresh) {
+        const payload = { slotItems: updates };
+        if (fresh) payload.days = days;
+        tx.set(ref, payload, { merge: true });
+      }
+      return count;
+    });
+  }
+
+  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty, saveDayAttendance, saveCookDone, importPlan };
 })();

@@ -261,9 +261,9 @@
 /* Первый день */
 .sh-dayone {
   background: var(--bg2);
-  border-radius: var(--radius-md);
-  border: 0.5px solid var(--sep);
-  margin: 10px 0;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--card-shadow);
+  margin: 10px 16px;
   overflow: hidden;
 }
 .sh-dayone__head {

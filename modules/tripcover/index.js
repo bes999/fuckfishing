@@ -1215,7 +1215,7 @@ const TripCoverIndex = (() => {
       <section class="tc-card">
         <div class="tc-card-head">
           <h2 class="tc-card-title">Маршрут</h2>
-          ${t.importData ? '<span class="tc-muted">импортирован ИИ</span>' : ''}
+          ${_isAiImport(t.importData) ? '<span class="tc-muted">импортирован ИИ</span>' : ''}
         </div>
         ${rivers.slice(0, 4).map(r => `
           <div class="tc-river">
@@ -1439,6 +1439,8 @@ const TripCoverIndex = (() => {
       if (backBtn) { show(trip.id); return; }
       const geoBtn = e.target.closest('[data-action="geo-weather"]');
       if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
+      const menuImpBtn = e.target.closest('[data-action="tc-menu-import"]');
+      if (menuImpBtn) { _importMenuPlan(trip, menuImpBtn); return; }
 
       // Действия таба "Инфо" у простой рыбалки — те же обработчики, что
       // раньше были на кнопках обложки (#coverInvite/#coverGear/#coverEdit),
@@ -2364,8 +2366,10 @@ const TripCoverIndex = (() => {
               <span class="tc-slot-text">${_esc(meal.text)}${meal.cocktail ? ' · ' + UIUtils.ico('glass-cocktail') + ' ' + _esc(meal.cocktail) : ''}</span></div>`).join('')}
           </div></div></div>`;
       }).join('');
-      ref += _acc('План меню из импорта', mb, false,
-        { icon: 'tools-kitchen-2', sub: `${d.menu.length} ${_plural(d.menu.length, 'день', 'дня', 'дней')} · только просмотр, живое меню — во вкладке «Меню»` });
+      const impBtn = `<div class="tc-menu-imp"><button type="button" class="tc-btn-secondary" data-action="tc-menu-import">${UIUtils.ico('tools-kitchen-2')} Перенести в Меню</button>
+        <span class="tc-field-hint">займёт только пустые позиции — уже выбранные блюда не тронет</span></div>`;
+      ref += _acc('План меню из импорта', mb + impBtn, false,
+        { icon: 'tools-kitchen-2', sub: `${d.menu.length} ${_plural(d.menu.length, 'день', 'дня', 'дней')} · можно перенести во вкладку «Меню»` });
     }
 
     if (ref.replace('<div id="g-weather-charts"></div>', '').trim()) {
@@ -2406,6 +2410,33 @@ const TripCoverIndex = (() => {
   // смонтирован на этой же поездке (значит вызывающий модуль открыт не
   // внутри Гида) — тогда вызывающая сторона сама решает, как перейти
   // (обычно старым способом — onNavigate + отдельная страница).
+  // «Перенести в Меню» — для поездок, импортированных до того, как план
+  // стал уходить в Меню автоматически (см. MenuFirebase.importPlan).
+  async function _importMenuPlan(trip, btn) {
+    const plan = trip.importData?.menu;
+    if (!plan?.length || typeof MenuFirebase === 'undefined' || !MenuFirebase.importPlan) return;
+    const ok = await UIUtils.confirmSheet('Блюда из плана лягут в пустые позиции Меню по дням. Уже выбранное останется как есть.',
+      { title: 'Перенести план в Меню?', okLabel: 'Перенести', danger: false });
+    if (!ok) return;
+    btn.disabled = true;
+    try {
+      const n = await MenuFirebase.importPlan(trip.id, trip.startDate, trip.endDate, plan);
+      await UIUtils.confirmSheet(n ? `Добавлено позиций: ${n}. Смотри во вкладке «Меню».` : 'Свободных позиций под план не нашлось — Меню уже заполнено.',
+        { title: n ? 'Готово' : 'Нечего переносить', okLabel: 'Понятно', cancelLabel: 'Закрыть', danger: false });
+    } catch (e) {
+      console.error('menu importPlan:', e);
+      UIUtils.confirmSheet('Не получилось — проверь интернет и попробуй ещё раз.', { title: 'Не перенеслось', okLabel: 'Понятно', danger: false });
+    } finally { btn.disabled = false; }
+  }
+
+  // importData пишет и файл от ИИ, и ручной ввод в мастере («Вручную»
+  // собирает ту же форму). От ИИ — если есть что-то сверх ручного
+  // (рейсы, меню, приливы, подробная meta); ручной помечен source:'manual'.
+  function _isAiImport(d) {
+    if (!d || d.source === 'manual') return false;
+    return !!(d.flights?.length || d.menu?.length || d.suntide || Object.keys(d.meta || {}).length > 1);
+  }
+
   function switchGuideTab(tripId, tabId) {
     if (tripId !== _tripId) return false;
     const trip = typeof TripsData !== 'undefined' ? TripsData.getById(tripId) : null;

@@ -345,8 +345,9 @@ const RecipesRender = (() => {
   function _splitSentences(text) {
     const s = String(text || '').trim();
     if (!s) return [];
-    const parts = s.match(/[^.!?]+[.!?]*/g) || [s];
-    return parts.map(p => p.trim()).filter(Boolean);
+    // Шаг — предложение: режем только на «. / ! / ?» + пробел + заглавная
+    // буква, иначе «2 ст. л.» и «3-3.5 мин» разваливались на обрывки.
+    return s.split(/(?<=[.!?])\s+(?=[А-ЯЁA-Z«"(])/).map(p => p.trim()).filter(Boolean);
   }
 
   function _bindEvents() {
