@@ -13,6 +13,7 @@ const TripsIndex = (() => {
   let _dateTouched = false;   // true, если пользователь сам менял поля дат (не просто дефолт "сегодня")
   let _editMode   = false;    // true = редактирование существующей поездки
   let _editTripId = null;     // id редактируемой поездки
+  let _travelOn   = false;    // переключатель «кто-то едет по своему расписанию» (шаг 2)
 
   // Табы Гида для этой поездки — какие видны и в каком порядке. Дублирует
   // список из modules/tripcover/index.js (там он приватный, скрипт грузится
@@ -21,7 +22,7 @@ const TripsIndex = (() => {
   // чем городить публичный геттер ради восьми строк). null = "показать всё"
   // (тот же дефолт, что и когда trip.guideTabs вообще не задан).
   const _GUIDE_TAB_DEFS = {
-    rivers:   'Реки',
+    rivers:   'Места',   // вкладка «Реки» в интерфейсе теперь «Места» (id прежний)
     menu:     'Меню',
     bar:      'Бар',
     catches:  'Улов',
@@ -52,6 +53,10 @@ const TripsIndex = (() => {
   // ═══════════════════════════════
 
   function showCreate(prefillDate) {
+    // Слой мог быть снят навигацией (index.html) без _closeCreate — тогда
+    // флаг правки остался бы висеть и «новая» поездка сохранилась бы поверх старой.
+    _editMode   = false;
+    _editTripId = null;
     _createStep = 0;
     _importedData = null;
     _expMode = 'quiz';
@@ -71,10 +76,12 @@ const TripsIndex = (() => {
       endDate:   prefillDate || _today(),
       rivers: [],
       participants: myName ? [{ name: myName, uid: myUid }] : [],
+      icon: '',
       comment: '',
       private: false,
       inviteRestricted: false,
     };
+    _travelOn = false;
     _rivers = [];
     _renderCreate();
   }
@@ -109,32 +116,37 @@ const TripsIndex = (() => {
       endDate:      trip.endDate,
       rivers:       trip.rivers || [],
       participants: trip.participants ? trip.participants.map(p => ({ ...p })) : [],
+      icon:         trip.icon || '',
       comment:      trip.comment || '',
       private:      !!trip.private,
       inviteRestricted: !!trip.inviteRestricted,
     };
     _rivers = trip.type === 'fishing' ? [...(trip.rivers || [])] : [];
+    _travelOn = _draft.participants.some(p => p.travelSeparate);
 
     _renderCreate();
   }
+
+  // ─── Мастер создания/правки (макеты v2: V2Create1/2/3, V2CreateFish2) ───
+  // Полноэкранный слой: шапка с ×, полоска из трёх шагов, тело, снизу —
+  // «Назад» + главная кнопка. id create-overlay оставлен прежним: его
+  // снимает навигация в index.html (_doNavigate).
+
+  const _SEARCH_SVG = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+  const _FILE_SVG = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/></svg>';
+  const _MONTHS_SHORT = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
 
   function _renderCreate() {
     document.getElementById('create-overlay')?.remove();
 
     const overlay = document.createElement('div');
     overlay.id = 'create-overlay';
-    overlay.className = 'create-overlay';
+    overlay.className = 'cw-overlay';
     overlay.innerHTML = `
-      <div class="create-sheet" id="create-sheet">
-        <div class="create-topbar" id="create-topbar-el">
-          ${_createTopbar()}
-        </div>
-        <div class="create-body" id="create-body">
-          ${_createStepContent()}
-        </div>
-        <div class="create-footer" id="create-footer-el">
-          ${_createFooter()}
-        </div>
+      <div class="cw-sheet">
+        <div class="cw-head" id="create-topbar-el">${_createTopbar()}</div>
+        <div class="cw-body" id="create-body">${_createStepContent()}</div>
+        <div class="cw-footer" id="create-footer-el">${_createFooter()}</div>
       </div>`;
     document.body.appendChild(overlay);
 
@@ -142,486 +154,590 @@ const TripsIndex = (() => {
       overlay.classList.add('visible');
     });
 
+    // Удаление мест — свайпом влево (тело мастера живёт всё время, строки
+    // внутри перерисовываются — как и требует UIUtils.swipeToDelete).
+    UIUtils.swipeToDelete(document.getElementById('create-body'), '.cw-place-row', '.cw-place-del');
+
     _bindCreate(overlay);
   }
 
   function _createTopbar() {
     const isExp = _draft.type === 'expedition';
-
-    // Заголовки и подзаголовки зависят от типа и шага
-    const titles = _editMode
-      ? { fishing:    ['Редактировать', 'Места и детали',  'Проверьте данные'],
-          expedition: ['Редактировать', 'Данные маршрута', 'Проверьте данные'] }
-      : { fishing:    ['Новая поездка', 'Новая рыбалка',   'Проверьте данные'],
-          expedition: ['Новая поездка', 'Данные маршрута', 'Проверьте данные'] };
-    const subs = {
-      fishing:    ['Шаг 1 из 2', 'Шаг 2 из 2', 'Шаг 3 из 3'],
-      expedition: ['Шаг 1 из 2', 'Шаг 2 из 2', 'Шаг 3 из 3'],
-    };
-
-    const type = isExp ? 'expedition' : 'fishing';
+    const what = ['что и когда', isExp ? 'кто и куда' : 'где и с кем', 'проверь'][_createStep];
+    const title = _editMode
+      ? 'Изменить поездку'
+      : (_createStep === 1 && !isExp ? 'Новая рыбалка' : 'Новая поездка');
+    const sub = _editMode
+      ? `${_esc(_draft.name || _autoName())} · шаг ${_createStep + 1} из 3`
+      : `шаг ${_createStep + 1} из 3 · ${what}`;
     return `
-      <div class="create-topbar">
-        <button class="create-back" id="createBack">
-          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <div>
-          <div class="create-top-title">${titles[type][_createStep]}</div>
-          <div class="create-top-sub">${subs[type][_createStep]}</div>
-        </div>
+      <button type="button" class="cw-close" id="createClose" aria-label="Закрыть">${UIUtils.ico('x')}</button>
+      <div class="cw-head-text">
+        <span class="cw-title">${title}</span>
+        <span class="cw-sub">${sub}</span>
       </div>`;
   }
 
   function _steps() {
+    return `<div class="cw-steps">${[0, 1, 2].map(i =>
+      `<span class="cw-step ${i <= _createStep ? 'on' : ''}"></span>`).join('')}</div>`;
+  }
+
+  function _label(text, hint) {
+    return `<div class="cw-label"><span class="cw-label-t">${text}</span>${hint ? `<span class="cw-label-h">${hint}</span>` : ''}</div>`;
+  }
+
+  // Переключатель-строка (role=switch). Состояние меняется на месте, без
+  // перерисовки шага — см. _bindCreate.
+  function _switch(id, text, on) {
     return `
-      <div class="create-steps">
-        <div class="create-step ${_createStep === 0 ? 'active' : 'done'}"></div>
-        <div class="create-step ${_createStep === 1 ? 'active' : _createStep > 1 ? 'done' : ''}"></div>
-        <div class="create-step ${_createStep === 2 ? 'active' : ''}"></div>
-      </div>`;
+      <button type="button" role="switch" class="cw-switch-row" id="${id}" aria-checked="${on ? 'true' : 'false'}">
+        <span class="cw-switch-text">${text}</span>
+        <span class="cw-switch"><span></span></span>
+      </button>`;
+  }
+
+  function _check(on) {
+    return `<span class="cw-check ${on ? 'on' : ''}">${UIUtils.ico('check')}</span>`;
   }
 
   function _createStepContent() {
-    if (_createStep === 0) return _step0();
-    if (_createStep === 1) {
-      // КЛЮЧЕВОЕ ВЕТВЛЕНИЕ: экспедиция идёт на импорт, рыбалка — на поля
-      return _draft.type === 'expedition' ? _step1Expedition() : _step1Fishing();
-    }
-    return _step2();
+    let h;
+    if (_createStep === 0) h = _step0();
+    else if (_createStep === 1) {
+      // КЛЮЧЕВОЕ ВЕТВЛЕНИЕ: экспедиция — маршрут вручную/файлом, рыбалка — места по OSM
+      h = _draft.type === 'expedition' ? _step1Expedition() : _step1Fishing();
+    } else h = _step2();
+    return h + _deleteButton();
   }
 
-  // ─── Шаг 0: тип + базовые поля (не меняется) ───────────────────────────
+  // «Удалить поездку» — на любом шаге правки, не только на последнем
+  // (раньше висела только на «Проверьте данные», и чтобы удалить,
+  // приходилось пройти весь мастер — Дмитрий справедливо назвал это
+  // бредом). Только у того, кто создал поездку (trip.ownerId).
+  function _deleteButton() {
+    const editingTrip = _editMode && _editTripId ? TripsData.getById(_editTripId) : null;
+    const isTripOwner = TripsData.canManage(editingTrip);
+    return isTripOwner ? `<button type="button" class="cw-delete" id="createDelete">Удалить поездку</button>` : '';
+  }
+
+  // ─── Шаг 0: тип, название, даты ─────────────────────────────────────────
+
+  function _fmtDay(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return iso;
+    return `${d.getDate()} ${_MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+  }
 
   function _step0() {
+    const t = _draft.type;
     return `
       ${_steps()}
-      <div class="type-grid">
-        <div class="type-opt ${_draft.type === 'expedition' ? 'selected' : ''}" data-type="expedition">
-          <div class="type-opt-icon">🏔</div>
-          <div class="type-opt-name">Экспедиция</div>
-          <div class="type-opt-sub">Несколько дней,<br>несколько участников</div>
-        </div>
-        <div class="type-opt ${_draft.type === 'fishing' ? 'selected' : ''}" data-type="fishing">
-          <div class="type-opt-icon">🎣</div>
-          <div class="type-opt-name">Рыбалка</div>
-          <div class="type-opt-sub">1–2 дня,<br>быстро завести</div>
-        </div>
+      <div class="cw-types">
+        <button type="button" class="cw-type exp ${t === 'expedition' ? 'on' : ''}" data-type="expedition" aria-pressed="${t === 'expedition'}">
+          <span class="cw-type-ico">${UIUtils.ico('mountain')}</span>
+          <span class="cw-type-name">Экспедиция</span>
+          <span class="cw-type-sub">несколько дней, несколько участников</span>
+        </button>
+        <button type="button" class="cw-type fish ${t === 'fishing' ? 'on' : ''}" data-type="fishing" aria-pressed="${t === 'fishing'}">
+          <span class="cw-type-ico">${UIUtils.ico('fishing')}</span>
+          <span class="cw-type-name">Рыбалка</span>
+          <span class="cw-type-sub">1–2 дня, завести быстро</span>
+        </button>
       </div>
 
-      <div class="field-group">
-        <div class="field-label">Название</div>
-        <input class="field-input" id="f-name" type="text"
-               placeholder="${_draft.type === 'expedition' ? 'Сахалин 2026' : 'Ока, 15 марта'}"
-               value="${_esc(_draft.name)}">
-        <div class="field-hint">Оставьте пустым — сгенерируется автоматически</div>
+      ${_label('Название', 'можно пустым — придумаем по месту и датам')}
+      <input class="cw-input" id="f-name" type="text"
+             placeholder="${t === 'expedition' ? 'Например, Сахалин 2027' : 'Например, Ока, 15 марта'}"
+             value="${_esc(_draft.name)}">
+
+      ${_label('Иконка', 'для списка поездок — цвет всё равно по типу')}
+      <div class="cw-icons ${t === 'expedition' ? 'exp' : 'fish'}" id="f-icons">
+        ${TripsData.TRIP_ICONS.map(ic => {
+          const on = (_draft.icon || '') === ic || (!_draft.icon && ic === (t === 'expedition' ? 'mountain' : 'fishing'));
+          return `<button type="button" class="cw-icon ${on ? 'on' : ''}" data-icon="${ic}" aria-pressed="${on}" aria-label="Иконка ${ic}">${UIUtils.ico(ic)}</button>`;
+        }).join('')}
       </div>
 
-      <div class="field-row">
-        <div class="field-group">
-          <div class="field-label">Дата начала</div>
-          <input class="field-input" id="f-start" type="date" value="${_draft.startDate}">
-        </div>
-        <div class="field-group">
-          <div class="field-label">Дата конца</div>
-          <input class="field-input" id="f-end" type="date" value="${_draft.endDate}">
-        </div>
-      </div>`;
+      ${_label('Даты')}
+      <div class="cw-dates">
+        <label class="cw-date">
+          <span class="cw-date-k">с</span>
+          <span class="cw-date-v" id="f-start-v">${_fmtDay(_draft.startDate) || 'выбрать'}</span>
+          <input type="date" id="f-start" value="${_esc(_draft.startDate)}" aria-label="Дата начала">
+        </label>
+        <label class="cw-date">
+          <span class="cw-date-k">по</span>
+          <span class="cw-date-v" id="f-end-v">${_fmtDay(_draft.endDate) || '—'}</span>
+          <input type="date" id="f-end" value="${_esc(_draft.endDate)}" aria-label="Дата окончания">
+        </label>
+      </div>
+      <span class="cw-hint cw-hint--tight">Нажми «с» или «по» — откроется календарь. Рыбалка на один день — одна и та же дата.</span>`;
   }
 
-  // ─── Шаг 1 ЭКСПЕДИЦИЯ: импорт JSON от AI ────────────────────────────────
+  // ─── Шаг 1 ЭКСПЕДИЦИЯ: участники + маршрут вручную или файлом от ИИ ────
 
   function _step1Expedition() {
     const imported = _importedData;
     const hasData  = !!imported;
 
-    // Превью если данные уже загружены (файл от AI)
+    // Превью, если данные уже загружены (файл от ИИ)
     const previewHtml = hasData ? `
-      <div class="import-preview">
-        <div class="import-preview-title">✅ Данные загружены</div>
-        <div class="import-preview-chips">
-          ${imported.route  ?.length ? `<div class="import-chip">📅 ${imported.route.length} дн.</div>`  : ''}
-          ${imported.rivers ?.length ? `<div class="import-chip">🎣 ${imported.rivers.length} рек</div>` : ''}
-          ${imported.menu   ?.length ? `<div class="import-chip">🍽 Меню</div>`   : ''}
-          ${imported.flights?.length ? `<div class="import-chip">✈️ Рейсы</div>` : ''}
+      <div class="cw-import-ok">
+        <div class="cw-import-ok-title">${UIUtils.ico('circle-check')} Данные загружены</div>
+        <div class="cw-import-chips">
+          ${imported.route  ?.length ? `<span class="cw-import-chip">${UIUtils.ico('calendar')} ${imported.route.length} дн.</span>`  : ''}
+          ${imported.rivers ?.length ? `<span class="cw-import-chip">${UIUtils.ico('map-pin')} ${imported.rivers.length} мест</span>` : ''}
+          ${imported.menu   ?.length ? `<span class="cw-import-chip">${UIUtils.ico('tools-kitchen-2')} Меню</span>`   : ''}
+          ${imported.flights?.length ? `<span class="cw-import-chip">${UIUtils.ico('plane')} Рейсы</span>` : ''}
         </div>
-        <button class="import-reset-btn" id="importReset">Заменить файл</button>
+        <button type="button" class="cw-link" id="importReset">Заменить файл</button>
       </div>` : '';
 
     const uploadHtml = !hasData ? `
-      <div class="import-dropzone" id="importDropzone">
-        <div class="import-dz-icon">🤖</div>
-        <div class="import-dz-title">Загрузить данные маршрута</div>
-        <div class="import-dz-sub">JSON-файл, подготовленный AI — маршрут, реки, меню</div>
-        <label class="import-dz-btn" for="importFile">Выбрать файл</label>
-        <input type="file" id="importFile" accept=".json" style="display:none">
-        <div class="import-dz-hint">или перетащите файл сюда</div>
+      <div class="cw-dropzone" id="importDropzone">
+        <span class="cw-dz-ico">${UIUtils.ico('robot')}</span>
+        <span class="cw-dz-title">Загрузить данные маршрута</span>
+        <span class="cw-dz-sub">JSON-файл, подготовленный ИИ — маршрут, места, меню</span>
+        <label class="cw-dz-btn" for="importFile">Выбрать файл</label>
+        <input type="file" id="importFile" accept=".json" hidden>
+        <span class="cw-dz-hint">или перетащи файл сюда · можно пропустить — просто «Дальше»</span>
       </div>` : '';
 
-    const quizHtml = `
-      <div class="field-group">
-        <div class="field-label">Реки / места</div>
-        <div class="rivers-list" id="quizRiversList">
-          ${_quizRivers.map((r,i) => `
-            <div class="river-item">
-              <div class="river-item-body">
-                <div class="river-item-name">${_esc(r.name)}</div>
-                ${r.region ? `<div class="river-item-sub">📍 ${_esc(r.region)}</div>` : ''}
-              </div>
-              <button class="river-remove" data-quiz-river-idx="${i}">×</button>
-            </div>`).join('')}
-        </div>
-        <div class="quiz-river-add">
-          <input class="field-input" id="f-quiz-river-name" type="text" placeholder="Название реки">
-          <input class="field-input" id="f-quiz-river-region" type="text" placeholder="Регион (необязательно)">
-          <button class="btn-secondary quiz-river-add-btn" id="quizRiverAdd">+ Добавить место</button>
-        </div>
-      </div>
+    const placesHtml = _quizRivers.length ? `
+      <section class="cw-card cw-card--list">
+        ${_quizRivers.map((r, i) => _placeRow(r.name, r.region, `data-quiz-river-idx="${i}"`)).join('')}
+      </section>` : '';
 
-      <div class="field-group">
-        <div class="field-label">
-          Маршрут по дням
-          <span class="field-hint-inline">— необязательно</span>
-        </div>
-        <div class="quiz-route-hint">Строка с двоеточием на конце — новый день («День 1 — прилёт:»). Дальше — пункты расписания, время можно указать в начале строки.</div>
-        <textarea class="field-textarea quiz-route-ta" id="f-quiz-route" rows="7"
+    const quizHtml = `
+      ${placesHtml}
+      <div class="cw-add-row">
+        <input class="cw-input" id="f-quiz-place" type="text" placeholder="Река или место — «Обь, ХМАО»" autocomplete="off">
+        <button type="button" class="cw-add-btn" id="quizRiverAdd" aria-label="Добавить место">${UIUtils.ico('plus')}</button>
+      </div>
+      <section class="cw-card cw-route">
+        <span class="cw-route-t">Маршрут по дням — необязательно</span>
+        <textarea class="cw-textarea cw-route-ta" id="f-quiz-route" rows="6"
                   placeholder="День 1 — прилёт:&#10;09:15 Прилёт, багаж&#10;13:00 Выезд на реку&#10;&#10;День 2 — рыбалка:&#10;Целый день на воде">${_esc(_quizRouteText)}</textarea>
-      </div>`;
+        <span class="cw-hint">Строка с двоеточием на конце — новый день. Время можно указать в начале строки.</span>
+      </section>`;
 
     return `
       ${_steps()}
-
       ${_participantsField()}
-      ${_privacyToggleField()}
 
-      <div class="exp-mode-tabs">
-        <div class="exp-mode-tab ${_expMode === 'quiz' ? 'on' : ''}" data-exp-mode="quiz">📝 Квиз</div>
-        <div class="exp-mode-tab ${_expMode === 'file' ? 'on' : ''}" data-exp-mode="file">🤖 Файл от AI</div>
+      ${_label('Маршрут и места', 'выбери, как удобнее')}
+      <div class="cw-seg cw-seg--tight" role="tablist">
+        <button type="button" role="tab" class="cw-seg-btn ${_expMode === 'quiz' ? 'on' : ''}" aria-selected="${_expMode === 'quiz'}" data-exp-mode="quiz">${UIUtils.ico('pencil')}Вручную</button>
+        <button type="button" role="tab" class="cw-seg-btn ${_expMode === 'file' ? 'on' : ''}" aria-selected="${_expMode === 'file'}" data-exp-mode="file">${_FILE_SVG}Файл от ИИ</button>
       </div>
 
-      ${_expMode === 'quiz' ? quizHtml : `
-      <div class="import-section">
-        ${previewHtml}
-        ${uploadHtml}
-      </div>`}`;
+      ${_expMode === 'quiz' ? quizHtml : `${previewHtml}${uploadHtml}`}
+
+      ${_accessField()}`;
   }
 
-  // ─── Шаг 1 РЫБАЛКА: поля без изменений ─────────────────────────────────
+  // Строка места: удаляется свайпом влево (кнопка «Удалить» под строкой —
+  // см. UIUtils.swipeToDelete и .cw-place-del в styles.css).
+  function _placeRow(name, region, delAttr, type) {
+    return `
+      <div class="cw-place-row">
+        <span class="cw-place-ico">${UIUtils.ico('map-pin')}</span>
+        <span class="cw-place-body">
+          <span class="cw-place-name">${_esc(name)}</span>
+          ${region || type ? `<span class="cw-place-sub">${_esc([type, region].filter(Boolean).join(' · '))}</span>` : ''}
+        </span>
+        <button type="button" class="cw-place-del" ${delAttr} aria-label="Удалить место"></button>
+      </div>`;
+  }
+
+  // ─── Шаг 1 РЫБАЛКА: где (OSM) + с кем + комментарий + доступ ────────────
 
   function _step1Fishing() {
-    const riversHtml = _rivers.map((r, i) => `
-      <div class="river-item">
-        <div class="river-item-body">
-          <div class="river-item-name">${_esc(r.name)}</div>
-          <div class="river-item-sub">📍 ${_esc(r.region)}</div>
-        </div>
-        <button class="river-remove" data-river-idx="${i}">×</button>
-      </div>`).join('');
+    const placesHtml = _rivers.length ? `
+      <section class="cw-card cw-card--list">
+        ${_rivers.map((r, i) => _placeRow(r.name, r.region, `data-river-idx="${i}"`, r.type)).join('')}
+      </section>` : '';
 
     return `
       ${_steps()}
-
-      <div class="field-group">
-        <div class="field-label">Места</div>
-        <div class="rivers-list" id="riversList">
-          ${riversHtml}
-          <div id="riverSearch">
-            <input class="field-input" id="f-river" type="text" placeholder="Поиск реки или водоёма..." autocomplete="off">
-            <div class="osm-hint">🗺 OpenStreetMap — координаты подтянутся автоматически</div>
-            <div class="suggest-wrap" id="riverSuggestions">
-              ${_defaultRiverChips()}
-            </div>
-          </div>
-          <div class="river-add-row" id="addRiverBtn" style="${_rivers.length ? '' : 'display:none'}">
-            <div class="river-add-icon">
-              <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </div>
-            <div class="river-add-label">Добавить ещё место</div>
-          </div>
-        </div>
-      </div>
+      ${_label('Где', 'река или водоём — координаты подтянутся сами (OpenStreetMap)')}
+      ${placesHtml}
+      <label class="cw-search">
+        ${_SEARCH_SVG}
+        <input id="f-river" type="text" placeholder="${_rivers.length ? 'Добавить ещё место…' : 'Поиск реки или водоёма…'}" autocomplete="off" aria-label="Поиск реки или водоёма">
+      </label>
+      <div class="cw-suggest" id="riverSuggestions">${_defaultRiverChips()}</div>
 
       ${_participantsField()}
-      ${_privacyToggleField()}
 
-      <div class="field-group">
-        <div class="field-label">Комментарий</div>
-        <textarea class="field-textarea" id="f-comment"
-                  placeholder="На что планируем ловить, заметки...">${_esc(_draft.comment)}</textarea>
-      </div>`;
+      ${_label('Комментарий', 'необязательно')}
+      <textarea class="cw-textarea" id="f-comment"
+                placeholder="На что планируем ловить, заметки…">${_esc(_draft.comment)}</textarea>
+
+      ${_accessField()}`;
   }
 
-  // ─── Шаг 2: сводка ──────────────────────────────────────────────────────
+  // ─── Шаг 2: сводка + вкладки Гида ───────────────────────────────────────
 
   function _step2() {
     const isExp = _draft.type === 'expedition';
-    const dates = _draft.startDate === _draft.endDate
-      ? _draft.startDate
+    const dates = typeof TripsRender !== 'undefined' && TripsRender.dateRangeLong
+      ? TripsRender.dateRangeLong(_draft.startDate, _draft.endDate)
       : `${_draft.startDate} – ${_draft.endDate}`;
 
-    // Места: для экспедиции берём из importedData.rivers если есть
+    // Места: для экспедиции — из importedData.rivers, если есть
     let places = '';
-    let riverChips = '';
     if (isExp && _importedData?.rivers?.length) {
-      riverChips = _importedData.rivers
-        .map(r => `<div class="summary-chip">${_esc(r.name)}</div>`).join('');
       places = _importedData.rivers.map(r => r.name).join(', ');
     } else if (_rivers.length) {
-      riverChips = _rivers.map(r => `<div class="summary-chip">${_esc(r.name)}</div>`).join('');
-      places = _rivers.map(r => `${r.name}, ${r.region}`).join('; ');
+      places = _rivers.map(r => r.name).join(', ');
     }
 
     const parts = TripsData.participantNames(_draft).join(', ');
 
-    // Строки импорта для экспедиции
-    const importRows = isExp && _importedData ? `
-      <div class="summary-row">
-        <div class="summary-key">Маршрут</div>
-        <div class="summary-chips">
-          ${_importedData.route  ?.length ? `<div class="summary-chip">📅 ${_importedData.route.length} дн.</div>` : ''}
-          ${_importedData.menu   ?.length ? `<div class="summary-chip">🍽 Меню</div>`  : ''}
-          ${_importedData.flights?.length ? `<div class="summary-chip">✈️ Рейсы</div>` : ''}
-        </div>
-      </div>` : '';
+    // Строка маршрута для экспедиции (что пришло из файла/ручного ввода)
+    const routeBits = isExp && _importedData ? [
+      _importedData.route  ?.length ? `${_importedData.route.length} дн.` : '',
+      _importedData.menu   ?.length ? 'меню' : '',
+      _importedData.flights?.length ? 'рейсы' : '',
+    ].filter(Boolean).join(' · ') : '';
+
+    const access = [
+      _draft.private ? 'приватная' : 'открытая',
+      _draft.inviteRestricted ? 'добавляет только организатор' : '',
+    ].filter(Boolean).join(' · ');
+
+    const row = (k, v) => `<div class="cw-sum-row"><span class="cw-sum-k">${k}</span><span class="cw-sum-v">${v}</span></div>`;
 
     return `
       ${_steps()}
-      <div class="summary-card">
-        <div class="summary-head">
-          <div class="summary-type">${isExp ? '🏔 Экспедиция' : '🎣 Рыбалка'}</div>
-          <div class="summary-name">${_esc(_draft.name || _autoName())}</div>
-          ${places ? `<div class="summary-place">${_esc(places)}</div>` : ''}
+      <section class="cw-card cw-summary">
+        <span class="cw-sum-type ${isExp ? 'exp' : 'fish'}">${UIUtils.ico(TripsData.tripIcon({ type: _draft.type, icon: _draft.icon }))}${isExp ? 'Экспедиция' : 'Рыбалка'}</span>
+        <span class="cw-sum-name">${_esc(_draft.name || _autoName())}</span>
+        <div class="cw-sum-rows">
+          ${row('Даты', _esc(dates))}
+          ${places ? row('Места', _esc(places)) : ''}
+          ${parts ? row('Участники', _esc(parts)) : ''}
+          ${routeBits ? row('Маршрут', _esc(routeBits)) : ''}
+          ${_draft.comment ? row('Комментарий', `<span class="cw-sum-note">${_esc(_draft.comment)}</span>`) : ''}
+          ${row('Доступ', _esc(access))}
         </div>
-        <div class="summary-rows">
-          <div class="summary-row">
-            <div class="summary-key">Даты</div>
-            <div class="summary-val">${dates}</div>
-          </div>
-          ${riverChips ? `
-          <div class="summary-row">
-            <div class="summary-key">Места</div>
-            <div class="summary-chips">${riverChips}</div>
-          </div>` : ''}
-          ${parts ? `
-          <div class="summary-row">
-            <div class="summary-key">Участники</div>
-            <div class="summary-chips">
-              ${(_draft.participants || []).map(p => `<div class="summary-chip">${_esc(p.name)}</div>`).join('')}
-            </div>
-          </div>` : ''}
-          ${importRows}
-          ${_draft.comment ? `
-          <div class="summary-row">
-            <div class="summary-key">Комментарий</div>
-            <div class="summary-val" style="font-weight:400;font-size:13px;color:var(--label3)">${_esc(_draft.comment)}</div>
-          </div>` : ''}
-        </div>
-      </div>
+      </section>
       ${_guideTabsSection()}
-      <div class="success-hint">
-        ${isExp
-          ? '✓ Маршрут, реки и меню откроются внутри поездки'
-          : '✓ После создания сможешь заполнить отчёт — улов, приманки, погода'}
-      </div>`;
+      <span class="cw-hint">Всё можно поменять потом — в поездке через карандаш. ${isExp
+        ? 'Маршрут, места и меню откроются внутри поездки.'
+        : 'После рыбалки сможешь заполнить отчёт — улов, приманки, погода.'}</span>`;
   }
 
-  // Какие вкладки Гида нужны этой поездке — чекбоксы видимости + стрелки
-  // порядка, сохраняется в trip.guideTabs при создании/сохранении. Прямо
-  // тут, а не только потом через ⚙ в самом Гиде — на Приобье, например,
-  // Бар не нужен с самого начала, незачем сперва создавать со всем подряд
-  // и только потом идти прятать лишнее.
+  // Какие вкладки Гида нужны этой поездке — круглые галочки видимости +
+  // стрелки порядка, сохраняется в trip.guideTabs. Прямо тут, а не только
+  // потом через ⚙ в самом Гиде — на Приобье, например, Бар не нужен с
+  // самого начала. «Инфо» есть всегда (её рисует tripcover сам, в
+  // guideTabs она не хранится) — показана первой строкой без галочки.
   function _guideTabsSection() {
-    const rows = _draftGuideTabOrder.map((id, i) => `
-      <div class="qtb-row">
-        <div class="qtb-check ${_draftGuideTabsChecked.has(id) ? 'checked' : ''}" data-qtb-check="${id}"></div>
-        <span class="qtb-label">${_esc(_GUIDE_TAB_DEFS[id])}</span>
-        <div class="qtb-arrows">
-          <button type="button" class="qtb-arrow" data-qtb-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
-          <button type="button" class="qtb-arrow" data-qtb-down="${id}" ${i === _draftGuideTabOrder.length - 1 ? 'disabled' : ''}>↓</button>
-        </div>
-      </div>`).join('');
+    const last = _draftGuideTabOrder.length - 1;
+    const rows = _draftGuideTabOrder.map((id, i) => {
+      const on = _draftGuideTabsChecked.has(id);
+      return `
+        <div class="cw-tab-row">
+          <button type="button" class="cw-tab-check" role="checkbox" aria-checked="${on}" data-qtb-check="${id}">
+            ${_check(on)}<span>${_esc(_GUIDE_TAB_DEFS[id])}</span>
+          </button>
+          <button type="button" class="cw-arrow" data-qtb-up="${id}" aria-label="Выше" ${i === 0 ? 'disabled' : ''}>${UIUtils.ico('chevron-up')}</button>
+          <button type="button" class="cw-arrow" data-qtb-down="${id}" aria-label="Ниже" ${i === last ? 'disabled' : ''}>${UIUtils.ico('chevron-down')}</button>
+        </div>`;
+    }).join('');
     return `
-      <div class="summary-card" style="margin-top:10px">
-        <div class="summary-head">
-          <div class="summary-type">📑 Вкладки в Гиде</div>
+      ${_label('Вкладки в Гиде', 'какие разделы нужны в этой поездке — порядок стрелками')}
+      <section class="cw-card cw-card--list">
+        <div class="cw-tab-row cw-tab-row--fixed">
+          <span class="cw-tab-check">${_check(true)}<span>Инфо</span></span>
+          <span class="cw-tab-always">всегда</span>
         </div>
-        <div class="qtb-list">${rows}</div>
-      </div>`;
+        ${rows}
+      </section>`;
   }
 
   function _createFooter() {
     const isLast = _createStep === 2;
-    const isExp  = _draft.type === 'expedition';
-
-    // Кнопка удаления — на любом шаге редактирования, не только на
-    // последнем: раньше висела только на "Проверьте данные" (шаг 3), и
-    // чтобы удалить, приходилось сначала пройти весь визард — Дмитрий
-    // сам на это наткнулся и справедливо назвал бредом. Только у того, кто
-    // создал поездку (trip.ownerId) — не у любого участника, кто просто
-    // зашёл её отредактировать.
-    const editingTrip = _editMode && _editTripId ? TripsData.getById(_editTripId) : null;
-    const isTripOwner = !!editingTrip && editingTrip.ownerId === (window.APP?.user?.uid || null);
-    const deleteHtml = isTripOwner ? `<button class="btn-text-danger" id="createDelete">Удалить поездку</button>` : '';
-
+    const back = _createStep > 0
+      ? `<button type="button" class="cw-btn-sec" id="createPrev">Назад</button>` : '';
     if (!isLast) {
-      // На шаге импорта файлом для экспедиции — можно пропустить (в квизе
-      // поля и так помечены необязательными, отдельная кнопка не нужна)
-      const skipHtml = (_createStep === 1 && isExp && _expMode === 'file' && !_importedData)
-        ? `<button class="btn-secondary" id="createSkip">Пропустить →</button>`
-        : '';
-      return `<button class="btn-primary" id="createNext">Далее →</button>${skipHtml}${deleteHtml}`;
+      return `${back}<button type="button" class="cw-btn-primary" id="createNext">Дальше</button>`;
     }
-    return `
-      <button class="btn-primary" id="createSave">${isExp ? 'Создать экспедицию' : 'Создать рыбалку'}</button>
-      <button class="btn-secondary" id="createPrev">← Назад</button>
-      ${deleteHtml}`;
+    return `${back}<button type="button" class="cw-btn-primary" id="createSave">${_editMode ? 'Сохранить' : 'Создать поездку'}</button>`;
   }
 
-  // Поле "Участники" — чипы уже выбранных + кнопка открыть пикер
-  // зарегистрированных участников + текстовое поле для гостей без
-  // аккаунта (гости — { name, uid: null }, не попадают в memberIds).
-  // Тап по имени — переименовать (ник на эту поездку, не трогает
-  // displayName аккаунта); тап по × — убрать из участников.
+  // Поле «Участники» / «С кем» — чипы выбранных (тап по имени —
+  // переименовать на эту поездку, × — убрать) + «+ из списка или гость»
+  // (лист: зарегистрированные участники и поле для гостей без аккаунта —
+  // гости { name, uid: null }, не попадают в memberIds).
   function _participantsField() {
     const participants = _draft.participants || [];
-    // "У кого свои даты" — прямо тут, а не отдельным шагом с датами: на
-    // шаге дат участников ещё нет физически, а по факту создающий поездку
-    // почти всегда уже знает состав (Дмитрий: "я когда создаю поездку, уже
-    // точно знаю кто участвует на 90%"). Сразу видно конкретных людей,
-    // отмечаешь кто с отдельным расписанием — детали (дата/время/место)
-    // заполняются потом, в Гиде → Инфо (см. _travelSection).
-    const travelRows = participants.map((p, i) => `
-      <div class="qtb-row" data-action="toggle-travel-separate" data-idx="${i}">
-        <div class="qtb-check ${p.travelSeparate ? 'checked' : ''}" data-travel-check="${i}"></div>
-        <span class="qtb-label">${_esc(p.name)}</span>
-      </div>`).join('');
+    const isExp = _draft.type === 'expedition';
+    // «У кого свои даты» — прямо тут, а не отдельным шагом: создающий
+    // поездку почти всегда уже знает состав (Дмитрий: "я когда создаю
+    // поездку, уже точно знаю кто участвует на 90%"). Сначала один
+    // переключатель; включил — список людей с галочками. Детали
+    // (дата/время/место) заполняются потом, в Гиде → Инфо.
+    const travelRows = _travelOn ? participants.map((p, i) => `
+      <button type="button" class="cw-check-row" role="checkbox" aria-checked="${!!p.travelSeparate}" data-action="toggle-travel-separate" data-idx="${i}">
+        ${_check(p.travelSeparate)}<span>${_esc(p.name)}</span>
+      </button>`).join('') : '';
 
     return `
-      <div class="field-group" style="margin-bottom:8px">
-        <div class="field-label">Участники</div>
-        <div class="parts-wrap" id="partsList">
-          ${participants.map((p,i) => `
-            <div class="part-chip-sel">
-              <span data-part-rename-idx="${i}">${_esc(p.name)}</span>
-              <span data-part-idx="${i}" class="part-chip-x"> ×</span>
-            </div>`).join('')}
-          <div class="part-chip-add" id="partPickBtn">+ из списка</div>
-          <input class="field-input" id="f-participant" type="text"
-                 placeholder="Или впиши имя гостя..." style="width:auto;flex:1;min-width:120px">
-        </div>
+      ${_label(isExp ? 'Участники' : 'С кем')}
+      <div class="cw-chips cw-chips--tight" id="partsList">
+        ${participants.map((p, i) => `
+          <span class="cw-chip">
+            <button type="button" class="cw-chip-name" data-part-rename-idx="${i}">${_esc(p.name)}</button>
+            <button type="button" class="cw-chip-x" data-part-idx="${i}" aria-label="Убрать ${_esc(p.name)}">×</button>
+          </span>`).join('')}
+        <button type="button" class="cw-chip-add" id="partPickBtn">+ из списка или гость</button>
       </div>
       ${participants.length ? `
-      <div class="field-group" style="margin-bottom:8px">
-        <div class="field-label">У кого свои даты приезда/отъезда?</div>
-        <div class="field-hint" style="margin-bottom:8px">Если едут не все вместе — отметь, у кого расписание отличается. Детали (дата/время/место) заполняются потом, в Гиде.</div>
-        ${travelRows}
-      </div>` : ''}`;
+      <section class="cw-card cw-card--list">
+        ${_switch('travelSwitch', 'Кто-то едет по своему расписанию — отметить потом в Гиде', _travelOn)}
+        ${_travelOn ? `<div class="cw-travel-list">${travelRows}
+          <span class="cw-hint cw-travel-hint">Отметь, у кого расписание отличается. Даты, время и место — потом, в Гиде → Инфо.</span></div>` : ''}
+      </section>` : ''}`;
   }
 
-  function _privacyToggleField() {
+  function _accessField() {
     return `
-      <div class="field-group" style="margin-bottom:8px">
-        <label class="priv-toggle-row">
-          <input type="checkbox" id="f-private" ${_draft.private ? 'checked' : ''}>
-          <span>🔒 Приватная поездка — не показывать в профиле другим участникам</span>
-        </label>
-        <label class="priv-toggle-row">
-          <input type="checkbox" id="f-invite-restricted" ${_draft.inviteRestricted ? 'checked' : ''}>
-          <span>👤 Только я могу добавлять участников и гостей</span>
-        </label>
-      </div>`;
+      ${_label('Доступ')}
+      <section class="cw-card cw-card--list">
+        ${_switch('f-private', 'Приватная — не показывать в профиле другим', _draft.private)}
+        ${_switch('f-invite-restricted', 'Добавлять людей могу только я', _draft.inviteRestricted)}
+      </section>`;
   }
 
-  // Пикер зарегистрированных участников — тап переключает присутствие в
-  // _draft.participants по uid (надёжно, без сопоставления по имени).
-  async function _showMemberPicker() {
-    document.getElementById('member-pick-overlay')?.remove();
-    if (typeof MembersFirebase === 'undefined') return;
-
-    let members;
-    try {
-      members = await MembersFirebase.getAllMembers();
-    } catch (e) {
-      return;
-    }
-    if (!members.length) return;
-
-    const selected = new Set((_draft.participants || []).filter(p => p.uid).map(p => p.uid));
-
+  // Общий лист снизу (участники, переименование, удаление) — поверх мастера.
+  function _openSheet(id, title, sub, inner, footer) {
+    document.getElementById(id)?.remove();
     const overlay = document.createElement('div');
-    overlay.className = 'tqp-overlay';
-    overlay.id = 'member-pick-overlay';
+    overlay.className = 'cw-sheet-ov';
+    overlay.id = id;
     overlay.innerHTML = `
-      <div class="tqp-sheet">
-        <div class="tqp-handle"></div>
-        <div class="tqp-title">Участники</div>
-        <div class="tqp-list">
-          ${members.map(m => `
-            <div class="tqp-row" data-member-uid="${_esc(m.uid)}" data-member-name="${_esc(m.displayName || '')}">
-              <div class="tqp-name">${_esc(m.displayName || 'Без имени')}</div>
-              <div class="mp-check ${selected.has(m.uid) ? 'on' : ''}">✓</div>
-            </div>`).join('')}
+      <section class="cw-bs" role="dialog" aria-label="${_esc(title)}">
+        <div class="cw-bs-grab"></div>
+        <div class="cw-bs-head">
+          <div class="cw-bs-head-text">
+            <h2 class="cw-bs-title">${_esc(title)}</h2>
+            ${sub ? `<span class="cw-bs-sub">${_esc(sub)}</span>` : ''}
+          </div>
+          <button type="button" class="cw-bs-close" data-action="sheet-close" aria-label="Закрыть">${UIUtils.ico('x')}</button>
         </div>
-        <button class="tqp-all" data-action="mp-done">Готово</button>
-      </div>`;
+        <div class="cw-bs-body">${inner}</div>
+        ${footer ? `<div class="cw-bs-foot">${footer}</div>` : ''}
+      </section>`;
     document.body.appendChild(overlay);
     requestAnimationFrame(() => overlay.classList.add('open'));
+    return overlay;
+  }
+
+  // Пикер участников: зарегистрированные (тап переключает присутствие в
+  // _draft.participants по uid — надёжно, без сопоставления по имени) +
+  // гости без аккаунта (имя, можно несколько через запятую/с новой строки).
+  async function _showMemberPicker() {
+    let members = [];
+    if (typeof MembersFirebase !== 'undefined') {
+      try { members = await MembersFirebase.getAllMembers(); } catch (e) { members = []; }
+    }
+    if (!_draft.participants) _draft.participants = [];
+
+    const listHtml = () => {
+      const selected = new Set(_draft.participants.filter(p => p.uid).map(p => p.uid));
+      const guests = _draft.participants.map((p, i) => ({ p, i })).filter(x => !x.p.uid);
+      return `
+        ${members.length ? `<section class="cw-card cw-card--list">
+          ${members.map(m => `
+            <button type="button" class="cw-check-row" role="checkbox" aria-checked="${selected.has(m.uid)}" data-member-uid="${_esc(m.uid)}" data-member-name="${_esc(m.displayName || '')}">
+              ${_check(selected.has(m.uid))}<span>${_esc(m.displayName || 'Без имени')}</span>
+            </button>`).join('')}
+        </section>` : '<span class="cw-hint">Список участников сейчас не загрузился — можно вписать гостей ниже.</span>'}
+        ${guests.length ? `<span class="cw-caps">Гости</span>
+        <section class="cw-card cw-card--list">
+          ${guests.map(({ p, i }) => `
+            <button type="button" class="cw-check-row" role="checkbox" aria-checked="true" data-guest-idx="${i}">
+              ${_check(true)}<span>${_esc(p.name)}</span>
+            </button>`).join('')}
+        </section>` : ''}`;
+    };
+
+    const overlay = _openSheet('member-pick-overlay', 'Участники', 'из списка или гость без аккаунта', `
+      <div id="mp-list" class="cw-bs-stack">${listHtml()}</div>
+      <span class="cw-caps">Гость без аккаунта</span>
+      <div class="cw-add-row">
+        <input class="cw-input" id="f-participant" type="text" placeholder="Имя — можно несколько через запятую" autocomplete="off">
+        <button type="button" class="cw-add-btn" data-action="mp-add-guest" aria-label="Добавить гостя">${UIUtils.ico('plus')}</button>
+      </div>`,
+      `<button type="button" class="cw-btn-primary" data-action="mp-done">Готово</button>`);
+
+    const input = overlay.querySelector('#f-participant');
+    const refreshList = () => { overlay.querySelector('#mp-list').innerHTML = listHtml(); };
+
+    // Разбиваем по запятым/переносам строк — и вставка нескольких имён
+    // скопом (из чата, списка), и посимвольный ввод работают одинаково.
+    const addGuests = () => {
+      const names = UIUtils.splitNames(input?.value);
+      if (!names.length) return false;
+      names.forEach(name => {
+        if (!_draft.participants.some(p => p.name === name)) _draft.participants.push({ name, uid: null });
+      });
+      input.value = '';
+      refreshList();
+      return true;
+    };
 
     const close = () => {
+      addGuests(); // что вписали, но не подтвердили — не теряем
       overlay.remove();
       _refreshCreate();
     };
 
+    input?.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addGuests(); }
+    });
+
     overlay.addEventListener('click', e => {
-      if (e.target === overlay || e.target.closest('[data-action="mp-done"]')) { close(); return; }
+      if (e.target === overlay || e.target.closest('[data-action="mp-done"], [data-action="sheet-close"]')) { close(); return; }
+      if (e.target.closest('[data-action="mp-add-guest"]')) { addGuests(); input?.focus(); return; }
+      const guest = e.target.closest('[data-guest-idx]');
+      if (guest) {
+        _draft.participants.splice(parseInt(guest.dataset.guestIdx), 1);
+        refreshList();
+        return;
+      }
       const row = e.target.closest('[data-member-uid]');
       if (!row) return;
       const uid = row.dataset.memberUid;
       const name = row.dataset.memberName;
       if (!uid) return;
-      if (!_draft.participants) _draft.participants = [];
       const idx = _draft.participants.findIndex(p => p.uid === uid);
       if (idx >= 0) _draft.participants.splice(idx, 1);
       else _draft.participants.push({ name, uid });
-      row.querySelector('.mp-check')?.classList.toggle('on');
+      refreshList();
+    });
+  }
+
+  // Подтверждение удаления поездки (макет V2TripDelete). Сама логика —
+  // прежняя: TripsData.deleteTrip (каскад по всем коллекциям + очередь
+  // уведомления участникам в Telegram), права — организатор.
+  function _showDeleteSheet() {
+    const tripId = _editTripId;
+    if (!tripId) return;
+    const tripName = _draft.name || 'эту поездку';
+    const range = typeof TripsRender !== 'undefined' ? TripsRender.shortRange(_draft.startDate, _draft.endDate) : '';
+    const overlay = _openSheet('trip-delete-overlay', 'Удалить поездку?', [_draft.name, range].filter(Boolean).join(' · '), `
+      <p class="cw-del-text">Удалится всё: меню, закупка, расходы, улов, заметки, снаряга на поездку. Вернуть будет нельзя.</p>
+      <p class="cw-del-note">Удалить может только организатор. Участникам придёт сообщение в Telegram.</p>
+      <button type="button" class="cw-btn-danger" data-action="del-confirm">Удалить «${_esc(tripName)}»</button>
+      <button type="button" class="cw-btn-ghost" data-action="sheet-close">Отмена</button>`);
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-action="sheet-close"]')) { overlay.remove(); return; }
+      // Кнопку ловим синхронно, до любого await: e.currentTarget после
+      // него уже потерян — из-за этого удаление раньше молча не делало
+      // ничего (withBusyButton(null, ...) сразу выходил).
+      const btn = e.target.closest('[data-action="del-confirm"]');
+      if (!btn) return;
+      UIUtils.withBusyButton(btn, async () => {
+        try {
+          await TripsData.deleteTrip(tripId);
+        } catch (err) {
+          console.error('deleteTrip:', err);
+          alert('Не удалось удалить поездку. Проверь соединение и попробуй ещё раз.');
+          return;
+        }
+        overlay.remove();
+        _closeCreate();
+        if (typeof onNavigate === 'function') onNavigate('trips');
+        else if (typeof TripsIndex !== 'undefined') TripsIndex.render();
+      });
     });
   }
 
   function _bindCreate(overlay) {
-    // Даты — если пользователь сам меняет поля, больше не даём импорту их перезаписать
-    document.getElementById('f-start')?.addEventListener('input', () => { _dateTouched = true; });
-    document.getElementById('f-end')?.addEventListener('input', () => { _dateTouched = true; });
+    // Даты — плитки «с / по» с нативным календарём внутри. Если человек сам
+    // меняет даты, импорт файла их больше не перезаписывает.
+    const startInp = document.getElementById('f-start');
+    const endInp   = document.getElementById('f-end');
+    const syncDates = changed => {
+      _dateTouched = true;
+      let s = startInp.value, en = endInp.value;
+      // Конец не раньше начала: сдвигаем вторую дату вслед за изменённой
+      if (s && en && en < s) {
+        if (changed === 'start') { en = s; endInp.value = s; }
+        else { s = en; startInp.value = en; }
+      }
+      _draft.startDate = s || _draft.startDate;
+      _draft.endDate   = en || _draft.endDate;
+      document.getElementById('f-start-v').textContent = _fmtDay(s) || 'выбрать';
+      document.getElementById('f-end-v').textContent   = _fmtDay(en) || '—';
+    };
+    [[startInp, 'start'], [endInp, 'end']].forEach(([inp, which]) => {
+      if (!inp) return;
+      inp.addEventListener('input',  () => syncDates(which));
+      inp.addEventListener('change', () => syncDates(which));
+      // Десктопный Chrome открывает календарь только по своему значку —
+      // тут поле невидимое поверх плитки, открываем явно.
+      inp.addEventListener('click', () => { try { inp.showPicker?.(); } catch (e) {} });
+    });
 
     // Тип
     overlay.querySelectorAll('[data-type]').forEach(opt => {
       opt.addEventListener('click', () => {
         _draft.type = opt.dataset.type;
-        overlay.querySelectorAll('[data-type]').forEach(o => o.classList.remove('selected'));
-        opt.classList.add('selected');
+        overlay.querySelectorAll('[data-type]').forEach(o => {
+          o.classList.toggle('on', o === opt);
+          o.setAttribute('aria-pressed', o === opt ? 'true' : 'false');
+        });
+        // Цвет иконок — по типу; иконка по умолчанию следует за типом
+        const icons = document.getElementById('f-icons');
+        if (icons) {
+          icons.className = 'cw-icons ' + (_draft.type === 'expedition' ? 'exp' : 'fish');
+          if (!_draft.icon) {
+            const def = _draft.type === 'expedition' ? 'mountain' : 'fishing';
+            icons.querySelectorAll('[data-icon]').forEach(b => {
+              b.classList.toggle('on', b.dataset.icon === def);
+              b.setAttribute('aria-pressed', b.dataset.icon === def ? 'true' : 'false');
+            });
+          }
+        }
         // Обновляем плейсхолдер имени
         const nameInput = document.getElementById('f-name');
         if (nameInput && !nameInput.value) {
-          nameInput.placeholder = _draft.type === 'expedition' ? 'Сахалин 2026' : 'Ока, 15 марта';
+          nameInput.placeholder = _draft.type === 'expedition' ? 'Например, Сахалин 2027' : 'Например, Ока, 15 марта';
         }
       });
     });
 
-    // Кнопка назад
-    document.getElementById('createBack')?.addEventListener('click', () => {
-      if (_createStep === 0) { _closeCreate(); return; }
+    // Иконка
+    overlay.querySelectorAll('[data-icon]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        _draft.icon = btn.dataset.icon;
+        overlay.querySelectorAll('[data-icon]').forEach(b => {
+          b.classList.toggle('on', b === btn);
+          b.setAttribute('aria-pressed', b === btn ? 'true' : 'false');
+        });
+      });
+    });
+
+    // × — закрыть мастер на любом шаге
+    document.getElementById('createClose')?.addEventListener('click', _closeCreate);
+
+    // Назад
+    document.getElementById('createPrev')?.addEventListener('click', () => {
       _saveCurrentFields();
       _createStep--;
       _refreshCreate();
     });
 
-    // Далее
+    // Дальше (на шаге «Файл от ИИ» без файла — то же, что прежний «Пропустить»)
     document.getElementById('createNext')?.addEventListener('click', () => {
-      _saveCurrentFields();
-      _createStep++;
-      _refreshCreate();
-    });
-
-    // Пропустить (экспедиция без импорта)
-    document.getElementById('createSkip')?.addEventListener('click', () => {
       _saveCurrentFields();
       _createStep++;
       _refreshCreate();
@@ -635,62 +751,27 @@ const TripsIndex = (() => {
       });
     });
 
-    // Назад со сводки
-    document.getElementById('createPrev')?.addEventListener('click', () => {
-      _createStep--;
-      _refreshCreate();
-    });
+    // Удалить поездку — лист подтверждения
+    document.getElementById('createDelete')?.addEventListener('click', _showDeleteSheet);
 
-    // Удалить поездку насовсем — только в режиме редактирования. Одно
-    // подтверждение (UIUtils.confirmSheet, красная кнопка по умолчанию) с
-    // названием поездки в тексте, чтобы точно было видно что удаляешь.
-    document.getElementById('createDelete')?.addEventListener('click', async e => {
-      // e.currentTarget теряется после первого await (событие уже
-      // отработало) — ловим кнопку синхронно, до подтверждения, а не
-      // после. Из-за этого удаление раньше молча ничего не делало: клик
-      // по "Удалить насовсем" закрывал шторку подтверждения, но
-      // withBusyButton(null, ...) сразу выходил, ни разу не вызвав сам
-      // TripsData.deleteTrip.
-      const btn = e.currentTarget;
-      const tripId = _editTripId;
-      const tripName = _draft.name || 'эту поездку';
-      const ok = await UIUtils.confirmSheet(
-        `«${tripName}» и всё внутри — уловы, расходы, меню, закупка, заметки — удалится без возможности восстановить.`,
-        { title: 'Удалить поездку?', okLabel: 'Удалить насовсем' }
-      );
-      if (!ok || !tripId) return;
-      UIUtils.withBusyButton(btn, async () => {
-        try {
-          await TripsData.deleteTrip(tripId);
-        } catch (err) {
-          console.error('deleteTrip:', err);
-          alert('Не удалось удалить поездку. Проверь соединение и попробуй ещё раз.');
-          return;
-        }
-        _closeCreate();
-        if (typeof onNavigate === 'function') onNavigate('trips');
-        else if (typeof TripsIndex !== 'undefined') TripsIndex.render();
-      });
-    });
-
-    // Вкладки Гида — чекбоксы видимости + стрелки порядка (шаг сводки)
+    // Вкладки Гида — галочки видимости + стрелки порядка (шаг сводки)
     overlay.querySelectorAll('[data-qtb-check]').forEach(cb => {
       cb.addEventListener('click', () => {
         const id = cb.dataset.qtbCheck;
-        const willCheck = !cb.classList.contains('checked');
+        const willCheck = !_draftGuideTabsChecked.has(id);
         // Та же защита от пустого guideTabs, что и в настройках Гида
         // (modules/tripcover/index.js) — пустой массив неотличим от "не
         // задано" и молча покажет все табы при следующей отрисовке.
-        if (!willCheck && _draftGuideTabsChecked.size === 1 && _draftGuideTabsChecked.has(id)) return;
+        if (!willCheck && _draftGuideTabsChecked.size === 1) return;
         if (willCheck) _draftGuideTabsChecked.add(id);
         else _draftGuideTabsChecked.delete(id);
-        cb.classList.toggle('checked', willCheck);
+        cb.setAttribute('aria-checked', willCheck ? 'true' : 'false');
+        cb.querySelector('.cw-check')?.classList.toggle('on', willCheck);
       });
     });
     overlay.querySelectorAll('[data-qtb-up]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const id = btn.dataset.qtbUp;
-        const i = _draftGuideTabOrder.indexOf(id);
+        const i = _draftGuideTabOrder.indexOf(btn.dataset.qtbUp);
         if (i > 0) {
           [_draftGuideTabOrder[i - 1], _draftGuideTabOrder[i]] = [_draftGuideTabOrder[i], _draftGuideTabOrder[i - 1]];
           _refreshCreate();
@@ -699,8 +780,7 @@ const TripsIndex = (() => {
     });
     overlay.querySelectorAll('[data-qtb-down]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const id = btn.dataset.qtbDown;
-        const i = _draftGuideTabOrder.indexOf(id);
+        const i = _draftGuideTabOrder.indexOf(btn.dataset.qtbDown);
         if (i < _draftGuideTabOrder.length - 1) {
           [_draftGuideTabOrder[i + 1], _draftGuideTabOrder[i]] = [_draftGuideTabOrder[i], _draftGuideTabOrder[i + 1]];
           _refreshCreate();
@@ -708,9 +788,8 @@ const TripsIndex = (() => {
       });
     });
 
-    // ── Импорт JSON (только для экспедиции, шаг 1) ──────────────────────
+    // ── Экспедиция: способ заполнения (вручную / файл от ИИ) ────────────
 
-    // Переключатель способа заполнения данных маршрута (квиз / файл от AI)
     overlay.querySelectorAll('[data-exp-mode]').forEach(tab => {
       tab.addEventListener('click', () => {
         _saveCurrentFields();
@@ -719,14 +798,16 @@ const TripsIndex = (() => {
       });
     });
 
-    // Квиз: добавить реку/место
-    document.getElementById('quizRiverAdd')?.addEventListener('click', () => {
-      const nameInp   = document.getElementById('f-quiz-river-name');
-      const regionInp = document.getElementById('f-quiz-river-region');
-      const name = nameInp?.value.trim();
-      if (!name) { nameInp?.focus(); return; }
-      _quizRivers.push({ id: _genRiverId(), name, region: regionInp?.value.trim() || '' });
+    // Вручную: добавить место («Обь, ХМАО» — до запятой название, после — регион)
+    const placeInp = document.getElementById('f-quiz-place');
+    const addPlace = () => {
+      if (!_addQuizPlace(placeInp?.value)) { placeInp?.focus(); return; }
       _refreshCreate();
+      document.getElementById('f-quiz-place')?.focus();
+    };
+    document.getElementById('quizRiverAdd')?.addEventListener('click', addPlace);
+    placeInp?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); addPlace(); }
     });
 
     overlay.querySelectorAll('[data-quiz-river-idx]').forEach(btn => {
@@ -762,7 +843,7 @@ const TripsIndex = (() => {
       });
     }
 
-    // ── Рыбалка: реки ───────────────────────────────────────────────────
+    // ── Рыбалка: места ──────────────────────────────────────────────────
 
     _bindStaticRiverChips();
     document.getElementById('f-river')?.addEventListener('input', _onRiverSearchInput);
@@ -774,38 +855,12 @@ const TripsIndex = (() => {
       });
     });
 
-    document.getElementById('addRiverBtn')?.addEventListener('click', () => {
-      document.getElementById('riverSearch').style.display = '';
-      document.getElementById('addRiverBtn').style.display = 'none';
-      document.getElementById('f-river')?.focus();
-    });
-
     // ── Участники ────────────────────────────────────────────────────────
-
-    const partInput = document.getElementById('f-participant');
-    partInput?.addEventListener('keydown', e => {
-      if (e.key === 'Enter' || e.key === ',') {
-        e.preventDefault();
-        // Разбиваем по запятым/переносам строк — так и вставка нескольких
-        // имён скопом (из чата, списка), и обычный посимвольный ввод с
-        // запятой между именами работают одним и тем же путём.
-        const names = UIUtils.splitNames(partInput.value);
-        if (names.length) {
-          if (!_draft.participants) _draft.participants = [];
-          names.forEach(name => {
-            if (!_draft.participants.some(p => p.name === name)) {
-              _draft.participants.push({ name, uid: null });
-            }
-          });
-          partInput.value = '';
-          _refreshCreate();
-        }
-      }
-    });
 
     overlay.querySelectorAll('[data-part-idx]').forEach(chip => {
       chip.addEventListener('click', () => {
         _draft.participants.splice(parseInt(chip.dataset.partIdx), 1);
+        if (!_draft.participants.some(p => p.travelSeparate)) _travelOn = _travelOn && _draft.participants.length > 0;
         _refreshCreate();
       });
     });
@@ -814,32 +869,53 @@ const TripsIndex = (() => {
     // аккаунта (если это зарегистрированный участник, а не гость).
     overlay.querySelectorAll('[data-part-rename-idx]').forEach(nameEl => {
       nameEl.addEventListener('click', () => {
-        const idx = parseInt(nameEl.dataset.partRenameIdx);
-        _showRenameSheet(idx);
+        _showRenameSheet(parseInt(nameEl.dataset.partRenameIdx));
       });
     });
 
-    // "У кого свои даты" — чекбокс прямо в списке, без полного ререндера
-    // шага (как qtb-check у вкладок Гида чуть выше в этом же файле).
+    // «Кто-то едет по своему расписанию»: выключили — ни у кого своих дат
+    // нет (флаги снимаются, иначе они жили бы невидимо); включили —
+    // появляется список людей с галочками.
+    document.getElementById('travelSwitch')?.addEventListener('click', () => {
+      _travelOn = !_travelOn;
+      if (!_travelOn) (_draft.participants || []).forEach(p => { p.travelSeparate = false; });
+      _refreshCreate();
+    });
+
+    // Галочка «свои даты» у конкретного человека — без полного ререндера
     overlay.querySelectorAll('[data-action="toggle-travel-separate"]').forEach(row => {
       row.addEventListener('click', () => {
-        const idx = parseInt(row.dataset.idx);
-        const p = _draft.participants[idx];
+        const p = _draft.participants[parseInt(row.dataset.idx)];
         if (!p) return;
         p.travelSeparate = !p.travelSeparate;
-        row.querySelector('[data-travel-check]')?.classList.toggle('checked', !!p.travelSeparate);
+        row.setAttribute('aria-checked', p.travelSeparate ? 'true' : 'false');
+        row.querySelector('.cw-check')?.classList.toggle('on', !!p.travelSeparate);
       });
     });
 
     document.getElementById('partPickBtn')?.addEventListener('click', _showMemberPicker);
 
-    document.getElementById('f-private')?.addEventListener('change', e => {
-      _draft.private = e.target.checked;
-    });
+    // ── Доступ: переключатели ───────────────────────────────────────────
 
-    document.getElementById('f-invite-restricted')?.addEventListener('change', e => {
-      _draft.inviteRestricted = e.target.checked;
+    [['f-private', 'private'], ['f-invite-restricted', 'inviteRestricted']].forEach(([id, key]) => {
+      document.getElementById(id)?.addEventListener('click', e => {
+        _draft[key] = !_draft[key];
+        e.currentTarget.setAttribute('aria-checked', _draft[key] ? 'true' : 'false');
+      });
     });
+  }
+
+  // Место из поля «Вручную»: «Обь, ХМАО» → {name: 'Обь', region: 'ХМАО'}.
+  // Возвращает true, если что-то добавилось.
+  function _addQuizPlace(raw) {
+    const text = String(raw || '').trim();
+    if (!text) return false;
+    const comma = text.indexOf(',');
+    const name = (comma >= 0 ? text.slice(0, comma) : text).trim();
+    const region = comma >= 0 ? text.slice(comma + 1).trim() : '';
+    if (!name) return false;
+    _quizRivers.push({ id: _genRiverId(), name, region });
+    return true;
   }
 
   // ─── Чтение JSON-файла ───────────────────────────────────────────────────
@@ -917,9 +993,10 @@ const TripsIndex = (() => {
 
   function _defaultRiverChips() {
     return `
-      <div class="suggest-chip" data-suggest="р. Ока|Московская обл.">р. Ока</div>
-      <div class="suggest-chip" data-suggest="р. Нара|Московская обл.">р. Нара</div>
-      <div class="suggest-chip" data-suggest="р. Угра|Калужская обл.">р. Угра</div>`;
+      <span class="cw-suggest-k">Быстрый выбор:</span>
+      <button type="button" class="cw-sug" data-suggest="р. Ока|Московская обл.">р. Ока</button>
+      <button type="button" class="cw-sug" data-suggest="р. Нара|Московская обл.">р. Нара</button>
+      <button type="button" class="cw-sug" data-suggest="р. Угра|Калужская обл.">р. Угра</button>`;
   }
 
   // ─── Живой поиск реки/водоёма по OpenStreetMap (Nominatim) ────────────────
@@ -943,23 +1020,23 @@ const TripsIndex = (() => {
   async function _searchRivers(q) {
     const seq = ++_riverSearchSeq;
     const wrap = document.getElementById('riverSuggestions');
-    if (wrap) wrap.innerHTML = '<div class="suggest-status">Ищу…</div>';
+    if (wrap) wrap.innerHTML = '<div class="cw-sug-status">Ищу…</div>';
     try {
       const url = 'https://nominatim.openstreetmap.org/search?format=json&limit=5&accept-language=ru&q=' + encodeURIComponent(q);
       const res = await fetch(url);
       const results = await res.json();
       if (seq !== _riverSearchSeq || !wrap) return; // пришёл устаревший ответ — новый поиск уже в процессе
-      if (!results.length) { wrap.innerHTML = '<div class="suggest-status">Ничего не нашлось</div>'; return; }
+      if (!results.length) { wrap.innerHTML = '<div class="cw-sug-status">Ничего не нашлось</div>'; return; }
       wrap.innerHTML = results.map(r => {
         const parts  = r.display_name.split(',').map(s => s.trim());
         const name   = parts[0];
         const region = parts.slice(1, 3).join(', ');
         const type   = _osmTypeLabel(r);
-        return `<div class="suggest-chip" data-river-name="${_esc(name)}" data-river-region="${_esc(region)}" data-river-lat="${r.lat}" data-river-lon="${r.lon}" data-river-type="${_esc(type)}">${_esc(name)}${type ? ` <span class="suggest-chip-type">· ${_esc(type)}</span>` : ''}</div>`;
+        return `<button type="button" class="cw-sug" data-river-name="${_esc(name)}" data-river-region="${_esc(region)}" data-river-lat="${r.lat}" data-river-lon="${r.lon}" data-river-type="${_esc(type)}">${_esc(name)}${type ? ` <span class="cw-sug-type">· ${_esc(type)}</span>` : ''}</button>`;
       }).join('');
       _bindLiveRiverChips();
     } catch (err) {
-      if (seq === _riverSearchSeq && wrap) wrap.innerHTML = '<div class="suggest-status">Не нашёл — проверь соединение</div>';
+      if (seq === _riverSearchSeq && wrap) wrap.innerHTML = '<div class="cw-sug-status">Не нашёл — проверь соединение</div>';
     }
   }
 
@@ -1022,14 +1099,23 @@ const TripsIndex = (() => {
     const days = _parseRouteText(_quizRouteText);
     if (!_quizRivers.length && !days.length) return null;
     const prior = _editMode ? (TripsData.getById(_editTripId)?.importData || null) : null;
+    const priorRivers = prior?.rivers || [];
     return {
-      meta:   { title: _draft.name || '' },
-      // id обязателен — Реки открывают карточку по data-rv-open="r.id"
-      rivers: _quizRivers.map(r => ({ id: r.id || _genRiverId(), name: r.name, type: r.region })),
-      route:  days,
-      menu:    prior?.menu,
-      flights: prior?.flights,
-      suntide: prior?.suntide
+      // Всё, чего квиз не касается (меню, рейсы, приливы, погода…), — как было
+      ...(prior || {}),
+      meta:   { ...(prior?.meta || {}), title: _draft.name || '' },
+      // id обязателен — Реки открывают карточку по data-rv-open="r.id".
+      // Уже импортированная река сохраняет свои подробности (координаты,
+      // точки, справку) — раньше квиз переписывал её до {id,name,type}.
+      rivers: _quizRivers.map(r => {
+        const old = priorRivers.find(x => (r.id && x.id === r.id) || x.name === r.name);
+        return old
+          ? { ...old, id: old.id || r.id || _genRiverId(), name: r.name, type: r.region || old.type }
+          : { id: r.id || _genRiverId(), name: r.name, type: r.region };
+      }),
+      // Поле маршрута при правке пустое — пустота не должна стирать
+      // импортированный маршрут по дням.
+      route:  days.length ? days : (prior?.route || []),
     };
   }
 
@@ -1044,6 +1130,8 @@ const TripsIndex = (() => {
         _draft.comment = document.getElementById('f-comment')?.value.trim() || '';
         _draft.rivers  = _rivers;
       } else if (_expMode === 'quiz') {
+        // Вписанное в поле места, но не добавленное «+» — не теряем
+        _addQuizPlace(document.getElementById('f-quiz-place')?.value);
         _quizRouteText = document.getElementById('f-quiz-route')?.value || '';
         // Только если квиз реально что-то собрал — не даём пустому
         // просмотру вкладки затереть уже существующий импорт (файл или
@@ -1051,19 +1139,26 @@ const TripsIndex = (() => {
         const built = _buildQuizImportData();
         if (built) _importedData = built;
       }
-      // Участники — общие для обоих типов (что успели вписать/вставить,
-      // не подтвердив явно Enter/запятой — тот же разбор на несколько имён)
-      const partRaw = document.getElementById('f-participant')?.value || '';
-      if (!_draft.participants) _draft.participants = [];
-      UIUtils.splitNames(partRaw).forEach(name => {
-        if (!_draft.participants.some(p => p.name === name)) {
-          _draft.participants.push({ name, uid: null });
-        }
-      });
+      // Гостей без подтверждения теперь подбирает сам лист участников
+      // при закрытии (см. _showMemberPicker) — поле гостя живёт там.
     }
   }
 
+  // Сырые значения полей текущего шага — перед любой перерисовкой, чтобы
+  // смена режима/удаление чипа/лист участников не стирали то, что уже
+  // вписано (комментарий, маршрут, название). Без побочных эффектов.
+  function _captureInputs() {
+    const v = id => document.getElementById(id)?.value;
+    if (v('f-name') !== undefined) _draft.name = v('f-name').trim();
+    if (v('f-start')) _draft.startDate = v('f-start');
+    if (v('f-end'))   _draft.endDate   = v('f-end');
+    if (v('f-comment') !== undefined) _draft.comment = v('f-comment').trim();
+    if (v('f-quiz-route') !== undefined) _quizRouteText = v('f-quiz-route');
+  }
+
   function _refreshCreate() {
+    if (!document.getElementById('create-body')) return;
+    _captureInputs();
     document.getElementById('create-body').innerHTML = _createStepContent();
     document.getElementById('create-footer-el').innerHTML = _createFooter();
     document.getElementById('create-topbar-el').innerHTML = _createTopbar();
@@ -1112,6 +1207,7 @@ const TripsIndex = (() => {
 
     const trip = {
       type:      _draft.type,
+      icon:      _draft.icon || '',
       name:      _draft.name || _autoName(),
       startDate: _draft.startDate,
       endDate:   _draft.endDate || _draft.startDate,
@@ -1146,6 +1242,9 @@ const TripsIndex = (() => {
     if (_editMode && _editTripId) {
       // В режиме редактирования сохраняем существующие данные рейтинга, улова и т.д.
       const update = {
+        // Тип можно сменить в мастере — раньше он молча не сохранялся.
+        type:        trip.type,
+        icon:        trip.icon,
         name:        trip.name,
         startDate:   trip.startDate,
         endDate:     trip.endDate,
@@ -1159,6 +1258,9 @@ const TripsIndex = (() => {
         guideTabs:   trip.guideTabs,
         memberIds,
       };
+      // Рыбалка → экспедиция: чек-листу готовности нужен стартовый набор.
+      // Обратно — ничего не стираем, readiness просто не показывается.
+      if (isExp && !existing?.readiness) update.readiness = TripsData.getDefaultReadiness();
       await TripsData.updateTrip(_editTripId, update);
     } else {
       trip.ownerId = ownerUid;
@@ -1221,59 +1323,47 @@ const TripsIndex = (() => {
   function _showRenameSheet(idx) {
     const p = _draft.participants[idx];
     if (!p) return;
-    document.getElementById('rename-part-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'profile-overlay';
-    overlay.id = 'rename-part-overlay';
-    overlay.innerHTML = `
-      <div class="profile-sheet">
-        <div class="profile-grab"></div>
-        <div class="profile-scroll">
-          <div class="modal-title" style="margin-bottom:8px">Переименовать</div>
-          <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
-            Как показывать в этой поездке — не меняет имя аккаунта.
-          </p>
-          <input type="text" class="invite-email-input" id="rename-part-input" value="${_esc(p.name)}">
-          <div class="qtb-row" style="margin-top:12px" data-action="rename-part-exempt-toggle">
-            <div class="qtb-check ${p.dutyExempt ? 'checked' : ''}" data-qtb-check="exempt"></div>
-            <span class="qtb-label">Не дежурит (дети, пожилые, гости на день)</span>
-          </div>
-          <div class="qtb-row" data-action="rename-part-travel-toggle">
-            <div class="qtb-check ${p.travelSeparate ? 'checked' : ''}" data-qtb-check="travel"></div>
-            <span class="qtb-label">Свои даты приезда/отъезда</span>
-          </div>
-          <div class="sheet-actions-row">
-            <button class="picker-cancel" data-action="rename-part-close">Отмена</button>
-            <button class="action-btn" data-action="rename-part-save">Сохранить</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
+    let exempt = !!p.dutyExempt;
+    let travelSeparate = !!p.travelSeparate;
+    const overlay = _openSheet('rename-part-overlay', 'Переименовать', 'как показывать в этой поездке — не меняет имя аккаунта', `
+      <input type="text" class="cw-input" id="rename-part-input" value="${_esc(p.name)}">
+      <section class="cw-card cw-card--list">
+        <button type="button" class="cw-check-row" role="checkbox" aria-checked="${exempt}" data-action="rename-part-exempt-toggle">
+          ${_check(exempt)}<span>Не дежурит (дети, пожилые, гости на день)</span>
+        </button>
+        <button type="button" class="cw-check-row" role="checkbox" aria-checked="${travelSeparate}" data-action="rename-part-travel-toggle">
+          ${_check(travelSeparate)}<span>Свои даты приезда/отъезда</span>
+        </button>
+      </section>`,
+      `<button type="button" class="cw-btn-sec" data-action="sheet-close">Отмена</button>
+       <button type="button" class="cw-btn-primary" data-action="rename-part-save">Сохранить</button>`);
     const input = overlay.querySelector('#rename-part-input');
     input?.focus();
     input?.select();
-    let exempt = !!p.dutyExempt;
-    let travelSeparate = !!p.travelSeparate;
+    const setRow = (sel, on) => {
+      const row = overlay.querySelector(sel);
+      row?.setAttribute('aria-checked', on ? 'true' : 'false');
+      row?.querySelector('.cw-check')?.classList.toggle('on', on);
+    };
     overlay.addEventListener('click', e => {
-      if (e.target === overlay) { overlay.remove(); return; }
+      if (e.target === overlay || e.target.closest('[data-action="sheet-close"]')) { overlay.remove(); return; }
       if (e.target.closest('[data-action="rename-part-exempt-toggle"]')) {
         exempt = !exempt;
-        overlay.querySelector('[data-qtb-check="exempt"]')?.classList.toggle('checked', exempt);
+        setRow('[data-action="rename-part-exempt-toggle"]', exempt);
         return;
       }
       if (e.target.closest('[data-action="rename-part-travel-toggle"]')) {
         travelSeparate = !travelSeparate;
-        overlay.querySelector('[data-qtb-check="travel"]')?.classList.toggle('checked', travelSeparate);
+        setRow('[data-action="rename-part-travel-toggle"]', travelSeparate);
         return;
       }
-      const a = e.target.closest('[data-action]')?.dataset.action;
-      if (a === 'rename-part-close') { overlay.remove(); return; }
-      if (a === 'rename-part-save') {
+      if (e.target.closest('[data-action="rename-part-save"]')) {
         const trimmed = input?.value.trim();
         if (!trimmed) { input?.focus(); return; }
         p.name = trimmed;
         p.dutyExempt = exempt;
         p.travelSeparate = travelSeparate;
+        if (travelSeparate) _travelOn = true;
         overlay.remove();
         _refreshCreate();
       }

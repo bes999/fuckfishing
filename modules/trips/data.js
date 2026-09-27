@@ -207,6 +207,26 @@ const TripsData = (() => {
   // слать в Telegram напрямую, бот вычитывает отдельным поллингом (см.
   // bot/src/reminders.js checkTripDeletions). Пишем это ПОСЛЕ успешного
   // удаления, не до — иначе при сбое удаления улетело бы ложное "удалено".
+  // Может управлять поездкой (править, удалять, чистить чужие записи):
+  // её создатель (trip.ownerId) или суперадмин приложения
+  // (members/{uid}.role === 'organizer' — см. firestore.rules isOrganizer).
+  // Иконка поездки (trip.icon, выбирается в мастере). Цвет плитки всё
+  // равно по типу — иконка только разнообразит список. Без выбора —
+  // как раньше: гора у экспедиции, рыбка у рыбалки.
+  const TRIP_ICONS = ['mountain', 'fishing', 'fish-hook', 'tent', 'speedboat', 'snowflake',
+    'trees', 'flame', 'anchor', 'car', 'plane', 'compass', 'sun', 'ripple', 'flag', 'trophy'];
+  function tripIcon(trip) {
+    if (trip?.icon && TRIP_ICONS.includes(trip.icon)) return trip.icon;
+    return trip?.type === 'expedition' ? 'mountain' : 'fishing';
+  }
+
+  function canManage(trip) {
+    const uid = window.APP?.user?.uid;
+    if (!uid || !trip) return false;
+    if (trip.ownerId === uid) return true;
+    return typeof AuthActions !== 'undefined' && AuthActions.isOrganizer();
+  }
+
   function deleteTrip(id) {
     const trip = getById(id);
     const uid = window.APP?.user?.uid || null;
@@ -310,7 +330,7 @@ const TripsData = (() => {
 
   // --- Status label ---
   function statusLabel(status) {
-    return { upcoming: '⏳ Скоро', active: '🟢 Идёт', done: '✓ Завершена' }[status] || '';
+    return { upcoming: '' + UIUtils.ico('hourglass') + ' Скоро', active: '' + UIUtils.ico('player-play') + ' Идёт', done: '' + UIUtils.ico('check') + ' Завершена' }[status] || '';
   }
 
   // --- Status badge class ---
@@ -321,7 +341,7 @@ const TripsData = (() => {
   return {
     migrateFromLocalStorage, backfillOwnerId,
     getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames, dutyEligibleNames,
-    addTrip, updateTrip, deleteTrip, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
+    addTrip, updateTrip, deleteTrip, canManage, tripIcon, TRIP_ICONS, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
     statusLabel, statusClass,
   };
 })();

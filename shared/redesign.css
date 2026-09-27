@@ -1,0 +1,171 @@
+/* ===== РЕДИЗАЙН «НОЧНАЯ РЕКА» — общий слой =====
+   Макеты: https://claude.ai/artifact/Hqk46GSzZeL3gfNz1yyrwz
+   Подключается ПОСЛЕДНИМ (после стилей модулей), поэтому может
+   переопределять их без правки каждого модуля. Здесь только то, что
+   общее для многих экранов; раскладки конкретных экранов — в их styles.css.
+
+   1. Одна шапка. Раньше под сквозной шапкой (#app-header) у каждой
+      страницы была ещё своя синяя полоса (--topbar-bg) с белым текстом —
+      две шапки подряд, ~170px до контента. Теперь полоса — это просто
+      заголовок страницы на её же фоне; действия страницы остаются в нём. */
+
+.trips-topbar, .ct-topbar, .atl-topbar, .bar-topbar, .exp-topbar, .sf-topbar,
+.rec-topbar, .mn-topbar, .sh-topbar, .cm-topbar, .create-topbar, .cover-topbar {
+  background: var(--bg) !important;
+  color: var(--label) !important;
+  box-shadow: none !important;
+}
+
+.trips-topbar-title, .ct-topbar__title, .atl-topbar-title, .bar-topbar__title,
+.exp-topbar__title, .sf-topbar__title, .rec-topbar__title, .mn-topbar__title,
+.sh-topbar__title, .cm-topbar__title, .create-top-title {
+  color: var(--label) !important;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+
+.ct-topbar__sub, .bar-topbar__sub, .exp-topbar__sub, .sf-topbar__sub, .rec-topbar__sub,
+.mn-topbar__sub, .sh-topbar__sub, .cm-topbar__sub, .create-top-sub, .atl-topbar-eyebrow {
+  color: var(--label3) !important;
+  opacity: 1 !important;
+}
+
+/* Круглые кнопки в бывших полосах: белая полупрозрачная подложка была
+   рассчитана на синий фон — на фоне страницы её не видно. */
+.atl-back, .ct-back, .exp-back, .exp-cat-btn, .cover-back, .cover-icon-btn,
+.create-back, .rec-add-btn {
+  background: var(--bg3) !important;
+  color: var(--label) !important;
+}
+.cover-icon-btn:active, .ct-back:active, .exp-back:active { background: var(--bg4) !important; }
+.bar-back-btn, .mn-back, .rec-back-btn, .sf-back, .sh-back, .cm-close { color: var(--label) !important; }
+.sf-back:active { background: var(--bg3) !important; }
+
+/* Вкладки внутри бывших полос (Улов, Расходы): активная — «приподнятая»
+   плашка, как сегмент-контрол на макете. */
+.ct-tab, .exp-tab { color: var(--label3) !important; }
+.ct-tab.active, .exp-tab.active {
+  background: var(--bg2) !important;
+  color: var(--label) !important;
+  box-shadow: var(--card-shadow);
+}
+
+/* «+ Поездка» — главная кнопка страницы → пилюля акцентом. */
+.trips-btn-create {
+  background: var(--accent) !important;
+  color: var(--on-accent) !important;
+  border: none !important;
+  border-radius: var(--radius-full) !important;
+  padding: 9px 16px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+}
+.trips-btn-create:active { background: var(--accent-dark) !important; }
+
+/* Аптечка перестроена целиком (modules/medkit/styles.css, «РЕДИЗАЙН»). */
+.member-tab.active .member-avatar {
+  background: var(--accent) !important; color: var(--on-accent) !important; border-color: var(--accent) !important;
+}
+
+/* Реки: шапка-герой и кнопки «сохранить» были цвета старой полосы. */
+.rv-hero { background: var(--bg2) !important; color: var(--label) !important; box-shadow: var(--card-shadow); }
+.rv-tog.active { background: var(--label) !important; color: var(--bg) !important; border-color: var(--label) !important; }
+.rv-catch-save, .rv-pt-save, .rv-notes-save { background: var(--accent) !important; color: var(--on-accent) !important; }
+
+/* Обложка поездки: в шапке было ещё раз название и даты — они уже
+   крупно в герое ниже. В шапке остаются «назад», статус и действия. */
+.cover-top-info { visibility: hidden; }
+.cover-part-chip { background: var(--bg3) !important; }
+
+/* ── 2. Гид: название поездки + вкладки с подчёркиванием ────────────── */
+/* В Гиде сквозная шапка скрыта — её место занимает шапка поездки
+   (назад, название, даты, тема), как на макете «Гид — Инфо». */
+body[data-page="guide"] #app-header { display: none; }
+body[data-page="guide"] #p-guide { padding-top: 0; }
+.g-head {
+  background: var(--bg);
+  color: var(--label);
+  padding: calc(env(safe-area-inset-top) + 10px) 8px 6px 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.g-head-btn {
+  width: 44px; height: 44px; flex-shrink: 0;
+  border: none; background: none; border-radius: 50%;
+  color: var(--label); font-size: 22px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.g-head-btn:active { background: var(--bg3); }
+[data-theme="dark"] .g-theme-moon, [data-theme="light"] .g-theme-sun { display: none; }
+.g-head-title {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 700; letter-spacing: -0.01em; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.g-head-sub { font-size: 13px; color: var(--label3); margin-top: 3px; }
+
+/* ── 3. Крупные цифры и заголовки — Unbounded ──────────────────────── */
+.upcoming-num, .trips-stat-num, .cover-name, .cover-score-big {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+.trips-stat-num { font-weight: 700; }
+
+/* Подвкладки (Улов, Расходы) — сегмент-контрол на плашке, как на макете,
+   а не продолжение старой тёмной полосы. */
+.exp-tabs, .ct-tabs {
+  background: var(--bg3) !important;
+  margin: 12px 16px 4px; padding: 4px !important;
+  border-radius: var(--radius-md);
+}
+.exp-tab, .ct-tab { border-radius: var(--radius-sm) !important; min-height: 36px; display: flex; align-items: center; justify-content: center; }
+
+/* ── Свайп влево — «Удалить» (UIUtils.swipeToDelete) ─────────────────
+   Крестик больше не стоит рядом с чекбоксом: это красная кнопка под
+   правым краем строки, выезжает свайпом. */
+.sh-item, .cover-read-row { position: relative; overflow: hidden; touch-action: pan-y; }
+.sh-item > :not(.sh-del), .cover-read-row > :not(.cover-read-del) {
+  transition: transform var(--duration) var(--ease);
+}
+.sh-item.swiped > :not(.sh-del), .cover-read-row.swiped > :not(.cover-read-del) { transform: translateX(-92px); }
+.sh-del, .cover-read-del {
+  position: absolute !important; top: 0; right: 0; bottom: 0; width: 88px;
+  margin: 0 !important; padding: 0 !important; border: none !important; border-radius: 0 !important;
+  background: var(--red) !important; color: #fff !important; opacity: 1 !important;
+  display: flex !important; align-items: center; justify-content: center;
+  font-size: 0 !important; cursor: pointer;
+  transform: translateX(calc(100% + 4px)); /* +4px: без красной «щели» по краю */
+  transition: transform var(--duration) var(--ease);
+}
+.sh-del::after, .cover-read-del::after { content: 'Удалить'; font-size: 14px; font-weight: 600; }
+.sh-item.swiped > .sh-del, .cover-read-row.swiped > .cover-read-del { transform: translateX(0); }
+
+/* Участники: заголовок страницы как у остальных, а не карточка-полоса. */
+.members-topbar {
+  background: var(--bg) !important; box-shadow: none !important;
+  margin: 0 !important; padding: 12px 16px 4px !important; border-radius: 0 !important;
+}
+.members-topbar h1 {
+  font-family: var(--font-display); font-size: 22px; font-weight: 700;
+  letter-spacing: -0.01em; color: var(--label); margin: 0;
+}
+.members-topbar p { font-size: 13px; color: var(--label3); margin-top: 3px; }
+
+/* Реки: заголовок страницы; внутри Гида не нужен. */
+.rv-page-title {
+  font-family: var(--font-display); font-size: 22px; font-weight: 700;
+  letter-spacing: -0.01em; color: var(--label); padding: 12px 16px 8px;
+}
+#g-tab-panel .rv-page-title { display: none; }
+
+/* Аватар-инициалы (вместо эмодзи): заливает круг аватара целиком */
+.av-initials {
+  width: 100%; height: 100%; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-bg); color: var(--accent);
+  font-family: var(--font-body); font-weight: 700; font-size: .42em; line-height: 1;
+}
+.ah-avatar .av-initials { font-size: 13px; }
+.ah-drawer-avatar .av-initials { font-size: 17px; }

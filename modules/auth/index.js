@@ -180,11 +180,11 @@ const AuthActions = (() => {
           UIUtils.confirmSheet('Выйти из аккаунта?', { okLabel: 'Выйти' }).then(ok => { if (ok) signOut(); });
           return;
         }
-        if (['ob-next','ob-back','ob-finish'].includes(a)) {
+        if (['ob-next','ob-back','ob-finish','ob-photo-pick'].includes(a)) {
           AuthRender.handleObEvent(btn); return;
         }
       }
-      const ob = e.target.closest('[data-ob-av],[data-ob-blood]');
+      const ob = e.target.closest('[data-ob-blood]');
       if (ob) AuthRender.handleObEvent(ob);
     });
   }

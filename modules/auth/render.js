@@ -1,5 +1,5 @@
 'use strict';
-/* globals AuthActions */
+/* globals AuthActions, storage */
 
 const AuthRender = (() => {
 
@@ -13,9 +13,9 @@ const AuthRender = (() => {
     el.id = 'auth-screen';
     el.innerHTML = `
         <div class="auth-card">
-          <div class="auth-logo">🎣</div>
+          <div class="auth-logo">${UIUtils.ico('fishing')}</div>
           <h1 class="auth-title">FuckFishing</h1>
-          <p class="auth-sub">Войди, чтобы начать</p>
+          <p class="auth-sub">Рыбалки и экспедиции — вместе с командой</p>
 
           <button class="btn-google" data-action="auth-google">
             ${_googleSvg()}
@@ -27,7 +27,8 @@ const AuthRender = (() => {
           <input class="auth-input" id="auth-email" type="email"
                  placeholder="Email" autocomplete="email" inputmode="email">
           <input class="auth-input" id="auth-password" type="password"
-                 placeholder="Пароль (мин. 6 символов)" autocomplete="current-password">
+                 placeholder="Пароль" autocomplete="current-password" style="margin-bottom:4px">
+          <span class="auth-hint">Не меньше 6 символов</span>
           <button class="btn-auth-primary" data-action="auth-email">
             Войти
           </button>
@@ -60,22 +61,26 @@ const AuthRender = (() => {
   /* ══════════════════════════════════════════════
      ONBOARDING
   ══════════════════════════════════════════════ */
-  const AVATARS = ['🎣','🤙','🐟','🦈','😎','🧔','🏕️','🌊','🦅','🐻','🍺','🥃','👾','🎯','🐠','🦑','🐙','🏔️','🎿','🚤'];
+  // Порядок и ru-метки — как договорено с пользователем (I+ I− II+ II− III+
+  // III− IV+ IV−). id — те же значения, что хранились и раньше (O+, A− и
+  // т.д.), меняется только порядок и подпись кнопки.
   const BLOOD_TYPES = [
-    {id:'A+', ru:'II +' }, {id:'A−', ru:'II −' },
-    {id:'B+', ru:'III +'}, {id:'B−', ru:'III −'},
-    {id:'AB+',ru:'IV +'}, {id:'AB−',ru:'IV −'},
-    {id:'O+', ru:'I +' }, {id:'O−', ru:'I −' },
+    {id:'O+', ru:'I+' },  {id:'O−', ru:'I−' },
+    {id:'A+', ru:'II+' }, {id:'A−', ru:'II−' },
+    {id:'B+', ru:'III+'},{id:'B−', ru:'III−'},
+    {id:'AB+',ru:'IV+'}, {id:'AB−',ru:'IV−'},
   ];
 
   let _step = 0;
   let _draft = {};
+  let _obUser = null; // нужен для загрузки фото (storage: 'avatars/'+uid) ещё до создания профиля
 
   function showOnboarding(user) {
     _step = 0;
+    _obUser = user;
     _draft = {
       displayName: user.displayName || '',
-      avatar:      '🎣',
+      avatar:      '', // пусто — иначе инициалы (см. UIUtils.avatarHtml); фото необязательно
       birthday:    '',
       phone:       '',
       bloodType:   '',
@@ -102,7 +107,7 @@ const AuthRender = (() => {
         </div>
       </div>`;
     document.body.appendChild(el);
-    if (_step === 0) _bindPhoneMask();
+    if (_step === 0) _bindStep0();
   }
 
   /* ── Шаг 1: Личные данные ── */
@@ -111,20 +116,36 @@ const AuthRender = (() => {
   // пользователя", см. signInEmail в modules/auth/index.js) — без него
   // единственный путь наружу был через devtools (auth.signOut() вручную).
   function _step0() {
-    const avBtns = AVATARS.map(a =>
-      `<button class="ob-av-btn${_draft.avatar===a?' sel':''}" data-ob-av="${a}">${a}</button>`
-    ).join('');
+    // Фото вместо выбора эмодзи-аватара — необязательно, иначе инициалы
+    // (эмодзи-аватары в остальном приложении уже не используются, см.
+    // UIUtils.avatarHtml). Грузим сразу в Storage — пользователь уже
+    // авторизован, профиля в Firestore для этого не нужно (storage.rules
+    // проверяют только auth.uid).
+    const initials = UIUtils.initials(_draft.displayName) || '';
+    const photoInner = _draft.avatar
+      ? UIUtils.avatarHtml(_draft.avatar, initials)
+      : (initials ? `<span class="av-initials">${_esc(initials)}</span>` : UIUtils.ico('plus'));
     return `
-      <button class="ob-exit" data-action="auth-signout">← Выйти</button>
+      <div class="ob-topbar">
+        <button class="ob-exit" data-action="auth-signout">← Выйти</button>
+        <span class="ob-step-count">1 из 2</span>
+      </div>
+      <div class="ob-steps"><span class="on"></span><span></span></div>
       <p class="ob-title">Как тебя зовут?</p>
-      <p class="ob-sub">Шаг 1 из 2 — личные данные</p>
+      <p class="ob-sub">Так тебя увидят в поездках</p>
+
+      <div class="ob-photo-row" data-action="ob-photo-pick">
+        <div class="ob-photo-circle" id="ob-photo-circle">${photoInner}</div>
+        <div class="ob-photo-text">
+          <span class="ob-photo-title">Фото</span>
+          <span class="ob-photo-sub" id="ob-photo-status">необязательно — иначе инициалы</span>
+        </div>
+      </div>
+      <input type="file" id="ob-photo-input" accept="image/*" style="display:none">
 
       <input class="auth-input" id="ob-name" type="text"
              placeholder="Имя или никнейм"
              value="${_esc(_draft.displayName)}" autocomplete="name">
-
-      <p class="ob-lbl">Аватар</p>
-      <div class="ob-avatar-grid">${avBtns}</div>
 
       <div class="ob-row2">
         <input class="auth-input" id="ob-birthday" type="text"
@@ -134,6 +155,7 @@ const AuthRender = (() => {
                placeholder="+7 (___) ___-__-__"
                value="${_esc(_draft.phone)}" style="margin-bottom:0">
       </div>
+      <span class="auth-hint">Дальше — медданные: группа крови, аллергии. Их увидят только участники твоих поездок.</span>
 
       <div class="ob-nav">
         <button class="ob-btn-next" data-action="ob-next">Далее →</button>
@@ -143,17 +165,20 @@ const AuthRender = (() => {
   /* ── Шаг 2: Медданные ── */
   function _step1() {
     const bloodBtns = BLOOD_TYPES.map(b =>
-      `<button class="ob-blood-btn${_draft.bloodType===b.id?' sel':''}" data-ob-blood="${b.id}">
-        <span class="ob-blood-intl">${b.id}</span>
-        <span class="ob-blood-ru">${b.ru}</span>
-       </button>`
+      `<button class="ob-blood-chip${_draft.bloodType===b.id?' sel':''}" data-ob-blood="${b.id}">${_esc(b.ru)}</button>`
     ).join('');
     return `
+      <div class="ob-topbar">
+        <button class="ob-exit" data-action="ob-back">← Назад</button>
+        <span class="ob-step-count">2 из 2</span>
+      </div>
+      <div class="ob-steps"><span class="on"></span><span class="on"></span></div>
       <p class="ob-title">Медданные</p>
-      <p class="ob-sub">Шаг 2 из 2 — важно для безопасности</p>
+      <p class="ob-sub">Нужны, если что-то случится. Видят участники твоих поездок. Всё можно пропустить.</p>
 
-      <p class="ob-lbl">Группа крови</p>
-      <div class="ob-blood-grid">${bloodBtns}</div>
+      <p class="ob-lbl" style="margin-top:0">Группа крови</p>
+      <span class="auth-hint" style="display:block;margin:-4px 0 8px">I — O, II — A, III — B, IV — AB</span>
+      <div class="ob-blood-chips">${bloodBtns}</div>
 
       <p class="ob-lbl">Рост и вес</p>
       <div class="ob-row2">
@@ -176,13 +201,62 @@ const AuthRender = (() => {
              value="${_esc(_draft.conditions)}">
 
       <div class="ob-nav">
-        <button class="ob-btn-back" data-action="ob-back">←</button>
-        <button class="ob-btn-next" data-action="ob-finish">Готово ✓</button>
+        <button class="ob-btn-next" data-action="ob-finish">Готово ${UIUtils.ico('check')}</button>
       </div>`;
   }
 
-  /* ── Phone + Birthday masks ── */
-  function _bindPhoneMask() {
+  /* ── Фото профиля (шаг 1) ── */
+  // Тот же приём сжатия, что и в правке профиля (modules/members/index.js
+  // _uploadAvatarPhoto) — картинка с камеры телефона без сжатия была бы
+  // мегабайты на ровном месте, профилю хватает пары сотен КБ.
+  function _compressObPhoto(file, maxSize, quality) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        let { width, height } = img;
+        if (width > height) { if (width > maxSize) { height = Math.round(height * maxSize / width); width = maxSize; } }
+        else { if (height > maxSize) { width = Math.round(width * maxSize / height); height = maxSize; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('toBlob failed')), 'image/jpeg', quality);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image load failed')); };
+      img.src = url;
+    });
+  }
+
+  async function _uploadObPhoto(file) {
+    if (!_obUser) return;
+    const uid = _obUser.uid;
+    const status = document.getElementById('ob-photo-status');
+    if (status) status.textContent = 'Загружаю…';
+    try {
+      const blob = await _compressObPhoto(file, 480, 0.82);
+      const ref = storage.ref('avatars/' + uid);
+      await ref.put(blob, { contentType: 'image/jpeg' });
+      const url = await ref.getDownloadURL();
+      if (_obUser?.uid !== uid) return; // онбординг уже закрыт/сменился пользователь
+      _draft.avatar = url;
+      _render();
+    } catch (err) {
+      console.error('AuthRender._uploadObPhoto:', err);
+      if (status) status.textContent = 'Не удалось загрузить — попробуй ещё раз';
+    }
+  }
+
+  /* ── Phone + Birthday masks (+ фото) ── */
+  function _bindStep0() {
+    const photoInput = document.getElementById('ob-photo-input');
+    if (photoInput) {
+      photoInput.addEventListener('change', () => {
+        const file = photoInput.files?.[0];
+        if (file) _uploadObPhoto(file);
+      });
+    }
+
     // Телефон
     const phone = document.getElementById('ob-phone');
     if (phone) {
@@ -223,22 +297,20 @@ const AuthRender = (() => {
 
   /* ── Event handler ── */
   function handleObEvent(target) {
-    // Аватар
-    if (target.dataset.obAv) {
-      _draft.avatar = target.dataset.obAv;
-      document.querySelectorAll('.ob-av-btn').forEach(b => b.classList.remove('sel'));
-      target.classList.add('sel');
-      return;
-    }
     // Группа крови
     if (target.dataset.obBlood) {
       _draft.bloodType = target.dataset.obBlood;
-      document.querySelectorAll('.ob-blood-btn').forEach(b => b.classList.remove('sel'));
+      document.querySelectorAll('.ob-blood-chip').forEach(b => b.classList.remove('sel'));
       target.classList.add('sel');
       return;
     }
 
     const action = target.dataset.action;
+
+    if (action === 'ob-photo-pick') {
+      document.getElementById('ob-photo-input')?.click();
+      return;
+    }
 
     if (action === 'ob-next') {
       const nameEl = document.getElementById('ob-name');
@@ -284,13 +356,13 @@ const AuthRender = (() => {
 
   function _humanizeError(msg) {
     if (!msg) return 'Ошибка входа';
-    if (msg.includes('wrong-password')||msg.includes('invalid-credential')) return '❌ Неверный email или пароль';
-    if (msg.includes('user-not-found'))  return '❌ Пользователь не найден';
-    if (msg.includes('email-already'))   return '❌ Email уже используется';
-    if (msg.includes('weak-password'))   return '❌ Пароль слишком слабый (мин. 6 символов)';
-    if (msg.includes('popup-closed'))    return '❌ Окно входа закрыто';
-    if (msg.includes('network-request')) return '❌ Нет интернета';
-    return '❌ ' + msg.split('/').pop().replace(/-/g,' ');
+    if (msg.includes('wrong-password')||msg.includes('invalid-credential')) return 'Неверный email или пароль';
+    if (msg.includes('user-not-found'))  return 'Пользователь не найден';
+    if (msg.includes('email-already'))   return 'Email уже используется';
+    if (msg.includes('weak-password'))   return 'Пароль слишком слабый (мин. 6 символов)';
+    if (msg.includes('popup-closed'))    return 'Окно входа закрыто';
+    if (msg.includes('network-request')) return 'Нет интернета';
+    return '' + msg.split('/').pop().replace(/-/g,' ');
   }
 
   return { showLoginScreen, hideLoginScreen, showError, clearError, showOnboarding, handleObEvent };

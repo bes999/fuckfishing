@@ -63,7 +63,7 @@
 .cs-btn-cancel:active { background: var(--bg4); }
 .cs-btn-danger { background: var(--red); color: #fff; }
 .cs-btn-danger:active { opacity: 0.85; }
-.cs-btn-primary { background: var(--accent); color: #fff; }
+.cs-btn-primary { background: var(--accent); color: var(--on-accent); }
 .cs-btn-primary:active { opacity: 0.85; }
 
 /* ===== ОБЩИЕ КНОПКИ ДЛЯ .profile-sheet-ШИТОВ (приглашение, гость и т.п.) ===== */
@@ -71,7 +71,7 @@
   width: 100%; border: none; border-radius: var(--radius-md);
   padding: 13px; font-size: 15px; font-weight: 600;
   font-family: inherit; cursor: pointer;
-  background: var(--accent); color: #fff; margin-bottom: 10px;
+  background: var(--accent); color: var(--on-accent); margin-bottom: 10px;
 }
 .action-btn:active { opacity: 0.85; }
 .picker-cancel {
@@ -84,3 +84,14 @@
 .sheet-actions-row { display: flex; gap: 8px; }
 .sheet-actions-row .action-btn,
 .sheet-actions-row .picker-cancel { margin-bottom: 0; }
+
+/* ===== ИКОНКИ (UIUtils.ico / emojiIcon) =====
+   Встают в строку текста как эмодзи раньше: размер = font-size родителя,
+   цвет = currentColor. .ico — своя SVG-рыбка (в Tabler её нет). */
+.ti { vertical-align: -0.125em; }
+.ico { display: inline-flex; width: 1em; height: 1em; vertical-align: -0.125em; flex-shrink: 0; }
+.ico-svg {
+  width: 100%; height: 100%;
+  fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round;
+}

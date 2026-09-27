@@ -105,20 +105,135 @@ var RiversIndex = (function () {
 
   function _bindList() {
     _el.addEventListener('click', _onListClick);
+    var addBtn = document.getElementById('rv-add-place-btn');
+    if (addBtn) addBtn.addEventListener('click', _showAddPlace);
+    var listCard = _el.querySelector('.rv-list-card');
+    if (listCard && typeof UIUtils !== 'undefined') UIUtils.swipeToDelete(listCard, '.rv-row', '.rv-row-del');
+  }
+
+  /* «+ Добавить место» — лист с названием и регионом. Пишем в trip.rivers
+     и, если у поездки есть AI-импорт, в importData.rivers (Места читают
+     его в первую очередь) — тот же формат, что у мастера поездки. */
+  function _showAddPlace() {
+    document.getElementById('rv-add-overlay')?.remove();
+    var overlay = document.createElement('div');
+    overlay.className = 'cs-overlay';
+    overlay.id = 'rv-add-overlay';
+    overlay.innerHTML =
+      '<div class="cs-card rv-add-card">' +
+        '<div class="cs-title">Новое место</div>' +
+        '<input class="rv-add-input" id="rv-add-name" type="text" placeholder="Река или место — «Обь»" autocomplete="off">' +
+        '<input class="rv-add-input" id="rv-add-region" type="text" placeholder="Регион — необязательно" autocomplete="off">' +
+        '<div class="cs-actions">' +
+          '<button class="cs-btn cs-btn-cancel" data-rv-add="cancel">Отмена</button>' +
+          '<button class="cs-btn cs-btn-primary" data-rv-add="ok">Добавить</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    requestAnimationFrame(function () { overlay.classList.add('open'); });
+    var nameInp = overlay.querySelector('#rv-add-name');
+    setTimeout(function () { nameInp.focus(); }, 50);
+
+    function close() {
+      overlay.classList.remove('open');
+      setTimeout(function () { overlay.remove(); }, 200);
+    }
+    function submit() {
+      var name = nameInp.value.trim();
+      if (!name) { nameInp.focus(); return; }
+      var region = overlay.querySelector('#rv-add-region').value.trim();
+      close();
+      _addPlace(name, region);
+    }
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) { close(); return; }
+      var a = e.target.closest('[data-rv-add]');
+      if (!a) return;
+      if (a.dataset.rvAdd === 'ok') submit(); else close();
+    });
+    overlay.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  }
+
+  // Убрать место из поездки (trip.rivers и importData.rivers). Уловы,
+  // точки и заметки не трогаем — они привязаны к названию/id и просто
+  // перестанут показываться в Местах; вернуть место — добавить заново.
+  function _removePlace(id) {
+    var trip = (typeof TripsData !== 'undefined') ? TripsData.getById(_tripId) : null;
+    if (!trip) return;
+    var all = (_trip && _trip.rivers) || [];
+    var place = null;
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) { place = all[i]; break; }
+    var name = place ? place.name : 'место';
+    UIUtils.confirmSheet('Улов, точки и заметки этого места не удалятся.', { title: 'Убрать «' + name + '» из поездки?', okLabel: 'Убрать' }).then(function (ok) {
+      if (!ok) return;
+      var rivers = (trip.rivers || []).filter(function (r) { return r.id !== id; });
+      var changes = { rivers: rivers };
+      if (trip.importData) {
+        changes.importData = Object.assign({}, trip.importData, {
+          rivers: (trip.importData.rivers || []).filter(function (r) { return r.id !== id; })
+        });
+      }
+      TripsData.updateTrip(_tripId, changes).then(function () {
+        var data = changes.importData || { name: trip.name, rivers: rivers, participants: trip.participants || [] };
+        if (window.APP && window.APP.currentTripId === _tripId) window.APP.currentTripData = data;
+        _trip = data;
+        _renderList();
+      }).catch(function () {
+        UIUtils.confirmSheet('Не получилось убрать место — проверь интернет и попробуй ещё раз.', { title: 'Не сохранилось', okLabel: 'Понятно', danger: false });
+      });
+    });
+  }
+
+  function _addPlace(name, region) {
+    var trip = (typeof TripsData !== 'undefined') ? TripsData.getById(_tripId) : null;
+    if (!trip) return;
+    var id = 'river_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+    var rivers = (trip.rivers || []).concat([{ id: id, name: name, region: region }]);
+    var changes = { rivers: rivers };
+    if (trip.importData) {
+      changes.importData = Object.assign({}, trip.importData, {
+        rivers: (trip.importData.rivers || []).concat([{ id: id, name: name, type: region }])
+      });
+    }
+    TripsData.updateTrip(_tripId, changes).then(function () {
+      // Места читают APP.currentTripData (см. tripcover enterTrip) —
+      // обновляем сразу, не дожидаясь снапшота поездки.
+      var data = changes.importData || { name: trip.name, rivers: rivers, participants: trip.participants || [] };
+      if (window.APP && window.APP.currentTripId === _tripId) window.APP.currentTripData = data;
+      _trip = data;
+      _renderList();
+    }).catch(function () {
+      if (typeof UIUtils !== 'undefined') UIUtils.confirmSheet('Не получилось сохранить место — проверь интернет и попробуй ещё раз.', { title: 'Место не добавлено', okLabel: 'Понятно', danger: false });
+    });
+  }
+
+  function _notImplemented(msg) {
+    if (typeof UIUtils !== 'undefined' && UIUtils.confirmSheet) {
+      UIUtils.confirmSheet(msg, { title: 'Пока недоступно', okLabel: 'Понятно', cancelLabel: 'Закрыть', danger: false });
+    }
   }
 
   function _onListClick(e) {
+    /* удалить место — кнопка под строкой, выезжает свайпом влево */
+    var delBtn = e.target.closest('[data-rv-del]');
+    if (delBtn) {
+      e.stopPropagation();
+      _removePlace(delBtn.getAttribute('data-rv-del'));
+      return;
+    }
+    /* навигатор — проверяем ПЕРВЫМ: кнопка вложена в строку с data-rv-open,
+       иначе клик по «Навигатор» открывал бы ещё и карточку места. */
+    var navBtn = e.target.closest('[data-rv-nav]');
+    if (navBtn) {
+      e.stopPropagation();
+      window.open(navBtn.getAttribute('data-rv-nav'), '_blank');
+      return;
+    }
     /* открыть карточку */
     var opener = e.target.closest('[data-rv-open]');
     if (opener) {
       _el.removeEventListener('click', _onListClick);
       _openDetail(opener.getAttribute('data-rv-open'));
-      return;
-    }
-    /* навигатор */
-    var navBtn = e.target.closest('[data-rv-nav]');
-    if (navBtn) {
-      window.open(navBtn.getAttribute('data-rv-nav'), '_blank');
     }
   }
 
@@ -173,7 +288,9 @@ var RiversIndex = (function () {
     var saveBtn = document.getElementById('rv-catch-save-btn');
     if (saveBtn) saveBtn.addEventListener('click', function () { UIUtils.withBusyButton(saveBtn, function () { return _saveCatch(r); }); });
 
-    /* удалить запись улова */
+    /* удалить запись улова — свайп влево, крестик убран (см. UIUtils.swipeToDelete) */
+    var catchLogEl = document.getElementById('rv-catch-log');
+    if (catchLogEl) UIUtils.swipeToDelete(catchLogEl, '.rv-catch-entry', '.rv-catch-del');
     if (_catchDelHandler) _el.removeEventListener('click', _catchDelHandler);
     _catchDelHandler = function (e) {
       var del = e.target.closest('[data-catch-del]');
@@ -183,6 +300,31 @@ var RiversIndex = (function () {
       _refreshCatchLog(r);
     };
     _el.addEventListener('click', _catchDelHandler);
+
+    /* FAB «+ Улов здесь» — раскрывает форму записи (была всегда видна) */
+    var fab = document.getElementById('rv-fab-catch');
+    var catchForm = document.getElementById('rv-catch-form');
+    if (fab && catchForm) {
+      fab.addEventListener('click', function () {
+        catchForm.classList.toggle('show');
+        if (catchForm.classList.contains('show')) catchForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+
+    /* «Все поимки» — переход на вкладку Улов (модуль Улов сам покажет
+       полный список; фильтра по конкретному месту там сегодня нет) */
+    var allLink = document.getElementById('rv-catch-all-link');
+    if (allLink) allLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      if (typeof onNavigate === 'function') onNavigate('catches');
+    });
+
+    /* «Заполнить» справку о месте — правки полей места (тип/дно/рыба/...)
+       в UI пока нет (эти поля приходят из JSON-импорта поездки) */
+    var fillBtn = document.getElementById('rv-fill-ref-btn');
+    if (fillBtn) fillBtn.addEventListener('click', function () {
+      _notImplemented('Редактирование справки о месте из интерфейса скоро появится. Пока эти поля приходят при импорте поездки.');
+    });
 
     /* точки — добавить */
     var addPtBtn = document.getElementById('rv-add-pt-btn');
@@ -196,13 +338,18 @@ var RiversIndex = (function () {
     var savePt = document.getElementById('rv-pt-save-btn');
     if (savePt) savePt.addEventListener('click', function () { _savePoint(r.id); });
 
-    /* точки — редактировать / удалить */
+    /* точки — правка по нажатию на строку, удаление свайпом влево
+       (см. UIUtils.swipeToDelete) вместо «Ред.»/«×» */
+    var ptsList = document.getElementById('rv-pts-list');
+    if (ptsList) UIUtils.swipeToDelete(ptsList, '.rv-pt-item', '.rv-pt-del');
     if (_ptHandler) _el.removeEventListener('click', _ptHandler);
     _ptHandler = function (e) {
-      var editBtn = e.target.closest('[data-pt-edit]');
-      if (editBtn) { _editPoint(r.id, editBtn.getAttribute('data-pt-edit')); return; }
       var delBtn = e.target.closest('[data-pt-del]');
-      if (delBtn)  { _deletePoint(r.id, delBtn.getAttribute('data-pt-del')); }
+      if (delBtn) { _deletePoint(r.id, delBtn.getAttribute('data-pt-del')); return; }
+      var navEl = e.target.closest('[data-rv-nav]');
+      if (navEl) return; // сама навигация уже обработана _navHandler
+      var editRow = e.target.closest('[data-pt-edit]');
+      if (editRow) { _editPoint(r.id, editRow.getAttribute('data-pt-edit')); }
     };
     _el.addEventListener('click', _ptHandler);
 
@@ -231,9 +378,17 @@ var RiversIndex = (function () {
         var logEl = document.getElementById('rv-catch-log');
         if (logEl) {
           logEl.outerHTML = RiversRender.catchLog(riverCatches);
+          _rebindCatchLogSwipe();
         }
+        var sumEl = document.getElementById('rv-catch-summary');
+        if (sumEl) sumEl.innerHTML = RiversRender.catchSummary(riverCatches);
       });
     }
+  }
+
+  function _rebindCatchLogSwipe() {
+    var logEl = document.getElementById('rv-catch-log');
+    if (logEl) UIUtils.swipeToDelete(logEl, '.rv-catch-entry', '.rv-catch-del');
   }
 
   /* ──────────────────────────────────────────────────────
@@ -282,6 +437,9 @@ var RiversIndex = (function () {
   function _refreshCatchLog(r) {
     var riverCatches = _riverCatchesFor(r.name);
 
+    var sumEl = document.getElementById('rv-catch-summary');
+    if (sumEl) sumEl.innerHTML = RiversRender.catchSummary(riverCatches);
+
     var logEl = document.getElementById('rv-catch-log');
     if (!logEl) return;
     if (riverCatches.length === 0) {
@@ -290,6 +448,7 @@ var RiversIndex = (function () {
       return;
     }
     logEl.outerHTML = RiversRender.catchLog(riverCatches);
+    _rebindCatchLogSwipe();
   }
 
   /* ──────────────────────────────────────────────────────

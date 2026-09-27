@@ -48,7 +48,7 @@ function _mkImportSheetHtml() {
       '<div class="mk-import-sheet__handle"></div>' +
       '<div class="mk-import-sheet__head">' +
         '<span class="mk-import-sheet__title">Импорт</span>' +
-        '<button class="mk-import-sheet__close" onclick="closeMedkitImport()">✕</button>' +
+        '<button class="mk-import-sheet__close" onclick="closeMedkitImport()">' + UIUtils.ico('x') + '</button>' +
       '</div>' +
       '<div class="mk-import-tabs">' + tabsHtml + '</div>' +
       '<div class="mk-import-body" id="mkImportBody">' + _renderMkImportBody() + '</div>' +

@@ -3,15 +3,24 @@
 
 const MembersRender = (() => {
 
-  const BLOOD_TYPES = [
-    {id:'A+',ru:'II +'},{id:'A−',ru:'II −'},
-    {id:'B+',ru:'III +'},{id:'B−',ru:'III −'},
-    {id:'AB+',ru:'IV +'},{id:'AB−',ru:'IV −'},
-    {id:'O+',ru:'I +'},{id:'O−',ru:'I −'},
-  ];
-  const AVATARS = ['🎣','🤙','🐟','🦈','😎','🧔','🏕️','🌊','🦅','🐻','🍺','🥃','👾','🎯','🐠','🦑','🐙','🏔️','🎿','🚤'];
   const SWIM_LABELS = { none: 'Не умею', weak: 'Слабо', confident: 'Уверенно', pro: 'Профи' };
   const TICK_LABELS = { yes: 'Да', no: 'Нет', unknown: 'Не знаю' };
+
+  // Группа крови по-русски: хранение не меняем (id 'AB−', 'O+' и т.п.),
+  // только показ — «IV Rh−», «четвёртая отрицательная», мелко «AB−».
+  const BLOOD_ROMAN = { O: 'I', A: 'II', B: 'III', AB: 'IV' };
+  const BLOOD_ORD   = { I: 'первая', II: 'вторая', III: 'третья', IV: 'четвёртая' };
+  function _bloodParts(id) {
+    const m = /^(AB|A|B|O)\s*([+−-])$/.exec(String(id || '').trim());
+    if (!m) return null;
+    const roman = BLOOD_ROMAN[m[1]];
+    const pos = m[2] === '+';
+    return {
+      short: `${roman} Rh${pos ? '+' : '−'}`,
+      words: `${BLOOD_ORD[roman]} ${pos ? 'положительная' : 'отрицательная'}`,
+      intl: id,
+    };
+  }
 
   // Официальные монохромные SVG-пути брендов (source: simple-icons /
   // Wikipedia MAX-логотип, MIT/CC0). Рендерятся одним нейтральным цветом
@@ -28,9 +37,6 @@ const MembersRender = (() => {
     return '';
   }
 
-  // Значки мессенджеров — переиспользуется и для экстренных контактов, и
-  // для мессенджеров самого владельца профиля (те же три поля wa/tg/max).
-  //
   // MAX не даёт открыть чат по номеру телефона — только по ссылке вида
   // max.ru/u/<хеш>, которую сам человек берёт через "Поделиться" в
   // приложении и вставляет целиком. _maxHref принимает то, что реально
@@ -43,51 +49,97 @@ const MembersRender = (() => {
     return 'https://max.ru/u/' + s.replace(/^\/?u\//i, '').replace(/^@/, '');
   }
 
-  function _msgrBadges(obj, extraAttrs) {
+  // Значки мессенджеров — и для экстренных контактов, и для самого
+  // владельца профиля (те же три поля wa/tg/max). skip — какие не рисовать
+  // (в шапке профиля Telegram уже показан отдельной строкой «@ник»).
+  function _msgrBadges(obj, skip) {
     if (!obj) return '';
+    const s = skip || [];
     const badges = [];
-    if (obj.wa)  badges.push(`<a class="msgr-badge msgr-wa" href="https://wa.me/${encodeURIComponent(obj.wa.replace(/\D/g,''))}" target="_blank" rel="noopener" aria-label="WhatsApp">${_msgrIcon('wa')}</a>`);
-    if (obj.tg)  badges.push(`<a class="msgr-badge msgr-tg" href="https://t.me/${encodeURIComponent(obj.tg)}" target="_blank" rel="noopener" aria-label="Telegram">${_msgrIcon('tg')}</a>`);
-    if (obj.max) badges.push(`<a class="msgr-badge msgr-max" href="${_esc(_maxHref(obj.max))}" target="_blank" rel="noopener" aria-label="MAX">${_msgrIcon('max')}</a>`);
+    if (obj.wa && !s.includes('wa'))   badges.push(`<a class="msgr-badge msgr-wa" href="https://wa.me/${encodeURIComponent(obj.wa.replace(/\D/g,''))}" target="_blank" rel="noopener" aria-label="WhatsApp">${_msgrIcon('wa')}</a>`);
+    if (obj.tg && !s.includes('tg'))   badges.push(`<a class="msgr-badge msgr-tg" href="https://t.me/${encodeURIComponent(obj.tg)}" target="_blank" rel="noopener" aria-label="Telegram">${_msgrIcon('tg')}</a>`);
+    if (obj.max && !s.includes('max')) badges.push(`<a class="msgr-badge msgr-max" href="${_esc(_maxHref(obj.max))}" target="_blank" rel="noopener" aria-label="MAX">${_msgrIcon('max')}</a>`);
     if (!badges.length) return '';
-    return `<div class="p-msgrs"${extraAttrs || ''}>${badges.join('')}</div>`;
+    return `<div class="p-msgrs">${badges.join('')}</div>`;
+  }
+
+  /* ── Аватар: фото, если загружено, иначе инициалы. Старые эмодзи-аватары
+     в данных не трогаем — просто больше не показываем их. ── */
+  function initials(p) {
+    const name = String(p?.displayName || '').trim();
+    const words = name.split(/\s+/).filter(Boolean);
+    let s = '';
+    if (words.length >= 2) s = words[0][0] + words[1][0];
+    else if (words.length === 1) s = words[0][0] + (p?.nickname ? String(p.nickname).trim()[0] || '' : '');
+    return (s || '?').toUpperCase();
+  }
+  function avatarInner(p) {
+    const a = p?.avatar;
+    if (a && /^https?:\/\//.test(a)) return `<img src="${_esc(a)}" alt="">`;
+    return _esc(initials(p));
+  }
+  function _ava(p, cls) {
+    return `<span class="mb-ava ${cls || ''}">${avatarInner(p)}</span>`;
+  }
+
+  // «Пригласить» — в наборе Tabler (shared/tabler-icons.css) нет ti-user-plus,
+  // рисуем тем же штрихом inline.
+  const _USER_PLUS_SVG = '<svg class="mb-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3.5"/><path d="M3.5 20a6.5 6.5 0 0 1 13 0M19 8v6M16 11h6"/></svg>';
+
+  // Может ли текущий пользователь приглашать людей: организатор теперь
+  // определяется по поездке (trip.ownerId) — достаточно создать хоть одну.
+  function canInvite(uid) {
+    if (!uid || typeof TripsData === 'undefined') return false;
+    return AuthActions.isOrganizer() || TripsData.getAll().some(t => t.ownerId === uid);
   }
 
   /* ══════════════════════════════════════════════
      СПИСОК УЧАСТНИКОВ
   ══════════════════════════════════════════════ */
-  function renderList(members, currentUid, isOrg) {
+  function renderList(members, currentUid, canInv) {
     const el = document.getElementById('members-list');
     if (!el) return;
 
-    const cards = members.map(m => {
+    // «Это ты» — первым, остальные в прежнем порядке (по createdAt).
+    const sorted = [...members].sort((a, b) => (b.uid === currentUid) - (a.uid === currentUid));
+    const rows = sorted.map(m => {
       const isMe = m.uid === currentUid;
+      const sub = 'участник' + (m.telegramId ? ' · Telegram привязан' : '');
       return `
-        <div class="m-card" data-action="member-open" data-uid="${m.uid}">
-          ${isMe ? '<span class="m-me-badge">Я</span>' : ''}
-          <div class="m-ava">${UIUtils.avatarHtml(m.avatar, '🎣')}</div>
-          <div class="m-name">${_esc(m.displayName)}${m.nickname ? ` <span class="p-nickname">«${_esc(m.nickname)}»</span>` : ''}</div>
-          <div class="m-role${m.role==='organizer'?' org':''}">
-            ${m.role==='organizer'?'⭐ Организатор':'👤 Участник'}
-          </div>
-        </div>`;
+        <button type="button" class="mb-person" data-action="member-open" data-uid="${_esc(m.uid)}">
+          ${_ava(m, isMe ? 'mb-ava--me' : '')}
+          <span class="mb-person-txt">
+            <span class="mb-person-name">${_esc(m.displayName)}${m.nickname ? ` «${_esc(m.nickname)}»` : ''}${isMe ? '<span class="mb-me">это ты</span>' : ''}</span>
+            <span class="mb-person-sub">${sub}</span>
+          </span>
+          <i class="ti ti-chevron-right mb-chev" aria-hidden="true"></i>
+        </button>`;
     }).join('');
 
-    const addBtn = isOrg ? `
-      <div class="m-add-card" data-action="member-invite">
-        <div class="m-add-icon">＋</div>
-        <div class="m-add-label">Пригласить</div>
-      </div>` : '';
-
-    el.innerHTML = `<div class="members-grid">${cards}${addBtn}</div>`;
+    el.innerHTML = `
+      <header class="mb-list-head">
+        <div class="mb-list-titles">
+          <h1>Участники</h1>
+          <p>${members.length} ${_plural(members.length, 'человек', 'человека', 'человек')} в приложении</p>
+        </div>
+        ${canInv ? `<button type="button" class="mb-icon-btn" data-action="member-invite" aria-label="Пригласить">${_USER_PLUS_SVG}</button>` : ''}
+      </header>
+      <div class="mb-body">
+        <section class="mb-card mb-card--list">${rows}</section>
+        <p class="mb-hint">Нажми на человека — медданные, экстренные контакты, поездки. Пригласить может организатор поездки.</p>
+      </div>`;
   }
 
   /* ══════════════════════════════════════════════
      ПРОФИЛЬ
   ══════════════════════════════════════════════ */
   let _activeTab = 'profile';
+  let _fromList = false;
 
-  async function showProfile(uid, currentUid) {
+  // opts.fromList — открыт из списка участников (назад → список);
+  // opts.keepNav — перерисовка после правки, куда «назад» не меняется.
+  async function showProfile(uid, currentUid, opts) {
+    if (!opts?.keepNav) _fromList = !!opts?.fromList;
     _activeTab = 'profile';
     const profile = await MembersFirebase.getProfile(uid);
     if (!profile) return;
@@ -100,133 +152,89 @@ const MembersRender = (() => {
   function _renderProfilePage(profile, isMe, isOrg) {
     const pg = document.getElementById('p-members');
     if (!pg) return;
+    // Прошлая вкладка «Покупки» могла держать подписку Firestore.
+    if (typeof PurchasesRender !== 'undefined') PurchasesRender.destroy();
 
+    // Правка чужого профиля — только у app-организатора (так разрешают
+    // firestore.rules: members/{uid} update — сам или isOrganizer()).
+    const canEdit = isMe || isOrg;
     pg.innerHTML = `
-      <div class="topbar" style="display:flex;align-items:center;gap:12px;padding-top:14px">
-        <button data-action="profile-back"
-          style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,0.15);border:none;
-                 cursor:pointer;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-               stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-        </button>
-        <div style="flex:1">
-          <h1 style="font-size:18px">${isMe ? 'Мой профиль' : _esc(profile.displayName)}</h1>
-        </div>
-      </div>
-      <div class="profile-scroll" style="overflow-y:auto;flex:1;padding-bottom:calc(83px + env(safe-area-inset-bottom))">
-        ${_profileHeader(profile, isMe, isOrg)}
+      <header class="mb-bar">
+        <button type="button" class="mb-icon-btn" data-action="profile-back" aria-label="Назад">${UIUtils.ico('chevron-left')}</button>
+        ${canEdit ? `<button type="button" class="mb-icon-btn" data-action="profile-edit" data-uid="${_esc(profile.uid)}" aria-label="Изменить профиль">${UIUtils.ico('pencil')}</button>` : ''}
+      </header>
+      <div class="mb-body mb-body--prof">
+        ${_profileHeader(profile, isMe)}
+        ${!isMe ? _profileActions(profile, isOrg) : ''}
         ${_subtabs(isMe)}
-        <div id="profile-tab-content">
+        <div id="profile-tab-content" class="mb-tab-content">
           ${_tabProfile(profile, isMe)}
         </div>
-        ${!isMe ? _profileActions(profile.uid, isOrg, profile.displayName) : ''}
       </div>`;
 
-    // Кнопка назад — на главную
-    // TODO: hardcoded 'home' — revisit once nav redesign (hamburger) лендет, back-navigation should return to entry point
     pg.querySelector('[data-action="profile-back"]')?.addEventListener('click', () => {
+      if (typeof PurchasesRender !== 'undefined') PurchasesRender.destroy();
+      if (_fromList && typeof MembersModule !== 'undefined') {
+        MembersModule.showList(pg);
+        return;
+      }
       if (typeof AppNav !== 'undefined') AppNav.setActive('home');
       if (typeof AppRouter !== 'undefined') AppRouter.show('home');
       if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
     });
 
-    // Сохраняем данные для переключения вкладок
     pg._profileData = { profile, isMe, isOrg };
+    _bindTab();
   }
 
-  function _profileHeader(p, isMe, isOrg) {
-    const roleLabel = p.role === 'organizer' ? 'Организатор' : 'Участник';
-    const nickHtml = p.nickname
-      ? ` <span class="p-nickname">«${_esc(p.nickname)}»</span>`
-      : (isMe ? ` <span class="p-nick-add" data-action="profile-edit" data-uid="${p.uid}">+ ник</span>` : '');
-    const canEdit = isMe || isOrg;
+  function _profileHeader(p, isMe) {
+    const nick = p.nickname
+      ? `«${_esc(p.nickname)}»`
+      : (isMe ? `<span class="mb-nick-add" data-action="profile-edit" data-uid="${_esc(p.uid)}">+ ник</span>` : '');
+    const tgName = p.tg || p.telegramUsername || '';
+    const tgLine = tgName
+      ? `<a class="mb-hero-tg" href="https://t.me/${encodeURIComponent(tgName)}" target="_blank" rel="noopener">${UIUtils.ico('brand-telegram')}@${_esc(tgName)}</a>`
+      : '';
+    const otherMsgrs = _msgrBadges(p, ['tg']);
     return `
-      <div class="p-header">
-        <div class="p-ava-circle">${UIUtils.avatarHtml(p.avatar, '🎣')}</div>
-        <div style="flex:1;min-width:0">
-          <div class="p-name">${_esc(p.displayName)}${nickHtml}</div>
-          ${p.email ? `<div class="p-meta">${_esc(p.email)}</div>` : ''}
-          ${p.phone ? `<div class="p-meta">${_esc(p.phone)}</div>` : ''}
-          ${_msgrBadges(p, ' style="margin-top:5px"')}
-          <span class="p-badge ${p.role}">${roleLabel}</span>
+      <section class="mb-hero">
+        ${_ava(p, 'mb-ava--xl' + (isMe ? ' mb-ava--me' : ''))}
+        <div class="mb-hero-txt">
+          <span class="mb-hero-name">${_esc(p.displayName)}</span>
+          <span class="mb-hero-sub">${[nick, 'участник'].filter(Boolean).join(' · ')}</span>
+          ${p.phone ? `<a class="mb-hero-phone" href="tel:${_esc(p.phone.replace(/[^\d+]/g, ''))}">${_esc(p.phone)}</a>` : ''}
+          ${tgLine || otherMsgrs ? `<span class="mb-hero-msgr">${tgLine}${otherMsgrs}</span>` : ''}
+          ${p.email ? `<span class="mb-hero-mail">${_esc(p.email)}</span>` : ''}
         </div>
-        ${canEdit ? `<button class="p-header-edit" data-action="profile-edit" data-uid="${p.uid}"><i class="ti ti-pencil"></i></button>` : ''}
-      </div>`;
-  }
-
-  /* ── Статистика (поездки + самый активный месяц по личным уловам) ── */
-
-  const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
-
-  // Поездки, где человек участник — те же правила видимости, что и в
-  // "Наши поездки" на вкладке "Поездки" ниже (private-поездки видны только
-  // тем, кто сам в их memberIds).
-  function _tripsForProfile(profileUid) {
-    const viewerUid = window.APP?.user?.uid;
-    return (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
-      .filter(t => (t.memberIds || []).includes(profileUid))
-      .filter(t => !t.private || (t.memberIds || []).includes(viewerUid));
-  }
-
-  // _topFishingMonth/_statsRow — временно не вызываются (пользователь
-  // попросил убрать stat-каллауты "N поездок"/"активный месяц" с карточки
-  // профиля), оставлены как есть на случай, если решим вернуть в другом виде.
-  //
-  // Уловы матчатся по полю member (свободный текст, выбирается в форме
-  // Улова из списка участников поездки) против имени/ника профиля — прямой
-  // uid-связи там нет, это ближайшее доступное сопоставление.
-  function _topFishingMonth(p) {
-    if (typeof CatchesState === 'undefined' || typeof CatchesState.getAllCatches !== 'function') return '';
-    const names = [p.displayName, p.nickname].filter(Boolean).map(s => s.trim().toLowerCase());
-    if (!names.length) return '';
-
-    const byMonth = {};
-    CatchesState.getAllCatches().forEach(c => {
-      if (!c.member || !c.date) return;
-      if (!names.includes(c.member.trim().toLowerCase())) return;
-      const month = parseInt((c.date.split('-')[1] || ''), 10) - 1;
-      if (month < 0 || month > 11) return;
-      byMonth[month] = (byMonth[month] || 0) + 1;
-    });
-
-    const entries = Object.entries(byMonth);
-    if (!entries.length) return '';
-    entries.sort((a, b) => b[1] - a[1]);
-    return MONTHS_RU[+entries[0][0]];
-  }
-
-  function _statsRow(tripsCount, topMonth) {
-    return `
-      <div class="p-stats">
-        <div class="p-stat">
-          <div class="p-stat-num">${tripsCount}</div>
-          <div class="p-stat-lbl">поездок</div>
-        </div>
-        <div class="p-stat">
-          <div class="p-stat-num p-stat-num--text">${topMonth || '—'}</div>
-          <div class="p-stat-lbl">активный месяц</div>
-        </div>
-      </div>`;
+      </section>`;
   }
 
   function _subtabs(isMe) {
-    const tabs = [{id:'profile',lbl:'Профиль'},{id:'gear',lbl:'Снаряга'},{id:'medkit',lbl:'Аптечка'},{id:'trips',lbl:'Поездки'}];
-    // "Покупки" — только у себя: список полностью приватный (см.
-    // firestore.rules personal_purchases), у чужого профиля его даже
-    // показывать нечего — Firestore всё равно откажет в чтении.
-    if (isMe) tabs.push({id:'purchases',lbl:'Покупки'});
-    return `<div class="p-subtabs">
-      ${tabs.map(t => `<button class="p-stab${_activeTab===t.id?' active':''}" data-action="profile-tab" data-tab="${t.id}">${t.lbl}</button>`).join('')}
+    const tabs = [{ id: 'profile', lbl: 'Здоровье' }, { id: 'trips', lbl: 'Поездки' }];
+    // «Покупки» — только у себя: список полностью приватный (см.
+    // firestore.rules personal_purchases).
+    if (isMe) tabs.push({ id: 'purchases', lbl: 'Покупки' });
+    return `<div class="mb-seg" role="tablist">
+      ${tabs.map(t => `<button type="button" role="tab" class="mb-seg-btn${_activeTab === t.id ? ' active' : ''}" aria-selected="${_activeTab === t.id}" data-action="profile-tab" data-tab="${t.id}">${t.lbl}</button>`).join('')}
     </div>`;
   }
 
+  /* ── Вкладка «Здоровье» (id 'profile' — на него ссылается index.html) ── */
+  function _row(label, val, cls) {
+    return `<div class="mb-row"><span class="mb-row-lbl">${label}</span><span class="mb-row-val ${cls || ''}">${val}</span></div>`;
+  }
+
   function _tabProfile(p, isMe) {
-    const bloodRu = p.bloodType ? (BLOOD_TYPES.find(b => b.id === p.bloodType) || {}).ru : '';
-    const bloodHtml = p.bloodType
-      ? `<span class="p-row-val" style="margin-right:8px">${_esc(bloodRu || '')}</span><div class="blood-circle">${_esc(p.bloodType)}</div>`
-      : `<span class="p-row-val muted">Не указана</span>`;
+    const b = _bloodParts(p.bloodType);
+    const bloodHtml = `
+      <div class="mb-blood">
+        <span class="mb-blood-big">${b ? b.short : '—'}</span>
+        <span class="mb-blood-txt">
+          <span class="mb-blood-cap">Группа крови</span>
+          <span class="mb-blood-words">${b ? b.words : 'не указана'}</span>
+          ${b ? `<span class="mb-blood-cap">${_esc(b.intl)}</span>` : ''}
+        </span>
+      </div>`;
 
     // Возраст из ДР
     let age = '';
@@ -241,80 +249,94 @@ const MembersRender = (() => {
       }
     }
 
-    const hw = [p.height ? p.height+' см' : '', p.weight ? p.weight+' кг' : ''].filter(Boolean).join(' / ');
+    const hw = [p.height ? p.height + ' см' : '', p.weight ? p.weight + ' кг' : ''].filter(Boolean).join(' / ');
+    const DASH = ['—', 'muted'];
+    const txt = v => v ? [_esc(v), ''] : DASH;
+    const tickCls = p.tickVaccine === 'yes' ? 'green' : p.tickVaccine === 'no' ? 'red' : 'muted';
 
-    const emergency = (p.emergency || []);
-    const emergHtml = emergency.map((c,i) => `
-      <div class="p-emerg-card">
-        <div class="p-emerg-info">
-          <div class="p-emerg-name">${_esc(c.name)}</div>
-          <div class="p-emerg-phone-row">
-            <span class="p-emerg-phone">${_esc(c.phone)}</span>
-            ${_msgrBadges(c)}
-          </div>
-        </div>
-        ${isMe ? `
-        <div class="p-emerg-actions">
-          <div class="p-emerg-edit" data-action="emerg-edit" data-idx="${i}"><i class="ti ti-pencil"></i></div>
-          <div class="p-emerg-del" data-action="emerg-del" data-idx="${i}">×</div>
-        </div>` : ''}
-      </div>`).join('');
+    const rows = [
+      ['Рост / вес', ...(hw ? [hw, ''] : DASH)],
+      age ? ['Возраст', age, ''] : null,
+      ['Аллергии', ...(p.allergies ? [_esc(p.allergies), 'accent'] : DASH)],
+      ['Хронические', ...txt(p.conditions)],
+      ['Постоянные лекарства', ...txt(p.meds)],
+      ['Прививка от клеща', ...(p.tickVaccine ? [_esc(TICK_LABELS[p.tickVaccine] || ''), tickCls] : ['не указано', 'muted'])],
+      ['Плавание', ...(p.swim ? [_esc(SWIM_LABELS[p.swim] || ''), ''] : ['не указано', 'muted'])],
+      ['Полис ОМС/ДМС', ...txt(p.insurance)],
+      p.passportRf   ? ['Паспорт РФ до', _passportDateRu(p.passportRf),   _passportDateCls(p.passportRf)]   : null,
+      p.passportIntl ? ['Загран до',     _passportDateRu(p.passportIntl), _passportDateCls(p.passportIntl)] : null,
+    ].filter(Boolean).map(r => _row(r[0], r[1], r[2])).join('');
 
-    // Порядок по важности: сначала медданные (нужны всегда, в первую
-    // очередь в экстренной ситуации), сразу за ними — экстренные контакты
-    // (тоже про безопасность). Telegram-бот — это про аккаунт, а не про
-    // здоровье, поэтому не смешиваем его со врачебными полями — но и не
-    // поднимаем выше контактов: разовая настройка, самая нижняя секция.
+    const emergency = p.emergency || [];
+    const emergHtml = emergency.length ? `
+      <section class="mb-card mb-card--list" id="mb-emerg-list">
+        ${emergency.map((c, i) => `
+          <div class="mb-emerg"${isMe ? ` data-action="emerg-edit" data-idx="${i}"` : ''}>
+            <div class="mb-emerg-info">
+              <span class="mb-emerg-name">${_esc(c.name)}</span>
+              <span class="mb-emerg-phone">${_esc(c.phone)}</span>
+              ${_msgrBadges(c) || '<span class="mb-muted">мессенджеры не указаны</span>'}
+            </div>
+            <a class="mb-call" href="tel:${_esc(String(c.phone || '').replace(/[^\d+]/g, ''))}" aria-label="Позвонить">${UIUtils.ico('phone')}</a>
+            ${isMe ? `<button type="button" class="mb-emerg-del" data-action="emerg-del" data-idx="${i}" aria-label="Удалить"></button>` : ''}
+          </div>`).join('')}
+      </section>`
+      : `<p class="mb-empty">Не указаны</p>`;
+
+    // Порядок по важности: медданные → экстренные контакты → ссылки на
+    // личные разделы → аккаунт (разовая настройка, самая нижняя секция).
     return `
-      <div class="p-card">
-        <div class="p-row"><span class="p-row-lbl">Группа крови</span>${bloodHtml}</div>
-        ${hw ? `<div class="p-row"><span class="p-row-lbl">Рост / Вес</span><span class="p-row-val">${hw}</span></div>` : ''}
-        ${age ? `<div class="p-row"><span class="p-row-lbl">Возраст</span><span class="p-row-val">${age}</span></div>` : ''}
-        ${p.allergies ? `<div class="p-row"><span class="p-row-lbl">Аллергии</span><span class="p-row-val muted">${_esc(p.allergies)}</span></div>` : ''}
-        ${p.conditions ? `<div class="p-row"><span class="p-row-lbl">Хронические</span><span class="p-row-val muted">${_esc(p.conditions)}</span></div>` : ''}
-        ${p.meds ? `<div class="p-row"><span class="p-row-lbl">Постоянные лекарства</span><span class="p-row-val muted">${_esc(p.meds)}</span></div>` : ''}
-        ${p.tickVaccine ? `<div class="p-row"><span class="p-row-lbl">Прививка от клеща</span><span class="p-row-val ${p.tickVaccine==='yes'?'green':p.tickVaccine==='no'?'red':'muted'}">${_esc(TICK_LABELS[p.tickVaccine] || '')}</span></div>` : ''}
-        ${p.swim ? `<div class="p-row"><span class="p-row-lbl">Плавание</span><span class="p-row-val">${_esc(SWIM_LABELS[p.swim] || '')}</span></div>` : ''}
-        ${p.insurance ? `<div class="p-row"><span class="p-row-lbl">Полис ОМС/ДМС</span><span class="p-row-val muted">${_esc(p.insurance)}</span></div>` : ''}
-      </div>
+      <section class="mb-card mb-card--pad">
+        ${bloodHtml}
+        <div class="mb-rows">${rows}</div>
+        <span class="mb-note">Видят все участники поездки — на случай, если что-то случится</span>
+      </section>
 
-      <div class="p-sec-title">Экстренные контакты</div>
+      <h2 class="mb-sec">Экстренные контакты</h2>
       ${emergHtml}
-      ${isMe ? `<div class="p-emerg-add" data-action="emerg-add">+ Добавить контакт</div>` : ''}
+      ${isMe ? `<button type="button" class="mb-text-btn" data-action="emerg-add">+ Добавить контакт</button>` : ''}
+      ${isMe && emergency.length ? `<p class="mb-hint">Нажми на контакт — изменить · смахни влево — удалить</p>` : ''}
 
       ${isMe ? `
-      <div class="p-sec-title">Аккаунт</div>
-      <div class="p-card" style="padding:2px 14px">
-        <div class="p-row" data-action="guide-tabs-personal" style="cursor:pointer">
-          <span class="p-row-lbl">Мои вкладки Гида</span>
-          <span class="p-row-val muted">Настроить <i class="ti ti-chevron-right" style="font-size:12px"></i></span>
-        </div>
-      </div>
-      <div class="p-card" style="padding:2px 14px">${_tabTelegram(p)}</div>
+      <h2 class="mb-sec">Моё в приложении</h2>
+      <section class="mb-card mb-card--links">
+        ${_linkRow('Моя снаряга', 'шаблон и сумки', 'data-action="open-my-gear"')}
+        ${_linkRow('Моя аптечка', 'в поездках', `data-action="open-medkit" data-uid="${_esc(p.uid)}"`)}
+        ${_linkRow('Мои вкладки Гида', 'настроить', 'data-action="guide-tabs-personal"')}
+      </section>
 
-      <div class="p-card p-card--signout" style="padding:2px 14px" data-action="auth-signout">
-        <div class="p-row p-row-danger">
-          <span class="p-row-lbl" style="color:var(--red)">Выйти из аккаунта</span>
-        </div>
-      </div>` : ''}`;
+      <h2 class="mb-sec">Аккаунт</h2>
+      <section class="mb-card mb-card--links">
+        ${_tabTelegram(p)}
+        <button type="button" class="mb-link mb-link--danger" data-action="auth-signout">Выйти из аккаунта</button>
+      </section>` : `
+      <h2 class="mb-sec">В приложении</h2>
+      <section class="mb-card mb-card--links">
+        ${_linkRow('Снаряга', 'посмотреть', 'data-action="profile-gear-view"')}
+        ${_linkRow('Аптечка', 'посмотреть', `data-action="open-medkit" data-uid="${_esc(p.uid)}"`)}
+      </section>`}`;
   }
 
+  function _linkRow(label, val, attrs, valCls) {
+    return `<button type="button" class="mb-link" ${attrs}>
+      <span class="mb-link-lbl">${label}</span>
+      <span class="mb-link-val ${valCls || ''}">${val}${UIUtils.ico('chevron-right')}</span>
+    </button>`;
+  }
 
   const TG_LINK_CODE_TTL_MS = 15 * 60 * 1000;
 
   /* ══════════════════════════════════════════════
-     TELEGRAM-БОТ (привязка аккаунта) — компактная строка внутри карточки
-     данных, не отдельная кнопка: привязывается один раз и почти не
-     трогается дальше, не должна конкурировать по весу с экстренными
-     контактами.
+     TELEGRAM-БОТ (привязка аккаунта) — строка в карточке «Аккаунт»
   ══════════════════════════════════════════════ */
   function _tabTelegram(p) {
     // Привязан
     if (p.telegramId) {
       return `
-      <div class="p-row">
-        <span class="p-row-lbl">✈️ Telegram-бот</span>
-        <span class="p-row-val">${p.telegramUsername ? `@${_esc(p.telegramUsername)}` : 'Привязан'} <span class="p-row-action danger" data-action="tg-unlink">Отвязать</span></span>
+      <div class="mb-link mb-link--static">
+        <span class="mb-link-lbl">Telegram-бот</span>
+        <span class="mb-link-val green">${p.telegramUsername ? `@${_esc(p.telegramUsername)} · ` : ''}привязан
+          <button type="button" class="mb-tg-unlink" data-action="tg-unlink">Отвязать</button></span>
       </div>`;
     }
 
@@ -326,71 +348,94 @@ const MembersRender = (() => {
       <div class="p-tg-code-card">
         <div class="p-tg-code">${_esc(p.telegramLinkCode)}</div>
         <div class="p-tg-code-hint">
-          Отправьте этот код боту
+          Отправь этот код боту
           <a class="p-tg-code-link" href="https://t.me/${TG_BOT_USERNAME}" target="_blank" rel="noopener">@${TG_BOT_USERNAME}</a>
           в течение 15 минут
         </div>
-        <div class="p-tg-cancel" data-action="tg-cancel">Отменить</div>
+        <button type="button" class="p-tg-cancel" data-action="tg-cancel">Отменить</button>
       </div>`;
     }
 
     // Не привязан, кода нет (или протух)
+    return _linkRow('Telegram-бот', 'привязать', 'data-action="tg-link"', 'accent');
+  }
+
+  /* ── Вкладка «Поездки» ──
+     Полная история поездок владельца профиля, независимо от того, участвует
+     ли в них сам смотрящий. Исключение — trip.private: скрыты от всех,
+     кроме тех, кто сам в их memberIds. */
+  function _tripsForProfile(profileUid) {
+    const viewerUid = window.APP?.user?.uid;
+    return (typeof TripsData !== 'undefined' ? TripsData.getAll() : [])
+      .filter(t => (t.memberIds || []).includes(profileUid))
+      .filter(t => !t.private || (t.memberIds || []).includes(viewerUid));
+  }
+
+  function _tripRow(t, past) {
+    const exp = t.type === 'expedition';
+    let status = 'прошла';
+    if (!past) {
+      if (t.status === 'active') status = 'идёт';
+      else {
+        const days = Math.ceil((new Date(t.startDate + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+        status = days <= 0 ? 'сегодня' : days === 1 ? 'завтра' : `через ${days} ${_plural(days, 'день', 'дня', 'дней')}`;
+      }
+    }
     return `
-      <div class="p-row" data-action="tg-link" style="cursor:pointer">
-        <span class="p-row-lbl">✈️ Telegram-бот</span>
-        <span class="p-row-val muted">Привязать ›</span>
-      </div>`;
+      <button type="button" class="mb-trip${past ? ' past' : ''}" data-action="profile-trip-open" data-trip-id="${_esc(t.id)}">
+        <span class="mb-trip-ico ${exp ? 'exp' : 'fish'}">${UIUtils.ico(TripsData.tripIcon(t))}</span>
+        <span class="mb-trip-txt">
+          <span class="mb-trip-name">${_esc(t.name)}</span>
+          <span class="mb-trip-dates">${_fmtRange(t.startDate, t.endDate)}</span>
+        </span>
+        <span class="mb-trip-status">${status}</span>
+      </button>`;
   }
 
-  // Полная история поездок владельца профиля — предстоящие/идущие/
-  // завершённые, независимо от того, участвует ли в них сам смотрящий
-  // (это осознанно: "Мои поездки"/Главная у КАЖДОГО фильтруются по своим
-  // memberIds, чтобы не захламляться чужими компаниями, а тут наоборот —
-  // это же профиль конкретного человека, и видно всё, чем он занимался).
-  // Единственное исключение — поездки с trip.private: они скрыты от всех,
-  // кроме тех, кто сам в их memberIds (см. чекбокс в modules/trips/index.js).
-  function _tabTrips(profileUid) {
-    const trips = _tripsForProfile(profileUid)
+  function _tabTrips(profileUid, isMe) {
+    const trips = _tripsForProfile(profileUid);
+    if (!trips.length) return `<p class="mb-empty">Поездок пока нет</p>`;
+
+    const nExp = trips.filter(t => t.type === 'expedition').length;
+    const nFish = trips.length - nExp;
+    const ahead = trips.filter(t => t.status !== 'done')
+      .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+    const past = trips.filter(t => t.status === 'done')
       .sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    const byYear = {};
+    past.forEach(t => { const y = String(t.startDate || '').slice(0, 4) || '—'; (byYear[y] = byYear[y] || []).push(t); });
 
-    if (!trips.length) {
-      return `<p style="color:var(--label3);font-size:14px;padding:12px 0">Поездок пока нет</p>`;
-    }
+    const parts = [];
+    if (nExp) parts.push(`${nExp} ${_plural(nExp, 'экспедиция', 'экспедиции', 'экспедиций')}`);
+    if (nFish) parts.push(`${nFish} ${_plural(nFish, 'рыбалка', 'рыбалки', 'рыбалок')}`);
 
-    return trips.map(t => `
-      <div class="p-trip-card" data-action="profile-trip-open" data-trip-id="${t.id}">
-        <div class="p-trip-header">
-          <div>
-            <div class="p-trip-name">${t.type === 'expedition' ? '🏔' : '🎣'} ${_esc(t.name)}</div>
-            <div class="p-trip-dates">${_fmtDate(t.startDate)}${t.endDate && t.endDate !== t.startDate ? ' – ' + _fmtDate(t.endDate) : ''}</div>
-          </div>
-          <div class="p-trip-badge">${typeof TripsData !== 'undefined' ? TripsData.statusLabel(t.status) : ''}</div>
-        </div>
-      </div>`).join('');
+    return `
+      <p class="mb-trips-sum">${trips.length} ${_plural(trips.length, 'поездка', 'поездки', 'поездок')} · ${parts.join(', ')}</p>
+      ${ahead.length ? `<span class="mb-cap">Впереди</span><section class="mb-card mb-card--list">${ahead.map(t => _tripRow(t, false)).join('')}</section>` : ''}
+      ${Object.keys(byYear).sort((a, b) => b.localeCompare(a)).map(y => `
+        <span class="mb-cap">${_esc(y)}</span>
+        <section class="mb-card mb-card--list">${byYear[y].map(t => _tripRow(t, true)).join('')}</section>`).join('')}
+      ${!isMe ? `<p class="mb-hint">Видны все поездки, кроме приватных</p>` : ''}`;
   }
 
-  function _tabGear(p, isMe) {
-    const gear = p.gear || [];
-    if (!gear.length) {
-      return `<p style="color:var(--label3);font-size:14px;padding:12px 0">Список снаряги не заполнен</p>
-        ${isMe ? `<div class="p-gear-add" data-action="gear-add">+ Добавить</div>` : ''}`;
-    }
-    return gear.map((g,i) => `
-      <div class="p-gear-item">
-        <span>${_esc(g)}</span>
-        ${isMe ? `<span class="p-emerg-del" data-action="gear-del" data-idx="${i}">×</span>` : ''}
-      </div>`).join('') +
-      (isMe ? `<div class="p-gear-add" data-action="gear-add">+ Добавить</div>` : '');
-  }
-
-  // "Редактировать" — иконка в _profileHeader, "Выйти" — строка в карточке
-  // "Аккаунт" (см. _tabProfile). Тут остаются только действия организатора
-  // над чужим профилем — для isMe этот блок вообще не рендерится.
-  function _profileActions(uid, isOrg, name) {
-    return `<div class="p-actions">
-      <button class="p-btn-edit" data-action="member-add-trip" data-uid="${uid}" data-name="${_esc(name)}">➕ В поездку</button>
-      ${isOrg ? `<button class="p-btn-del" data-action="member-delete" data-uid="${uid}" data-name="${_esc(uid)}">🗑️ Удалить</button>` : ''}
+  // Действия над чужим профилем. «+ В поездку» — тем, кто организует хоть
+  // одну поездку (trip.ownerId). «Удалить» из приложения — только
+  // app-организатору: members/{uid} delete в firestore.rules пока
+  // разрешён только isOrganizer() (глобальная роль), иначе кнопка упадёт.
+  function _profileActions(p, isOrg) {
+    const me = window.APP?.user?.uid;
+    const canAdd = canInvite(me);
+    if (!canAdd && !isOrg) return '';
+    return `<div class="mb-actions${canAdd && isOrg ? '' : ' single'}">
+      ${canAdd ? `<button type="button" class="mb-btn mb-btn--accent" data-action="member-add-trip" data-uid="${_esc(p.uid)}" data-name="${_esc(p.displayName)}">+ В поездку</button>` : ''}
+      ${isOrg ? `<button type="button" class="mb-btn mb-btn--danger" data-action="member-delete" data-uid="${_esc(p.uid)}">Удалить</button>` : ''}
     </div>`;
+  }
+
+  function _bindTab() {
+    // Экстренные контакты: удаление — свайпом влево (кнопка под строкой).
+    const list = document.getElementById('mb-emerg-list');
+    if (list) UIUtils.swipeToDelete(list, '.mb-emerg', '.mb-emerg-del');
   }
 
   function switchTab(tab) {
@@ -401,17 +446,12 @@ const MembersRender = (() => {
     const d = pg._profileData;
     if (!d) return;
 
-    // При уходе с вкладки аптечки — восстанавливаем оригинальный #p-medkit
-    const hidden = document.getElementById('p-medkit-hidden');
-    if (hidden) hidden.id = 'p-medkit';
-
-    // При уходе с "Покупки" — снимаем подписку на Firestore, иначе она
-    // продолжает висеть даже после того, как контейнер #pur-list уже удалён
-    // следующим рендером.
+    // При уходе с "Покупки" — снимаем подписку на Firestore.
     if (prevTab === 'purchases' && typeof PurchasesRender !== 'undefined') PurchasesRender.destroy();
 
-    pg.querySelectorAll('.p-stab').forEach(b => {
+    pg.querySelectorAll('.mb-seg-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.tab === tab);
+      b.setAttribute('aria-selected', b.dataset.tab === tab);
     });
 
     const content = document.getElementById('profile-tab-content');
@@ -419,10 +459,13 @@ const MembersRender = (() => {
 
     if (tab === 'profile') {
       content.innerHTML = _tabProfile(d.profile, d.isMe);
+      _bindTab();
     } else if (tab === 'trips') {
-      content.innerHTML = _tabTrips(d.profile.uid);
+      content.innerHTML = _tabTrips(d.profile.uid, d.isMe);
     } else if (tab === 'gear') {
-      content.innerHTML = '<div id="gear-tab-container"></div>';
+      // Снаряга чужого человека — на просмотр, прямо в профиле (своя
+      // открывается полноценным разделом «Снаряга», см. open-my-gear).
+      content.innerHTML = `<button type="button" class="mb-text-btn" data-action="profile-tab" data-tab="profile">${UIUtils.ico('chevron-left')} Здоровье</button><div id="gear-tab-container"></div>`;
       if (typeof GearModule !== 'undefined') {
         GearModule.init(d.profile.uid, d.isMe, document.getElementById('gear-tab-container'));
       }
@@ -431,31 +474,17 @@ const MembersRender = (() => {
       if (typeof PurchasesRender !== 'undefined') {
         PurchasesRender.init(d.profile.uid, document.getElementById('pur-tab-container'));
       }
-    } else if (tab === 'medkit') {
-      // Рендерим inline — шапка профиля остаётся, меняется только контент
-      content.innerHTML = '<div id="p-medkit-inline"></div>';
-
-      // Скрываем оригинальный #p-medkit и даём наш inline-контейнер то же имя
-      const orig = document.getElementById('p-medkit');
-      if (orig) orig.id = 'p-medkit-hidden';
-      document.getElementById('p-medkit-inline').id = 'p-medkit';
-
-      // Рендерим через реальную точку входа аптечки: rMedkit() рендерит
-      // в #p-medkit по глобальному состоянию medkitMode/medkitMemberId
-      // (MedkitIndex нигде в проекте не существует)
-      if (typeof setMedkitMode === 'function') setMedkitMode('personal');
-      if (typeof setMedkitMember === 'function') setMedkitMember(d.profile.uid);
-      else if (typeof rMedkit === 'function') rMedkit();
-
-      // Убираем собственный топбар аптечки — он дублирует шапку профиля
-      document.getElementById('p-medkit')?.querySelector('.topbar')?.remove();
-
-      // НЕ восстанавливаем id — пусть #p-medkit остаётся на inline-контейнере
-      // пока активна эта вкладка. Восстановление происходит при следующем switchTab
     }
   }
 
-  function _closeProfile() { MembersModule.init(); }
+  // Аптечка человека — настоящий раздел «Аптечка» в личном режиме на его
+  // uid (чужая — только просмотр, это решает сама аптечка: _canEditMedkit).
+  function openMedkit(uid) {
+    if (typeof onNavigate === 'function') onNavigate('medkit');
+    else if (typeof AppRouter !== 'undefined') AppRouter.show('medkit');
+    if (typeof setMedkitMember === 'function') setMedkitMember(uid);
+    if (typeof setMedkitMode === 'function') setMedkitMode('personal');
+  }
 
   /* ══════════════════════════════════════════════
      INVITE
@@ -467,35 +496,39 @@ const MembersRender = (() => {
     const desc = tripId
       ? 'Отправь ссылку — человек войдёт через Google или email и сразу попадёт в эту поездку.'
       : 'Отправь ссылку — участник войдёт через Google или email и появится в списке.';
+    document.getElementById('invite-overlay')?.remove();
     const overlay = document.createElement('div');
     overlay.className = 'profile-overlay';
     overlay.id = 'invite-overlay';
     overlay.innerHTML = `
       <div class="profile-sheet">
         <div class="profile-grab"></div>
-        <div class="profile-scroll">
-          <div class="modal-title" style="margin-bottom:8px">${_esc(title)}</div>
-          <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
-            ${_esc(desc)}
-          </p>
+        <div class="profile-scroll mb-sheet">
+          <div class="mb-sheet-title">${_esc(title)}</div>
+          <p class="mb-sheet-desc">${_esc(desc)}</p>
 
-          <div class="invite-email-label">Email человека — чтобы разрешить ему регистрацию</div>
-          <input type="email" class="invite-email-input" id="invite-email-input" placeholder="friend@example.com" autocomplete="off">
-          <button class="action-btn" data-action="invite-allow-email">Разрешить регистрацию</button>
+          <div class="mb-inv-link">
+            <span class="mb-inv-url">${_esc(url)}</span>
+            <button type="button" class="mb-inv-copy" data-action="invite-copy">Скопировать</button>
+          </div>
+          <button type="button" class="mb-text-btn" data-action="invite-qr">Показать QR-код</button>
+          <div class="invite-qr-wrap" id="invite-qr-wrap" hidden></div>
+
+          <div class="mb-inv-h">Email человека</div>
+          <div class="mb-inv-sub">чтобы разрешить ему регистрацию</div>
+          <input type="email" class="mb-input" id="invite-email-input" placeholder="friend@example.com" autocomplete="off">
+          <button type="button" class="mb-btn mb-btn--outline" data-action="invite-allow-email">Разрешить регистрацию</button>
           <div class="invite-email-status" id="invite-email-status"></div>
 
-          <div class="invite-url-field">
-            <span class="invite-url-text">${_esc(url)}</span>
-            <button class="invite-url-copy" data-action="invite-copy" title="Скопировать ссылку">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-            </button>
-          </div>
+          ${tripId && typeof TripsData !== 'undefined' ? `
+          <div class="mb-inv-guest">
+            <div class="mb-inv-h">Или гость без приложения</div>
+            <input type="text" class="mb-input" id="invite-guest-input" placeholder="Имя гостя или несколько через запятую" autocomplete="off">
+            <button type="button" class="mb-btn mb-btn--outline" data-action="invite-add-guest">Добавить гостя</button>
+            <div class="invite-email-status" id="invite-guest-status"></div>
+          </div>` : ''}
 
-          <div class="invite-qr-wrap">
-            <img class="invite-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}" alt="QR-код приглашения" width="150" height="150">
-          </div>
-
-          <button class="picker-cancel" data-action="invite-close">Закрыть</button>
+          <button type="button" class="picker-cancel" data-action="invite-close">Закрыть</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -506,9 +539,14 @@ const MembersRender = (() => {
       if (a === 'invite-copy') {
         navigator.clipboard?.writeText(url).catch(()=>{});
         const btn = overlay.querySelector('[data-action="invite-copy"]');
-        if (btn) {
-          btn.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-          btn.classList.add('copied');
+        if (btn) { btn.textContent = 'Скопировано'; btn.classList.add('copied'); }
+      }
+      if (a === 'invite-qr') {
+        // QR грузится со стороннего сервиса — только по запросу, не сразу.
+        const wrap = overlay.querySelector('#invite-qr-wrap');
+        if (wrap) {
+          if (!wrap.innerHTML) wrap.innerHTML = `<img class="invite-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}" alt="QR-код приглашения" width="150" height="150">`;
+          wrap.hidden = !wrap.hidden;
         }
       }
       if (a === 'invite-allow-email') {
@@ -517,7 +555,19 @@ const MembersRender = (() => {
         const email  = input?.value.trim();
         if (!email) return;
         MembersFirebase.addInvite(email).then(() => {
-          if (status) status.textContent = `✓ ${email} теперь может зарегистрироваться`;
+          if (status) status.innerHTML = `${UIUtils.ico('check')} ${_esc(email)} теперь может зарегистрироваться`;
+          if (input) input.value = '';
+        }).catch(() => {
+          if (status) status.textContent = 'Не получилось — попробуй ещё раз';
+        });
+      }
+      if (a === 'invite-add-guest') {
+        const input  = overlay.querySelector('#invite-guest-input');
+        const status = overlay.querySelector('#invite-guest-status');
+        const names  = UIUtils.splitNames(input?.value);
+        if (!names.length) return;
+        TripsData.addGuestNames(tripId, names).then(() => {
+          if (status) status.innerHTML = `${UIUtils.ico('check')} Добавлено: ${_esc(names.join(', '))}`;
           if (input) input.value = '';
         }).catch(() => {
           if (status) status.textContent = 'Не получилось — попробуй ещё раз';
@@ -531,24 +581,27 @@ const MembersRender = (() => {
      (пикер прямо с его профиля — без ссылки, uid уже известен)
   ══════════════════════════════════════════════ */
   function showTripPicker(uid, name) {
-    // Список — только поездки, где сам смотрящий (организатор, который
-    // добавляет человека) уже участник: добавить куда-то ещё нельзя, там
-    // просто негде взять на это право.
-    const trips = (typeof TripsData !== 'undefined' ? TripsData.getMine(window.APP?.user?.uid) : [])
+    // Только незавершённые поездки, где смотрящий участник и может
+    // приглашать: организатор (ownerId) или приглашения не ограничены.
+    const me = window.APP?.user?.uid;
+    const trips = (typeof TripsData !== 'undefined' ? TripsData.getMine(me) : [])
       .filter(t => t.status !== 'done')
+      .filter(t => TripsData.canManage(t) || !t.inviteRestricted)
       .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
 
     const rows = trips.length ? trips.map(t => {
       const already = (t.memberIds || []).includes(uid);
+      const exp = t.type === 'expedition';
       return `
-        <div class="trip-pick-row" data-action="${already ? '' : 'trip-pick-select'}" data-trip-id="${t.id}">
-          <div>
-            <div class="trip-pick-name">${_esc(t.name)}</div>
-            <div class="trip-pick-dates">${_fmtDate(t.startDate)} – ${_fmtDate(t.endDate)}</div>
-          </div>
-          <div class="trip-pick-status">${already ? '✓ уже там' : ''}</div>
+        <div class="mb-trip trip-pick-row"${already ? '' : ' data-action="trip-pick-select"'} data-trip-id="${_esc(t.id)}">
+          <span class="mb-trip-ico ${exp ? 'exp' : 'fish'}">${UIUtils.ico(TripsData.tripIcon(t))}</span>
+          <span class="mb-trip-txt">
+            <span class="mb-trip-name">${_esc(t.name)}</span>
+            <span class="mb-trip-dates">${_fmtRange(t.startDate, t.endDate)}</span>
+          </span>
+          <span class="mb-trip-status">${already ? UIUtils.ico('check') + ' уже там' : ''}</span>
         </div>`;
-    }).join('') : `<div style="padding:16px 0;color:var(--label3);font-size:14px;text-align:center">Нет открытых поездок</div>`;
+    }).join('') : `<p class="mb-empty">Нет открытых поездок, куда ты можешь добавлять людей</p>`;
 
     document.getElementById('trip-pick-overlay')?.remove();
     const overlay = document.createElement('div');
@@ -557,10 +610,10 @@ const MembersRender = (() => {
     overlay.innerHTML = `
       <div class="profile-sheet">
         <div class="profile-grab"></div>
-        <div class="profile-scroll">
-          <div class="modal-title" style="margin-bottom:8px">Добавить ${_esc(name || 'участника')} в поездку</div>
-          <div class="trip-pick-list">${rows}</div>
-          <button class="picker-cancel" data-action="trip-pick-close">Закрыть</button>
+        <div class="profile-scroll mb-sheet">
+          <div class="mb-sheet-title">Добавить ${_esc(name || 'участника')} в поездку</div>
+          <section class="mb-card mb-card--list trip-pick-list">${rows}</section>
+          <button type="button" class="picker-cancel" data-action="trip-pick-close">Закрыть</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -577,20 +630,48 @@ const MembersRender = (() => {
   }
 
   /* ── Helpers ── */
-  function _fmtDate(d) {
-    try { return new Date(d).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }); }
-    catch (e) { return d; }
+  const MONTHS_GEN = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  // «12–19 сентября», «28 сентября – 4 октября», «29 августа»
+  function _fmtRange(s, e) {
+    const a = new Date(String(s) + 'T00:00:00');
+    if (isNaN(a)) return _esc(s || '');
+    const b = e ? new Date(String(e) + 'T00:00:00') : a;
+    if (isNaN(b) || +b === +a) return `${a.getDate()} ${MONTHS_GEN[a.getMonth()]}`;
+    if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) {
+      return `${a.getDate()}–${b.getDate()} ${MONTHS_GEN[a.getMonth()]}`;
+    }
+    return `${a.getDate()} ${MONTHS_GEN[a.getMonth()]} – ${b.getDate()} ${MONTHS_GEN[b.getMonth()]}`;
   }
-  function _ageWord(n) {
-    const mod10 = n % 10, mod100 = n % 100;
-    if (mod10 === 1 && mod100 !== 11) return 'год';
-    if ([2,3,4].includes(mod10) && ![12,13,14].includes(mod100)) return 'года';
-    return 'лет';
+
+  function _plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
   }
+
+  // Полная дата (с годом) для сроков действия документов. Тот же принцип
+  // подсветки "скоро истекает", что и у дат в Инфо поездки
+  // (modules/tripcover/index.js:_passportStatus).
+  const _PASSPORT_WARN_DAYS = 90;
+  function _passportDateRu(date) {
+    if (!date) return '';
+    const d = new Date(date + 'T00:00:00');
+    return isNaN(d) ? _esc(date) : d.toLocaleDateString('ru');
+  }
+  function _passportDateCls(date) {
+    if (!date) return '';
+    const today = new Date().toISOString().slice(0, 10);
+    if (date < today) return 'red';
+    const warnBy = new Date(today);
+    warnBy.setDate(warnBy.getDate() + _PASSPORT_WARN_DAYS);
+    return date <= warnBy.toISOString().slice(0, 10) ? 'warn' : '';
+  }
+  function _ageWord(n) { return _plural(n, 'год', 'года', 'лет'); }
 
   function _esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
   }
 
-  return { renderList, showProfile, switchTab, showInvite, showTripPicker };
+  return { renderList, showProfile, switchTab, showInvite, showTripPicker, openMedkit, canInvite, initials, avatarInner };
 })();

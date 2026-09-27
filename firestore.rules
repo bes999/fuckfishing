@@ -54,9 +54,16 @@ service cloud.firestore {
       // Первый человек в пустой базе (system/bootstrap ещё не существует)
       // может пройти онбординг без приглашения — иначе бутстрап приложения
       // с нуля невозможен вообще никак через UI.
+      // Роль 'organizer' (суперадмин) при создании — только самому первому
+      // человеку в пустой базе, иначе любой приглашённый выдал бы её себе.
       allow create: if isSignedIn() && request.auth.uid == uid &&
-        (isInvited() || !exists(/databases/$(database)/documents/system/bootstrap));
-      allow update: if isMember() && (request.auth.uid == uid || isOrganizer());
+        (isInvited() || !exists(/databases/$(database)/documents/system/bootstrap)) &&
+        (request.resource.data.get('role', 'member') != 'organizer' ||
+         !exists(/databases/$(database)/documents/system/bootstrap));
+      // Свой профиль правит сам, но не свою роль — её меняет только суперадмин.
+      allow update: if isMember() && (isOrganizer() ||
+        (request.auth.uid == uid &&
+         request.resource.data.get('role', 'member') == resource.data.get('role', 'member')));
       allow delete: if isMember() && isOrganizer();
     }
 
@@ -75,7 +82,7 @@ service cloud.firestore {
       // спрятать не значит запретить: без этого правила любой участник
       // всё ещё мог бы удалить чужую поездку напрямую через API/консоль).
       allow create, update: if isMember();
-      allow delete: if isMember() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isMember() && (resource.data.ownerId == request.auth.uid || isOrganizer());
 
       // Удалить чужую запись расхода/улова может только организатор ЭТОЙ
       // поездки — свою запись (createdBy == себя) может удалить любой.
@@ -84,17 +91,33 @@ service cloud.firestore {
       match /expenses/{docId} {
         allow read, create, update: if isMember();
         allow delete: if isMember() &&
-          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId));
+          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId) || isOrganizer());
       }
       match /catches/{docId} {
         allow read, create, update: if isMember();
         allow delete: if isMember() &&
-          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId));
+          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId) || isOrganizer());
       }
+      // Личная заметка (private: true) реально видна только автору — read
+      // и update отфильтрованы по resource.data, а не просто скрыты в UI.
+      // Второе условие на update не даёт постороннему молча спрятать ЧУЖУЮ
+      // публичную заметку, проставив private:true — поле private может
+      // менять только автор, остальные поля (pin/задача/готово) — любой
+      // участник, как и раньше.
+      // ВАЖНО: обязательно .get('private', false), а не resource.data.private
+      // — у заметок, созданных до этой фичи, поля private вообще нет, а
+      // прямое обращение к отсутствующему полю кидает ошибку evaluation,
+      // из-за которой падает ВЕСЬ realtime-listener списка заметок (не
+      // только у одного документа) — воспроизвели это вживую 2026-09-23.
       match /notes/{docId} {
-        allow read, create, update: if isMember();
+        allow read: if isMember() &&
+          (resource.data.get('private', false) != true || resource.data.createdBy == request.auth.uid);
+        allow update: if isMember() &&
+          (resource.data.get('private', false) != true || resource.data.createdBy == request.auth.uid) &&
+          (request.resource.data.get('private', false) == resource.data.get('private', false) || resource.data.createdBy == request.auth.uid);
+        allow create: if isMember();
         allow delete: if isMember() &&
-          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId));
+          (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId) || isOrganizer());
       }
 
       // Firestore объединяет правила из ВСЕХ подходящих match-блоков через

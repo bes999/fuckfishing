@@ -34,7 +34,7 @@ const AppHeader = (() => {
   const TRIP_ITEMS = [
     { id: 'guide',    label: 'Гид',          icon: 'ti-map-2' },
     { id: 'members',  label: 'Участники',    icon: 'ti-users' },
-    { id: 'rivers',   label: 'Реки',         icon: 'ti-droplet' },
+    { id: 'rivers',   label: 'Места',         icon: 'ti-droplet' },
     { id: 'menu',     label: 'Меню',         icon: 'ti-clipboard-list' },
     { id: 'catches',  label: 'Улов',         icon: 'ti-fish' },
     { id: 'expenses', label: 'Расходы',      icon: 'ti-credit-card' },
@@ -159,7 +159,7 @@ const AppHeader = (() => {
     const profile = window.APP?.profile;
     const name    = profile?.displayName || window.APP?.user?.email || 'Рыбак';
     const avatar  = profile?.avatar || '';
-    const initials = (name[0] || '?').toUpperCase();
+    const initials = UIUtils.initials(name, profile?.nickname);
     return { name, avatar, initials };
   }
 
@@ -211,6 +211,10 @@ const AppHeader = (() => {
         </div>
       </div>
       <div class="ah-drawer-body">
+        <div class="ah-drawer-group-label">Поездка${tripName ? ' — ' + _esc(tripName) : ''}</div>
+        ${tripId
+          ? tripItems.map(_itemHtml).join('')
+          : `<div class="ah-drawer-hint">Открой поездку на вкладке «Планы», чтобы увидеть Гид, Места, Меню и другие разделы</div>`}
         <div class="ah-drawer-group-label ah-drawer-group-label--toggle" data-action="ah-toggle-personal">
           <span>Личное</span>
           <i class="ti ${_personalCollapsed() ? 'ti-chevron-down' : 'ti-chevron-up'}" id="ah-personal-chevron"></i>
@@ -218,10 +222,6 @@ const AppHeader = (() => {
         <div class="ah-drawer-personal-items" id="ah-personal-items" ${_personalCollapsed() ? 'hidden' : ''}>
           ${PERSONAL_ITEMS.map(_itemHtml).join('')}
         </div>
-        <div class="ah-drawer-group-label">Поездка${tripName ? ' — ' + _esc(tripName) : ''}</div>
-        ${tripId
-          ? tripItems.map(_itemHtml).join('')
-          : `<div class="ah-drawer-hint">Открой поездку на вкладке «Поездки», чтобы увидеть Гид, Реки, Меню и другие разделы</div>`}
       </div>`;
 
     document.body.appendChild(overlay);
@@ -291,5 +291,5 @@ const AppHeader = (() => {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
   }
 
-  return { init, render, closeDrawer };
+  return { init, render, closeDrawer, toggleTheme: _toggleTheme };
 })();

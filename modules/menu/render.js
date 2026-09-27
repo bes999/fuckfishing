@@ -5,16 +5,65 @@ const MenuRender = (() => {
   let _el      = null;
   let _tripId  = null;
   let _days    = [];
-  let _openDays   = new Set();
-  let _editMeals  = new Set(); // 'dayId_mealId'
+  // Выбранный в полосе дней день. Сбрасывается на "сегодня" (или первый
+  // день поездки) только при открытии Меню для другой поездки — снапшоты
+  // из Firestore не должны уводить пользователя с дня, который он смотрит.
+  let _selDayId      = null;
+  let _selForTrip    = null;
+  let _attCollapsed  = false; // "свернуть" у карточки "Кто ест" — локально, на сессию
 
   // Названия блюд идут из свободного текста (своих рецептов, см.
-  // modules/recipes/render.js #rec-add-name) и попадают сюда через
-  // innerHTML — без экранирования кавычка в названии рецепта ломает
-  // атрибут (data-name и т.п.) и внедряет произвольный HTML/обработчик.
+  // modules/recipes/render.js #rec-add-name, и "своих блюд" из пикера) и
+  // попадают сюда через innerHTML — без экранирования кавычка в названии
+  // ломает атрибут (data-name и т.п.) и внедряет произвольный HTML.
   function _esc(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+
+  // Иконок поиска и замены нет в урезанном шрифте Tabler (shared/fonts) —
+  // рисуем inline-SVG тем же штрихом, что и макет.
+  const SVG_SEARCH = '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>';
+  const SVG_SWAP   = '<path d="M4 8h13l-3-3M20 16H7l3 3"/>';
+  function _svgIco(paths) {
+    return `<svg class="mn-svg-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  }
+
+  // ── Даты ────────────────────────────────────────────────────────────────
+  const WD_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+  const WD_LONG  = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+  const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
+                      'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+
+  // day.date — 'YYYY-MM-DD'. Парсим как локальную дату, а не через
+  // new Date(iso) (тот читает строку как UTC-полночь и в западных поясах
+  // съезжает на день назад).
+  function _parseISO(iso) {
+    const [y, m, d] = String(iso || '').split('-').map(Number);
+    return new Date(y, (m || 1) - 1, d || 1);
+  }
+  function _todayISO() {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  }
+  // "пятница, 18 сентября"
+  function _dayLong(day) {
+    if (!day?.date) return day?.label || '';
+    const d = _parseISO(day.date);
+    return `${WD_LONG[d.getDay()]}, ${d.getDate()} ${MONTHS_GEN[d.getMonth()]}`;
+  }
+  // "Пятница, 18 сентября"
+  function _dayTitle(day) {
+    const s = _dayLong(day);
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  // Свежие данные — после снапшота Firestore MenuState держит уже НОВЫЙ
+  // массив days, а замкнутые в обработчиках ссылки на старые объекты дня/
+  // приёма устаревают. Всё, что пишет, читает через эти хелперы.
+  function _curDays() { return MenuState.getDays(_tripId) || _days; }
+  function _findDay(dayId) { return _curDays().find(d => d.id === dayId) || null; }
+  function _findMeal(dayId, mealId) { return _findDay(dayId)?.meals?.[mealId] || null; }
+  function _trip() { return typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null; }
 
   // Кэш профилей участников (для аллергий в Cook Mode) — тот же паттерн
   // TTL-кэша поверх разового MembersFirebase.getAllMembers(), что уже
@@ -30,6 +79,11 @@ const MenuRender = (() => {
   // Держим id текущего открытого приёма и перерисовываем overlay заново,
   // когда кэш догружается — та же идея, что rMedkit() в medkit/render.js.
   let _cookModeOpenFor = null;
+  // Отмеченные в Cook Mode продукты — локально, не синхронизируется (см.
+  // _showCookMode). Вынесено из overlay, чтобы перерисовка (догрузились
+  // аллергии, назначили уборку прямо из режима готовки) не сбрасывала
+  // уже поставленные галочки.
+  let _cmChecked = new Set();
   function _getMembersCached() {
     const stale = !_membersCache || (Date.now() - _membersFetchedAt) > MEMBERS_CACHE_TTL_MS;
     if (stale && !_membersLoading && typeof MembersFirebase !== 'undefined') {
@@ -49,7 +103,7 @@ const MenuRender = (() => {
   // человека, который в итоге не пришёл на этот приём, чем один раз не
   // показать того, кто пришёл.
   function _allergyWarnings() {
-    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const trip = _trip();
     const byUid = new Map(_getMembersCached().map(m => [m.uid, m]));
     return (trip?.participants || [])
       .map(p => byUid.get(p.uid))
@@ -57,67 +111,35 @@ const MenuRender = (() => {
       .map(m => ({ name: m.displayName || 'Участник', allergies: m.allergies }));
   }
 
+  // ── Каркас ──────────────────────────────────────────────────────────────
   function render(el, tripId) {
     _el     = el;
     _tripId = tripId;
     if (!el) return;
+    if (_selForTrip !== tripId) { _selDayId = null; _selForTrip = tripId; }
+    _ensureSelectedDay();
     el.innerHTML = `
       <div class="mn-wrap">
         ${_topbar()}
-        <div id="mn-attendance-toggle">${_attendanceToggleRow()}</div>
-        <div id="mn-today">${_todayBlock()}</div>
-        <div class="mn-days" id="mn-days">${_renderDays()}</div>
+        <div id="mn-strip-wrap">${_renderStrip()}</div>
+        <div class="mn-day" id="mn-day">${_renderDayView()}</div>
       </div>`;
     _bindEvents();
+    _centerSelectedInStrip();
   }
 
-  // Явка — опциональная (trip.attendanceEnabled), по умолчанию выключена:
-  // тот же паттерн, что trip.inviteRestricted — простой булев флаг прямо
-  // на документе поездки. Пользователь явно попросил именно "включать по
-  // надобности", а не всегда — маленькие компании обычно и так знают, кто
-  // где, и не хотят полдня отмечаться в приложении.
-  function _attendanceToggleRow() {
-    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
-    const on = !!trip?.attendanceEnabled;
-    return `
-      <div class="mn-att-toggle-row" data-action="toggle-attendance-enabled">
-        <i class="ti ti-users" aria-hidden="true"></i>
-        <span>Явка на приёмы пищи</span>
-        <span class="mn-att-toggle-state ${on ? 'on' : ''}">${on ? 'включена' : 'выключена'}</span>
-      </div>`;
-  }
-
-  // Карточка "Меню на сегодня" — без неё, чтобы посмотреть, что готовить
-  // сегодня, приходилось скроллить весь список дней поездки сверху вниз.
-  // Только для чтения (глазами, а не пальцем) — редактирование остаётся в
-  // самом списке дней ниже, там уже есть вся логика пикеров/слотов, дублировать
-  // её здесь с теми же data-day/data-meal id было бы riskier (два DOM-узла на
-  // один и тот же id путают _rerenderDay при точечном обновлении).
-  function _todayBlock() {
-    const todayISO = new Date().toISOString().slice(0, 10);
-    const day = _days.find(d => d.date === todayISO);
-    if (!day) return '';
-
-    const rows = MenuData.getMeals().map(m => {
-      const slots  = (day.meals[m.id] && day.meals[m.id].slots) || [];
-      const filled = slots.filter(s => s.item);
-      if (!filled.length) return '';
-      const items = filled.map(s => _esc(s.item.name)).join(', ');
-      return `<div class="mn-today-row"><span class="mn-today-meal">${m.label}</span><span class="mn-today-items">${items}</span></div>`;
-    }).join('');
-
-    return `
-      <div class="mn-today-card" data-action="jump-today" data-day="${day.id}">
-        <div class="mn-today-hd">
-          <span class="mn-today-badge">Сегодня</span>
-          <span class="mn-today-date">${day.label}</span>
-        </div>
-        ${rows || '<div class="mn-today-empty">Меню на сегодня ещё не заполнено</div>'}
-      </div>`;
+  // Меню открывается на сегодняшнем дне, если сегодня внутри дат поездки
+  // (отдельная карточка "Меню на сегодня" больше не нужна), иначе — на
+  // первом дне. Если выбранного дня больше нет (даты поездки поменяли) —
+  // та же логика заново.
+  function _ensureSelectedDay() {
+    if (_selDayId && _days.some(d => d.id === _selDayId)) return;
+    const today = _days.find(d => d.date === _todayISO());
+    _selDayId = (today || _days[0])?.id || null;
   }
 
   function _topbar() {
-    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const trip = _trip();
     const sub  = trip ? `${trip.name} · ${_days.length} дней` : '';
     return `
       <div class="mn-topbar">
@@ -128,188 +150,249 @@ const MenuRender = (() => {
         </button>
         <div class="mn-topbar__text">
           <div class="mn-topbar__title">Меню</div>
-          ${sub ? `<div class="mn-topbar__sub">${sub}</div>` : ''}
+          ${sub ? `<div class="mn-topbar__sub">${_esc(sub)}</div>` : ''}
         </div>
       </div>`;
   }
 
-  function _renderDays() {
+  // ── Полоса дней ─────────────────────────────────────────────────────────
+  // День недели + число + точка заполненности (зелёная — всё выбрано,
+  // голубая — частично, без точки — пусто). Сегодня — акцентный день
+  // недели, выбранный — залитый акцентом.
+  function _renderStrip() {
+    if (!_days.length) return '';
+    const todayISO = _todayISO();
+    const btns = _days.map(day => {
+      const d = _parseISO(day.date);
+      const on = day.id === _selDayId;
+      const status = MenuState.getDayStatus(_tripId, day.id);
+      const cls = ['mn-strip-day', on ? 'on' : '', day.date === todayISO ? 'today' : ''].filter(Boolean).join(' ');
+      return `
+        <button type="button" class="${cls}" data-action="select-day" data-day="${day.id}"
+          aria-pressed="${on ? 'true' : 'false'}" aria-label="${_esc(_dayLong(day))}">
+          <span class="mn-strip-wd">${WD_SHORT[d.getDay()]}</span>
+          <span class="mn-strip-num">${d.getDate()}</span>
+          <span class="mn-strip-dot ${status}"></span>
+        </button>`;
+    }).join('');
+    return `<div class="mn-strip" id="mn-strip">${btns}</div>`;
+  }
+
+  function _centerSelectedInStrip() {
+    const strip = _el?.querySelector('#mn-strip');
+    const btn = strip?.querySelector('.mn-strip-day.on');
+    if (!strip || !btn) return;
+    strip.scrollLeft = Math.max(0, btn.offsetLeft - strip.clientWidth / 2 + btn.offsetWidth / 2);
+  }
+
+  // ── Выбранный день ──────────────────────────────────────────────────────
+  function _renderDayView() {
     if (!_days.length) return `
       <div class="mn-empty">
-        <div class="mn-empty__icon">🍽️</div>
+        <div class="mn-empty__icon">${UIUtils.ico('tools-kitchen-2')}</div>
         <div class="mn-empty__title">Дней пока нет</div>
         <div class="mn-empty__sub">Меню появится, когда у поездки будут известны даты</div>
       </div>`;
-    return _days.map(day => _renderDay(day)).join('');
-  }
 
-  function _renderDay(day) {
-    const isOpen   = _openDays.has(day.id);
-    const status   = MenuState.getDayStatus(_tripId, day.id);
-    const numClass = status === 'done' ? 'done' : status === 'partial' ? 'partial' : 'empty';
+    const day = _days.find(d => d.id === _selDayId) || _days[0];
+    const trip = _trip();
+    const isToday = day.date === _todayISO();
+    const hasAny = MenuData.getMeals().some(m => (day.meals[m.id]?.slots || []).some(s => s.item));
 
-    const dots = MenuData.getMeals().map(m => {
-      const slots = day.meals[m.id]?.slots || [];
-      const filled = slots.filter(s => s.item).length;
-      const cls = filled === slots.length && slots.length ? 'filled' : filled > 0 ? 'partial' : '';
-      return `<div class="mn-dot ${cls}"></div>`;
-    }).join('');
+    const head = `
+      <div class="mn-day-head">
+        <div class="mn-day-head__text">
+          <span class="mn-day-eyebrow ${isToday ? 'today' : ''}">${isToday ? 'Сегодня' : `День ${day.num} из ${_days.length}`}</span>
+          <span class="mn-day-title">${_esc(_dayTitle(day))}</span>
+        </div>
+        ${hasAny ? `
+        <button type="button" class="mn-day-cart" data-action="push-day" data-day="${day.id}"
+          aria-label="Ингредиенты всего дня — в закупку" title="Ингредиенты всего дня — в закупку">
+          ${UIUtils.ico('shopping-cart')}
+        </button>` : ''}
+      </div>`;
 
-    const preview = !isOpen ? _dayPreview(day) : '';
+    const attendance = trip?.attendanceEnabled ? _renderAttendanceCard(day, trip) : '';
+    const meals = MenuData.getMeals().map(m => _renderMeal(day, m)).join('');
 
     return `
-      <div class="mn-day-card ${isOpen ? 'open' : ''}" data-day-id="${day.id}">
-        <div class="mn-day-row" data-action="toggle-day" data-day="${day.id}">
-          <div class="mn-day-num ${numClass}">${day.num}</div>
-          <div class="mn-day-info">
-            <div class="mn-day-date">${day.label}</div>
-            ${preview ? `<div class="mn-day-preview">${preview}</div>` : ''}
-          </div>
-          <div class="mn-day-right">
-            <div class="mn-dots">${dots}</div>
-            <i class="ti ti-chevron-${isOpen ? 'up' : 'down'} mn-chev" aria-hidden="true"></i>
-          </div>
-        </div>
-        ${isOpen ? _renderDayBody(day) : ''}
-      </div>`;
+      ${head}
+      ${attendance}
+      ${meals}
+      ${_attendanceToggleRow()}
+      <div class="mn-hint">Нажми на блюдо — рецепт, в закупку, заменить или убрать</div>`;
   }
 
-  function _dayPreview(day) {
-    const meals = MenuData.getMeals();
-    const parts = [];
-    meals.forEach(m => {
-      const slots = day.meals[m.id]?.slots || [];
-      const mainSlot = slots.find(s => s.type === 'main' && s.item);
-      if (mainSlot) parts.push(`${m.label}: ${_esc(mainSlot.item.name)}`);
-    });
-    if (!parts.length) return 'Не заполнено';
-    return parts.slice(0, 2).join(' · ');
+  // Явка — опциональная (trip.attendanceEnabled), по умолчанию выключена:
+  // тот же паттерн, что trip.inviteRestricted — простой булев флаг прямо
+  // на документе поездки. Пользователь явно попросил именно "включать по
+  // надобности", а не всегда — маленькие компании обычно и так знают, кто
+  // где, и не хотят полдня отмечаться в приложении.
+  function _attendanceToggleRow() {
+    const on = !!_trip()?.attendanceEnabled;
+    return `
+      <button type="button" class="mn-att-toggle" data-action="toggle-attendance-enabled"
+        role="switch" aria-checked="${on ? 'true' : 'false'}">
+        <span class="mn-att-toggle__text">
+          <span class="mn-att-toggle__title">Явка на приёмы пищи</span>
+          <span class="mn-att-toggle__sub">отмечать, кто ест, — чтобы знать, на сколько готовить</span>
+        </span>
+        <span class="mn-switch ${on ? 'on' : ''}" aria-hidden="true"><span></span></span>
+      </button>`;
   }
 
-  function _renderDayBody(day) {
-    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
-    const attendance = trip?.attendanceEnabled ? _renderAttendanceMatrix(day, trip) : '';
-    const meals = MenuData.getMeals().map(m => _renderMeal(day, m)).join('');
-    return `<div class="mn-day-body">${attendance}${meals}</div>`;
-  }
+  // Матрица явки: участник × приём пищи, круглый чек-бокс на пересечении.
+  // Компактнее, чем отдельный тоггл на весь день — видно, кто на месте к
+  // какому конкретно приёму (кто-то уезжает на рыбалку с утра и пропускает
+  // обед), а не только "тут/не тут" в целом.
+  const _MEAL_SHORT = { breakfast: 'Зав', snack: 'Пер', lunch: 'Обед', dinner: 'Ужин' };
 
-  // Матрица явки: участник × приём пищи, чек-бокс на пересечении. Компактнее
-  // чем отдельный тоггл на весь день — можно сразу увидеть, кто на месте
-  // к какому конкретно приёму (кто-то уезжает на рыбалку с утра и
-  // пропускает обед), а не только "тут/не тут" в целом.
-  const _MEAL_SHORT = { breakfast: 'Зав', snack: 'Пер', lunch: 'Об', dinner: 'Уж' };
-
-  function _renderAttendanceMatrix(day, trip) {
+  function _renderAttendanceCard(day, trip) {
     const names = TripsData.participantNames(trip);
     if (!names.length) return '';
     const meals = MenuData.getMeals();
 
-    const head = meals.map(m => `<th>${_MEAL_SHORT[m.id] || m.label}</th>`).join('');
+    const head = `<div class="mn-att-grid mn-att-grid--head"><span></span>${meals.map(m => `<span>${_MEAL_SHORT[m.id] || m.label}</span>`).join('')}</div>`;
     const rows = names.map(name => {
       const cells = meals.map(m => {
         const present = MenuState.getDayAttendance(_tripId, day.id, name, m.id);
-        return `<td><div class="mn-att-check ${present ? 'on' : ''}" data-action="toggle-attendance-cell" data-day="${day.id}" data-name="${_esc(name)}" data-meal="${m.id}"></div></td>`;
+        return `<button type="button" class="mn-check ${present ? 'on' : ''}" role="checkbox" aria-checked="${present ? 'true' : 'false'}"
+          aria-label="${_esc(name)} — ${m.label}"
+          data-action="toggle-attendance-cell" data-day="${day.id}" data-name="${_esc(name)}" data-meal="${m.id}">${UIUtils.ico('check')}</button>`;
       }).join('');
-      return `<tr><td class="mn-att-name">${_esc(name)}</td>${cells}</tr>`;
+      return `<div class="mn-att-grid mn-att-row"><span class="mn-att-name">${_esc(name)}</span>${cells}</div>`;
     }).join('');
+    const totals = `<div class="mn-att-grid mn-att-grid--total"><span class="mn-att-total-lbl">едят</span>${meals.map(m =>
+      `<span class="mn-att-total">${MenuState.getMealHeadcount(_tripId, day.id, m.id, names).present}</span>`).join('')}</div>`;
 
     return `
-      <div class="mn-att-matrix">
-        <table class="mn-att-table">
-          <tr><th></th>${head}</tr>
-          ${rows}
-        </table>
-      </div>`;
+      <section class="mn-card mn-att-card">
+        <div class="mn-att-card__head">
+          <h3 class="mn-card-title">Кто ест</h3>
+          <button type="button" class="mn-link-quiet" data-action="toggle-att-collapse">${_attCollapsed ? 'развернуть' : 'свернуть'}</button>
+        </div>
+        ${_attCollapsed ? '' : `
+        <div class="mn-att-table">${head}${rows}${totals}</div>
+        <span class="mn-hint-sm">По умолчанию все на месте — снимай отметку, если кого-то не будет</span>`}
+      </section>`;
   }
 
   function _renderMeal(day, meal) {
-    const editKey  = `${day.id}_${meal.id}`;
-    const isEdit   = _editMeals.has(editKey);
     const mealData = day.meals[meal.id] || { slots: [] };
+    const filled = mealData.slots.filter(s => s.item);
+    const hasFilled = filled.length > 0;
 
-    const slots = mealData.slots.map(slot => _renderSlot(day.id, meal.id, slot, isEdit)).join('');
-    const hasFilled = mealData.slots.some(s => s.item);
-
-    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const trip = _trip();
     let headcountHtml = '';
     if (trip?.attendanceEnabled) {
       const names = TripsData.participantNames(trip);
       const hc = MenuState.getMealHeadcount(_tripId, day.id, meal.id, names);
-      headcountHtml = `<span class="mn-meal-headcount">${hc.present} из ${hc.total}</span>`;
+      headcountHtml = `<span class="mn-headcount" title="${hc.present} из ${hc.total}">${UIUtils.ico('users')}на ${hc.present}</span>`;
     }
 
+    const cookBtn = hasFilled ? `
+      <button type="button" class="mn-cook-btn" data-action="cook-mode" data-day="${day.id}" data-meal="${meal.id}">
+        ${UIUtils.ico('chef-hat')}Готовить
+      </button>` : '';
+
+    const dishes = filled.map(slot => _renderDish(day.id, meal.id, slot)).join('');
+
     return `
-      <div class="mn-meal ${isEdit ? 'edit-mode' : ''}" data-day="${day.id}" data-meal="${meal.id}">
+      <section class="mn-card mn-meal" data-day="${day.id}" data-meal="${meal.id}">
         <div class="mn-meal-head">
-          <div class="mn-meal-icon"><i class="ti ${meal.icon}" aria-hidden="true"></i></div>
-          <span class="mn-meal-name">${meal.label}</span>
-          ${headcountHtml}
-          <button class="mn-edit-btn ${isEdit ? 'active' : ''}"
-            data-action="toggle-edit" data-day="${day.id}" data-meal="${meal.id}"
-            aria-label="Редактировать">
-            <i class="ti ti-pencil" aria-hidden="true"></i>
-          </button>
+          <h3 class="mn-card-title">${meal.label}</h3>
+          <div class="mn-meal-head__right">${headcountHtml}${cookBtn}</div>
         </div>
-        <div class="mn-slots">${slots}</div>
-        ${isEdit ? `
-          <div class="mn-add-slot" data-action="add-slot" data-day="${day.id}" data-meal="${meal.id}">
-            <i class="ti ti-plus" aria-hidden="true"></i> добавить позицию
-          </div>` : ''}
-        ${!isEdit && hasFilled ? _renderDutyRow(day.id, meal.id, mealData) : ''}
-      </div>`;
+        ${hasFilled ? `<div class="mn-dishes">${dishes}</div>` : '<span class="mn-meal-empty">Ничего не запланировано</span>'}
+        ${_renderAddChips(day.id, meal.id, mealData)}
+        ${hasFilled ? _renderDutyRow(day.id, meal.id, mealData) : ''}
+      </section>`;
   }
 
-  // Дежурство на весь приём пищи — показывается под слотами, только когда
-  // есть что готовить (хотя бы один заполненный слот) и не в режиме
-  // редактирования состава (там место занято кнопкой "добавить позицию",
-  // это разные действия над разными вещами).
+  // Заполненная позиция — строка "тип / название"; нажатие открывает лист
+  // действий (рецепт, в закупку, заменить, убрать). Режима правки с
+  // карандашом и корзин у каждой строки больше нет.
+  function _renderDish(dayId, mealId, slot) {
+    const type = MenuData.getSlotType(slot.type);
+    return `
+      <button type="button" class="mn-dish" data-action="dish" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}">
+        <span class="mn-dish__text">
+          <span class="mn-dish__kind">${_esc(type?.label || slot.type)}${slot.item.leftover ? '<span class="mn-leftover-tag">Остатки</span>' : ''}</span>
+          <span class="mn-dish__name">${_esc(slot.item.name)}</span>
+        </span>
+        <span class="mn-dish__more">${UIUtils.ico('dots')}</span>
+      </button>`;
+  }
+
+  // Пустые позиции — пунктирные чипы "+ Гарнир", по одному на тип (если
+  // пустых слотов одного типа несколько — показываем один, он берёт первый
+  // пустой). "ещё…" — добавить позицию другого типа.
+  function _renderAddChips(dayId, mealId, mealData) {
+    const seen = new Set();
+    const chips = [];
+    mealData.slots.forEach(slot => {
+      if (slot.item || seen.has(slot.type)) return;
+      seen.add(slot.type);
+      const type = MenuData.getSlotType(slot.type);
+      chips.push(`<button type="button" class="mn-add-chip" data-action="edit-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}" data-type="${slot.type}">+ ${_esc(type?.label || slot.type)}</button>`);
+    });
+    chips.push(`<button type="button" class="mn-add-more" data-action="add-slot" data-day="${dayId}" data-meal="${mealId}" aria-label="Добавить позицию другого типа">ещё…</button>`);
+    return `<div class="mn-add-chips">${chips.join('')}</div>`;
+  }
+
+  // Дежурство на весь приём пищи — одна строка под блюдами, показывается
+  // только когда есть что готовить (хотя бы одна заполненная позиция).
   function _renderDutyRow(dayId, mealId, mealData) {
-    const cookTxt    = mealData.cook    ? `Готовит <b>${_esc(mealData.cook)}</b>`    : 'Готовит — не назначено';
-    const cleanupTxt = mealData.cleanup ? `Уборка <b>${_esc(mealData.cleanup)}</b>` : 'Уборка — не назначено';
+    const who = n => n ? `<b>${_esc(n)}</b>` : '<span class="mn-assign">назначить</span>';
     return `
-      <div class="mn-duty-row">
-        <div class="mn-duty-chip" data-action="edit-duty" data-day="${dayId}" data-meal="${mealId}">${cookTxt}</div>
-        <div class="mn-duty-chip" data-action="edit-duty" data-day="${dayId}" data-meal="${mealId}">${cleanupTxt}</div>
-        <button class="mn-cook-btn" data-action="cook-mode" data-day="${dayId}" data-meal="${mealId}">
-          <i class="ti ti-chef-hat" aria-hidden="true"></i> Готовка
-        </button>
-      </div>`;
+      <button type="button" class="mn-duty-row" data-action="edit-duty" data-day="${dayId}" data-meal="${mealId}">
+        ${UIUtils.ico('chef-hat', 'mn-duty-row__ico')}
+        <span class="mn-duty-row__text">Готовит ${who(mealData.cook)} · Уборка ${who(mealData.cleanup)}</span>
+        ${UIUtils.ico('chevron-right', 'mn-duty-row__chev')}
+      </button>`;
   }
 
-  function _renderSlot(dayId, mealId, slot, isEdit) {
-    const type  = MenuData.getSlotType(slot.type);
-    const label = type?.label || slot.type;
-    const color = type?.color || 'blue';
-
-    if (slot.item) {
-      // Корзина — закинуть ингредиенты этого блюда в Закупку — только вне
-      // режима редактирования (там место занято крестиком удаления, и это
-      // явно два разных действия — не путать местами).
-      const cartBtn = !isEdit
-        ? `<span class="mn-slot-cart" data-action="push-shopping" data-itemid="${_esc(slot.item.id)}" data-source="${_esc(slot.item.source||'')}" data-name="${_esc(slot.item.name)}" title="Добавить ингредиенты в закупку"><i class="ti ti-shopping-cart" aria-hidden="true"></i></span>`
-        : '';
-      const leftoverTag = slot.item.leftover ? '<span class="mn-slot-leftover">Остатки</span>' : '';
-      return `
-        <div class="mn-slot">
-          <span class="mn-slot-label">${label}</span>
-          <div class="mn-slot-tag filled-${color} ${isEdit ? 'editable' : ''}"
-            ${isEdit ? `data-action="edit-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}" data-type="${slot.type}"` : ''}>
-            <span class="mn-slot-txt">${_esc(slot.item.name)}</span>
-            ${leftoverTag}
-            ${isEdit ? `<span class="mn-slot-del" data-action="remove-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}">×</span>` : ''}
+  // ── Листы (общий каркас) ────────────────────────────────────────────────
+  // Все листы Меню — один каркас: ручка, заголовок + подзаголовок, круглый
+  // крестик, прокручиваемое тело, необязательный подвал с кнопкой.
+  // z-index выше Cook Mode — лист дежурства открывается и из него.
+  function _openSheet(id, { title, sub, body, footer, tall }) {
+    document.getElementById(id)?.remove();
+    const overlay = document.createElement('div');
+    overlay.id = id;
+    overlay.className = 'mn-sheet-overlay';
+    overlay.innerHTML = `
+      <div class="mn-sheet ${tall ? 'mn-sheet--tall' : ''}" role="dialog" aria-label="${_esc(title)}">
+        <div class="mn-sheet-grab"></div>
+        <div class="mn-sheet-head">
+          <div class="mn-sheet-titles">
+            <h2 class="mn-sheet-title">${_esc(title)}</h2>
+            ${sub ? `<div class="mn-sheet-sub">${_esc(sub)}</div>` : ''}
           </div>
-          ${cartBtn}
-        </div>`;
-    }
-
-    return `
-      <div class="mn-slot">
-        <span class="mn-slot-label">${label}</span>
-        <div class="mn-slot-tag ${isEdit ? 'editing-empty' : 'view-empty'}"
-          ${isEdit ? `data-action="edit-slot" data-day="${dayId}" data-meal="${mealId}" data-slot="${slot.id}" data-type="${slot.type}"` : ''}>
-          <span class="mn-slot-txt">${isEdit ? '+ выбрать' : 'не выбрано'}</span>
+          <button type="button" class="mn-sheet-close" data-sh="close" aria-label="Закрыть">${UIUtils.ico('x')}</button>
         </div>
+        <div class="mn-sheet-body">${body}</div>
+        ${footer ? `<div class="mn-sheet-foot">${footer}</div>` : ''}
       </div>`;
+    (_el || document.body).appendChild(overlay);
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-sh="close"]')) overlay.remove();
+    });
+    return overlay;
+  }
+
+  // Короткое уведомление внизу экрана (добавлено в закупку и т.п.) —
+  // вместо старой смены иконки у маленькой корзины в строке блюда.
+  function _flash(msg) {
+    document.getElementById('mn-flash')?.remove();
+    const el = document.createElement('div');
+    el.id = 'mn-flash';
+    el.className = 'mn-flash';
+    el.setAttribute('role', 'status');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('show'));
+    setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 250); }, 2000);
   }
 
   // Теги направлений открытые и растут сами вместе с рецептами (см.
@@ -323,274 +406,345 @@ const MenuRender = (() => {
     return [...set].sort();
   }
 
-  // ── Picker overlay (с табами по категориям) ────────────────────────────
+  // ── Выбор блюда (с вкладками по категориям + "своё блюдо") ─────────────
   function _showPicker(dayId, mealId, slotId, slotType) {
-    document.getElementById('mn-picker')?.remove();
-
-    const sections     = MenuData.getItemsForSlot(slotType, _days, dayId);
+    const sections     = MenuData.getItemsForSlot(slotType, _curDays(), dayId);
     const slotTypeMeta = MenuData.getSlotType(slotType);
+    const mealMeta     = MenuData.getMeals().find(m => m.id === mealId);
+    const day          = _findDay(dayId);
     const tags         = _allTags(sections);
     let activeSec      = 0;
     let activeTag      = 'all';
+    let query          = '';
 
     function _matchesTag(i) {
       return activeTag === 'all' || !(i.destinations || []).length || i.destinations.includes(activeTag);
     }
 
-    function _itemsOf(secIdx) {
-      const sec = sections[secIdx];
-      if (!sec) return [];
-      return sec.items.filter(_matchesTag);
-    }
-
-    function _buildList(secIdx) {
-      const items = _itemsOf(secIdx);
-      if (!items.length) return '<div style="padding:16px;text-align:center;color:var(--label3);font-size:13px">Ничего в этом наборе</div>';
-      return items.map(item => `
-        <div class="mn-picker-item" data-action="pick-item"
-          data-day="${dayId}" data-meal="${mealId}" data-slot="${slotId}"
+    function _row(item) {
+      return `
+        <button type="button" class="mn-pick-row" data-sh="pick"
           data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}"
           data-item-leftover="${item.leftover ? '1' : ''}">
-          <div class="mn-picker-name">${_esc(item.name)}</div>
-          ${item.hint ? `<div class="mn-picker-hint">${_esc(item.hint)}</div>` : ''}
-        </div>`).join('');
+          <span class="mn-pick-name">${_esc(item.name)}</span>
+          ${item.hint ? `<span class="mn-pick-hint">${_esc(item.hint)}</span>` : ''}
+        </button>`;
     }
 
-    function _buildTagFilter() {
+    function _buildList() {
+      const q = query.toLowerCase();
+      if (!q) {
+        const items = (sections[activeSec]?.items || []).filter(_matchesTag);
+        return items.map(_row).join('') || '<div class="mn-pick-empty">Ничего в этом наборе</div>';
+      }
+      // Поиск — по всем секциям (в пределах выбранного направления)
+      const found = sections.flatMap(s => s.items).filter(_matchesTag)
+        .filter(item => item.name.toLowerCase().includes(q));
+      const exact = found.some(item => item.name.trim().toLowerCase() === q);
+      // "Своё блюдо" без рецепта — то, что вписали в поиск (source 'manual').
+      // Ингредиентов у него нет, в Cook Mode так и пишем.
+      const own = exact ? '' : `
+        <button type="button" class="mn-pick-row mn-pick-own" data-sh="own">
+          <span class="mn-pick-name">${UIUtils.ico('plus')}Добавить своё: «${_esc(query)}»</span>
+          <span class="mn-pick-hint">без рецепта — просто название в меню</span>
+        </button>`;
+      return own + found.map(_row).join('');
+    }
+
+    function _buildTags() {
       if (!tags.length) return '';
-      const pills = ['Всё', ...tags];
-      return pills.map(t => `
-        <button class="mn-picker-tag ${(t === 'Всё' ? 'all' : t) === activeTag ? 'active' : ''}" data-tag="${_esc(t === 'Всё' ? 'all' : t)}">${_esc(t)}</button>`).join('');
+      return `<div class="mn-pick-tags"><span class="mn-pick-tags__lbl">Для</span>${['all', ...tags].map(t => `
+        <button type="button" class="mn-pill ${t === activeTag ? 'on' : ''}" data-sh="tag" data-tag="${_esc(t)}" aria-pressed="${t === activeTag ? 'true' : 'false'}">${t === 'all' ? 'всех мест' : _esc(t)}</button>`).join('')}</div>`;
     }
 
     function _buildTabs() {
-      return sections.map((s, i) => `
-        <button class="mn-picker-tab ${i === activeSec ? 'active' : ''}" data-sec="${i}">
-          ${s.section}
-        </button>`).join('');
+      if (sections.length < 2) return '';
+      return `<div class="mn-pick-tabs" role="tablist">${sections.map((s, i) => `
+        <button type="button" role="tab" class="mn-pick-tab ${i === activeSec ? 'on' : ''}" aria-selected="${i === activeSec ? 'true' : 'false'}" data-sh="tab" data-sec="${i}">${_esc(s.section)}</button>`).join('')}</div>`;
     }
 
-    const overlay = document.createElement('div');
-    overlay.id = 'mn-picker';
-    overlay.className = 'mn-picker-overlay';
-    overlay.innerHTML = `
-      <div class="mn-picker-sheet">
-        <div class="mn-picker-head">
-          <div class="mn-picker-title">Выбор: ${slotTypeMeta?.label || slotType}</div>
-          <button class="mn-picker-close" id="mn-picker-close" aria-label="Закрыть">
-            <i class="ti ti-x" aria-hidden="true"></i>
-          </button>
-        </div>
-        <div class="mn-picker-tags" id="mn-picker-tags">${_buildTagFilter()}</div>
-        ${sections.length > 1 ? `<div class="mn-picker-tabs" id="mn-picker-tabs">${_buildTabs()}</div>` : ''}
-        <input class="mn-picker-search" id="mn-picker-search" type="text" placeholder="Поиск...">
-        <div class="mn-picker-list" id="mn-picker-list">${_buildList(activeSec)}</div>
-      </div>`;
-
-    (_el || document.body).appendChild(overlay);
-
-    // Закрыть
-    overlay.querySelector('#mn-picker-close')?.addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-
-    // Табы
-    overlay.querySelector('#mn-picker-tabs')?.addEventListener('click', e => {
-      const btn = e.target.closest('.mn-picker-tab');
-      if (!btn) return;
-      activeSec = parseInt(btn.dataset.sec);
-      overlay.querySelectorAll('.mn-picker-tab').forEach((b, i) => b.classList.toggle('active', i === activeSec));
-      overlay.querySelector('#mn-picker-search').value = '';
-      overlay.querySelector('#mn-picker-list').innerHTML = _buildList(activeSec);
-      _bindPickItems();
+    const title = `${mealMeta?.label || ''} · ${(slotTypeMeta?.label || slotType).toLowerCase()}`;
+    const overlay = _openSheet('mn-picker', {
+      title, sub: day ? _dayLong(day) : '', tall: true,
+      body: `
+        <label class="mn-search">${_svgIco(SVG_SEARCH)}
+          <input type="text" id="mn-pick-search" aria-label="Поиск блюда" placeholder="Найти блюдо или вписать своё" autocomplete="off">
+        </label>
+        <div id="mn-pick-filters">${_buildTags()}${_buildTabs()}</div>
+        <div class="mn-pick-list" id="mn-pick-list">${_buildList()}</div>
+        <span class="mn-hint-sm">Если блюда нет в рецептах — впиши название в поиск и нажми «Добавить своё». Если в режиме готовки отметили, что еда осталась, здесь первой вкладкой появятся «Остатки» (2 дня).</span>`,
     });
 
-    // Направление (Всё/Сахалин/Кольский/...)
-    overlay.querySelector('#mn-picker-tags')?.addEventListener('click', e => {
-      const btn = e.target.closest('.mn-picker-tag');
-      if (!btn) return;
-      activeTag = btn.dataset.tag;
-      overlay.querySelectorAll('.mn-picker-tag').forEach(b => b.classList.toggle('active', b.dataset.tag === activeTag));
-      overlay.querySelector('#mn-picker-search').value = '';
-      overlay.querySelector('#mn-picker-list').innerHTML = _buildList(activeSec);
-      _bindPickItems();
+    const listEl = overlay.querySelector('#mn-pick-list');
+    const filtersEl = overlay.querySelector('#mn-pick-filters');
+    const searchEl = overlay.querySelector('#mn-pick-search');
+    const _refreshList = () => { listEl.innerHTML = _buildList(); };
+
+    searchEl.addEventListener('input', () => {
+      query = searchEl.value.trim();
+      _refreshList();
     });
 
-    // Поиск — ищет по всем секциям (в пределах текущего направления)
-    overlay.querySelector('#mn-picker-search')?.addEventListener('input', e => {
-      const q = e.target.value.toLowerCase().trim();
-      if (!q) {
-        overlay.querySelector('#mn-picker-list').innerHTML = _buildList(activeSec);
-        _bindPickItems();
-        return;
-      }
-      // Поиск по всем секциям
-      const allItems = sections.flatMap(s => s.items).filter(_matchesTag);
-      const filtered = allItems.filter(item => item.name.toLowerCase().includes(q));
-      overlay.querySelector('#mn-picker-list').innerHTML = filtered.map(item => `
-        <div class="mn-picker-item" data-action="pick-item"
-          data-day="${dayId}" data-meal="${mealId}" data-slot="${slotId}"
-          data-item-id="${_esc(item.id)}" data-item-name="${_esc(item.name)}" data-item-source="${_esc(item.source)}"
-          data-item-leftover="${item.leftover ? '1' : ''}">
-          <div class="mn-picker-name">${_esc(item.name)}</div>
-          ${item.hint ? `<div class="mn-picker-hint">${_esc(item.hint)}</div>` : ''}
-        </div>`).join('') || '<div style="padding:16px;text-align:center;color:var(--label3);font-size:13px">Ничего не найдено</div>';
-      _bindPickItems();
-    });
-
-    function _bindPickItems() {
-      overlay.querySelectorAll('[data-action="pick-item"]').forEach(el => {
-        el.addEventListener('click', () => {
-          UIUtils.withBusyButton(el, () => {
-            const { day, meal, slot, itemId, itemName, itemSource, itemLeftover } = el.dataset;
-            const item = { id: itemId, name: itemName, source: itemSource };
-            // Выбрали блюдо из секции "Остатки" — переносим флаг на новый
-            // слот, иначе завтрашние остатки исчезали бы из виду послезавтра
-            // даже если реально ещё остались (см. MenuData.getLeftoverItemsForSlot).
-            if (itemLeftover) item.leftover = true;
-            // Точечная запись только этого слота, а не всего _syncFirebase() —
-            // см. MenuFirebase.saveSlotItem про гонку при одновременном выборе.
-            MenuState.updateSlot(_tripId, day, meal, slot, item);
-            MenuFirebase.saveSlotItem(_tripId, slot, item);
-            overlay.remove();
-            _rerenderDay(day);
-          });
-        });
+    function _save(item, btn) {
+      UIUtils.withBusyButton(btn, () => {
+        // Точечная запись только этого слота, а не всего _syncFirebase() —
+        // см. MenuFirebase.saveSlotItem про гонку при одновременном выборе.
+        MenuState.updateSlot(_tripId, dayId, mealId, slotId, item);
+        MenuFirebase.saveSlotItem(_tripId, slotId, item);
+        overlay.remove();
+        _rerender();
       });
     }
 
-    _bindPickItems();
+    overlay.addEventListener('click', e => {
+      const btn = e.target.closest('[data-sh]');
+      if (!btn) return;
+      const act = btn.dataset.sh;
+      if (act === 'tab') {
+        activeSec = parseInt(btn.dataset.sec, 10) || 0;
+        query = ''; searchEl.value = '';
+        filtersEl.innerHTML = _buildTags() + _buildTabs();
+        _refreshList();
+      } else if (act === 'tag') {
+        activeTag = btn.dataset.tag;
+        filtersEl.innerHTML = _buildTags() + _buildTabs();
+        _refreshList();
+      } else if (act === 'pick') {
+        const { itemId, itemName, itemSource, itemLeftover } = btn.dataset;
+        const item = { id: itemId, name: itemName, source: itemSource };
+        // Выбрали блюдо из секции "Остатки" — переносим флаг на новый
+        // слот, иначе завтрашние остатки исчезали бы из виду послезавтра
+        // даже если реально ещё остались (см. MenuData.getLeftoverItemsForSlot).
+        if (itemLeftover) item.leftover = true;
+        _save(item, btn);
+      } else if (act === 'own') {
+        const name = searchEl.value.trim();
+        if (!name) return;
+        _save({ id: 'manual_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), name, source: 'manual' }, btn);
+      }
+    });
   }
 
-  // ── Type picker ─────────────────────────────────────────────────────────
+  // ── Тип новой позиции ("ещё…") ──────────────────────────────────────────
   function _showTypePicker(dayId, mealId) {
-    document.getElementById('mn-type-picker')?.remove();
-
+    const mealMeta = MenuData.getMeals().find(m => m.id === mealId);
+    const day = _findDay(dayId);
     const types = MenuData.getSlotTypes();
-    const overlay = document.createElement('div');
-    overlay.id = 'mn-type-picker';
-    overlay.className = 'mn-picker-overlay';
-    overlay.innerHTML = `
-      <div class="mn-picker-sheet">
-        <div class="mn-picker-head">
-          <div class="mn-picker-title">Тип позиции</div>
-          <button class="mn-picker-close" id="mn-type-close" aria-label="Закрыть">
-            <i class="ti ti-x" aria-hidden="true"></i>
-          </button>
-        </div>
-        <div class="mn-type-grid">
-          ${types.map(t => `
-            <button class="mn-type-btn" data-action="pick-type"
-              data-day="${dayId}" data-meal="${mealId}" data-type="${t.id}">
-              <i class="ti ${t.icon}" aria-hidden="true"></i>
-              <span>${t.label}</span>
-            </button>`).join('')}
-        </div>
-      </div>`;
-
-    (_el || document.body).appendChild(overlay);
-
-    overlay.querySelector('#mn-type-close')?.addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-
-    overlay.querySelectorAll('[data-action="pick-type"]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const { day, meal, type } = btn.dataset;
-        const slot = MenuState.addSlot(_tripId, day, meal, type);
-        overlay.remove();
-        if (slot) {
-          // Новый слот существует только локально, пока не пуш нём days —
-          // если сразу выбрать блюдо, оно уйдёт узкой записью в slotItems
-          // (см. saveSlotItem), а сам слот в серверном days так и не
-          // появится. Следующий же снапшот из Firestore (в т.ч. эхо этой
-          // самой узкой записи) перетрёт локальный days старым — выбор
-          // тихо исчезнет. Поэтому создание слота — полноценный saveDays,
-          // прямо как remove-slot, а не только точечная правка.
-          _syncFirebase();
-          _showPicker(day, meal, slot.id, type);
-        } else {
-          _rerenderDay(day);
-        }
-      });
+    const overlay = _openSheet('mn-type-picker', {
+      title: 'Добавить позицию',
+      sub: `${mealMeta?.label || ''}${day ? ' · ' + _dayLong(day) : ''}`,
+      body: `<div class="mn-type-grid">${types.map(t => `
+        <button type="button" class="mn-type-btn" data-sh="type" data-type="${t.id}">
+          <i class="ti ${t.icon}" aria-hidden="true"></i><span>${t.label}</span>
+        </button>`).join('')}</div>`,
     });
+
+    overlay.addEventListener('click', e => {
+      const btn = e.target.closest('[data-sh="type"]');
+      if (!btn) return;
+      const type = btn.dataset.type;
+      overlay.remove();
+      // Уже есть пустая позиция этого типа — выбираем в неё, а не плодим
+      // вторую пустую.
+      const existing = _findMeal(dayId, mealId)?.slots.find(s => s.type === type && !s.item);
+      if (existing) { _showPicker(dayId, mealId, existing.id, type); return; }
+      const slot = MenuState.addSlot(_tripId, dayId, mealId, type);
+      if (slot) {
+        // Новый слот существует только локально, пока не запушен days —
+        // если сразу выбрать блюдо, оно уйдёт узкой записью в slotItems
+        // (см. saveSlotItem), а сам слот в серверном days так и не
+        // появится. Следующий же снапшот из Firestore (в т.ч. эхо этой
+        // самой узкой записи) перетрёт локальный days старым — выбор
+        // тихо исчезнет. Поэтому создание слота — полноценный saveDays,
+        // а не только точечная правка.
+        _syncFirebase();
+        _rerender();
+        _showPicker(dayId, mealId, slot.id, type);
+      } else {
+        _rerender();
+      }
+    });
+  }
+
+  // ── Лист действий с блюдом ──────────────────────────────────────────────
+  function _recipeFor(item) {
+    if (!item) return null;
+    if (item.source === 'recipes' && typeof RecipesData !== 'undefined') return RecipesData.getRecipeById(item.id);
+    if (item.source === 'recipes_custom' && typeof RecipesState !== 'undefined') return RecipesState.getCustomRecipeById(item.id);
+    if (item.source === 'bar' && typeof BarData !== 'undefined') return BarData.getCocktailById(item.id);
+    return null;
+  }
+
+  function _plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+    return many;
+  }
+
+  function _showDishSheet(dayId, mealId, slotId) {
+    const day = _findDay(dayId);
+    const slot = day?.meals[mealId]?.slots.find(s => s.id === slotId);
+    if (!slot?.item) return;
+    const mealMeta = MenuData.getMeals().find(m => m.id === mealId);
+    const typeMeta = MenuData.getSlotType(slot.type);
+    const recipe = _recipeFor(slot.item);
+    const ingredients = _ingredientsForItem(slot.item.id, slot.item.source, slot.item.name);
+
+    const act = (sh, icon, text, sub, cls) => `
+      <button type="button" class="mn-act ${cls || ''}" data-sh="${sh}">
+        <span class="mn-act__ico">${icon === 'swap' ? _svgIco(SVG_SWAP) : UIUtils.ico(icon)}</span>
+        <span class="mn-act__text"><span class="mn-act__title">${text}</span>${sub ? `<span class="mn-act__sub">${_esc(sub)}</span>` : ''}</span>
+      </button>`;
+
+    const ingPreview = ingredients.map(i => String(i.name || '').toLowerCase()).filter(Boolean).join(', ');
+    const rows = [
+      recipe ? act('recipe', 'book', 'Открыть рецепт', ingPreview.length > 60 ? ingPreview.slice(0, 57) + '…' : ingPreview) : '',
+      ingredients.length
+        ? act('shop', 'shopping-cart', 'Ингредиенты — в закупку', `${ingredients.length} ${_plural(ingredients.length, 'позиция', 'позиции', 'позиций')}, встанут по категориям`)
+        : '',
+      act('swap', 'swap', 'Заменить блюдо'),
+      act('remove', 'trash', 'Убрать из меню', '', 'danger'),
+    ].join('');
+
+    const overlay = _openSheet('mn-dish-sheet', {
+      title: slot.item.name,
+      sub: `${mealMeta?.label || ''} · ${(typeMeta?.label || slot.type).toLowerCase()} · ${_dayLong(day)}`,
+      body: `<div class="mn-acts">${rows}</div>`,
+    });
+
+    overlay.addEventListener('click', async e => {
+      const btn = e.target.closest('[data-sh]');
+      if (!btn) return;
+      const a = btn.dataset.sh;
+      if (a === 'recipe') { _showRecipeSheet(slot.item, recipe); return; }
+      if (a === 'swap')   { overlay.remove(); _showPicker(dayId, mealId, slotId, slot.type); return; }
+      if (a === 'remove') { overlay.remove(); _removeItem(dayId, mealId, slotId); return; }
+      if (a === 'shop') {
+        await UIUtils.withBusyButton(btn, async () => {
+          const res = await _pushIngredientsToShopping([slot.item]);
+          if (res) _flash(res.added ? `В закупку: +${res.added}` : 'Всё уже есть в закупке');
+        });
+        overlay.remove();
+      }
+    });
+  }
+
+  // Рецепт прямо из Меню — только чтение (продукты + как готовить). Модуль
+  // Рецептов не умеет открываться сразу на конкретном рецепте, а уводить
+  // человека из Меню ради того, чтобы глянуть состав, неудобно.
+  function _showRecipeSheet(item, recipe) {
+    const ings = (recipe?.ingredients || []).map(i => `
+      <div class="mn-rec-ing"><span>${_esc(i.name)}</span><span class="mn-rec-qty">${_esc(i.qty || '')}</span></div>`).join('');
+    _openSheet('mn-recipe-sheet', {
+      title: item.name, sub: recipe?.sub || '', tall: true,
+      body: `
+        ${ings ? `<div class="mn-rec-list">${ings}</div>` : '<span class="mn-hint-sm">Ингредиенты не указаны в рецепте</span>'}
+        ${recipe?.method ? `<div class="mn-rec-method"><div class="mn-caps">Как готовить</div><p>${_esc(recipe.method)}</p></div>` : ''}`,
+    });
+  }
+
+  // "Убрать из меню": у базовой позиции приёма (Основное/Напиток/…) просто
+  // очищаем блюдо узкой записью — позиция снова станет чипом "+ Тип".
+  // Добавленную через "ещё…" позицию (или дубль, когда пустая того же
+  // типа уже есть) удаляем целиком, как раньше делал крестик в режиме
+  // правки — иначе копились бы одинаковые пустые чипы.
+  function _removeItem(dayId, mealId, slotId) {
+    const meal = _findMeal(dayId, mealId);
+    const slot = meal?.slots.find(s => s.id === slotId);
+    if (!slot) return;
+    const isBase = MenuData.getMealBaseSlots(mealId).includes(slot.type);
+    const hasEmptyTwin = meal.slots.some(s => s.id !== slotId && s.type === slot.type && !s.item);
+    if (!isBase || hasEmptyTwin) {
+      MenuState.removeSlot(_tripId, dayId, mealId, slotId);
+      _syncFirebase();
+    } else {
+      MenuState.updateSlot(_tripId, dayId, mealId, slotId, null);
+      MenuFirebase.saveSlotItem(_tripId, slotId, null);
+    }
+    _rerender();
   }
 
   // ── Дежурство: кто готовит / кто убирает за приём пищи ──────────────────
   function _showDutyPicker(dayId, mealId) {
-    document.getElementById('mn-duty-overlay')?.remove();
-
-    const trip    = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+    const trip    = _trip();
     const members = typeof TripsData !== 'undefined' ? TripsData.dutyEligibleNames(trip) : [];
-    const day     = _days.find(d => d.id === dayId);
+    const day     = _findDay(dayId);
     const meal    = day?.meals[mealId];
+    const mealMeta = MenuData.getMeals().find(m => m.id === mealId);
     if (!meal) return;
 
-    const opts = extra => ['<option value="">— не назначено —</option>']
-      .concat(members.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`)).join('');
+    const sel = { cook: meal.cook || null, cleanup: meal.cleanup || null };
+    const counts = MenuState.getDutyCounts(_tripId);
 
-    const overlay = document.createElement('div');
-    overlay.id = 'mn-duty-overlay';
-    overlay.className = 'mn-picker-overlay';
-    overlay.innerHTML = `
-      <div class="mn-picker-sheet">
-        <div class="mn-picker-head">
-          <div class="mn-picker-title">Дежурство — ${_esc(day.label)}</div>
-          <button class="mn-picker-close" id="mn-duty-close" aria-label="Закрыть">
-            <i class="ti ti-x" aria-hidden="true"></i>
-          </button>
-        </div>
-        <div class="mn-duty-form">
-          <div class="mn-duty-field">
-            <div class="mn-duty-field-row">
-              <span class="mn-duty-field-lbl">Готовит</span>
-              <span class="mn-duty-auto" data-action="duty-auto" data-role="cook">авто</span>
-            </div>
-            <select class="mn-duty-select" id="mn-duty-cook">${opts()}</select>
+    // Уже назначенный человек, которого нет среди доступных (отметили
+    // dutyExempt позже) — всё равно показываем чипом, чтобы было видно и
+    // можно было снять.
+    function _namesFor(role) {
+      const list = members.slice();
+      if (sel[role] && !list.includes(sel[role])) list.push(sel[role]);
+      return list;
+    }
+
+    function _block(role, title) {
+      const chips = _namesFor(role).map(n => {
+        const on = sel[role] === n;
+        return `<button type="button" class="mn-person ${on ? 'on' : ''}" aria-pressed="${on ? 'true' : 'false'}" data-sh="person" data-role="${role}" data-name="${_esc(n)}">
+          ${_esc(n)}<span class="mn-person__n">${counts[role][n] || 0}×</span></button>`;
+      }).join('');
+      return `
+        <div class="mn-role" data-role-block="${role}">
+          <div class="mn-role__head">
+            <span class="mn-role__title">${title}</span>
+            <button type="button" class="mn-auto" data-sh="auto" data-role="${role}">${UIUtils.ico('bolt')}Кто реже всех</button>
           </div>
-          <div class="mn-duty-field">
-            <div class="mn-duty-field-row">
-              <span class="mn-duty-field-lbl">Уборка</span>
-              <span class="mn-duty-auto" data-action="duty-auto" data-role="cleanup">авто</span>
-            </div>
-            <select class="mn-duty-select" id="mn-duty-cleanup">${opts()}</select>
-          </div>
-        </div>
-        <button class="mn-picker-save" id="mn-duty-save">Сохранить</button>
-      </div>`;
+          <div class="mn-role__chips">${chips || '<span class="mn-hint-sm">В поездке нет участников для дежурства</span>'}</div>
+        </div>`;
+    }
 
-    (_el || document.body).appendChild(overlay);
+    const _body = () => `${_block('cook', 'Готовит')}${_block('cleanup', 'Уборка')}
+      <span class="mn-hint-sm">Цифра — сколько раз человек уже дежурил в этой роли за поездку. Нажми на выбранного ещё раз, чтобы снять.</span>`;
 
-    const cookSel = overlay.querySelector('#mn-duty-cook');
-    const cleanupSel = overlay.querySelector('#mn-duty-cleanup');
-    cookSel.value = meal.cook || '';
-    cleanupSel.value = meal.cleanup || '';
+    const overlay = _openSheet('mn-duty-overlay', {
+      title: 'Дежурство',
+      sub: `${mealMeta?.label || ''} · ${_dayLong(day)}`,
+      body: `<div id="mn-duty-body" class="mn-duty-body">${_body()}</div>`,
+      footer: '<button type="button" class="mn-btn-primary" data-sh="save">Сохранить</button>',
+    });
+    const bodyEl = overlay.querySelector('#mn-duty-body');
 
-    overlay.querySelector('#mn-duty-close').addEventListener('click', () => overlay.remove());
-    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-
-    // Авто-назначение — предлагает того из участников, кто реже всего был
-    // в этой роли за всю поездку (см. MenuState.getDutyCounts); при ничьей
-    // берёт первого по алфавиту, не по порядку в списке участников —
-    // детерминированно, а не "кто первый в массиве".
-    overlay.querySelectorAll('[data-action="duty-auto"]').forEach(btn => {
-      btn.addEventListener('click', () => {
+    overlay.addEventListener('click', e => {
+      const btn = e.target.closest('[data-sh]');
+      if (!btn) return;
+      const a = btn.dataset.sh;
+      if (a === 'person') {
+        const { role, name } = btn.dataset;
+        sel[role] = sel[role] === name ? null : name;
+        bodyEl.innerHTML = _body();
+      } else if (a === 'auto') {
+        // Авто-назначение — предлагает того из участников, кто реже всего
+        // был в этой роли за всю поездку (см. MenuState.getDutyCounts); при
+        // ничьей берёт первого по алфавиту, не по порядку в списке
+        // участников — детерминированно, а не "кто первый в массиве".
         const role = btn.dataset.role;
-        const counts = MenuState.getDutyCounts(_tripId)[role] || {};
+        const c = counts[role] || {};
         const sorted = members.slice().sort((a, b) => {
-          const diff = (counts[a] || 0) - (counts[b] || 0);
+          const diff = (c[a] || 0) - (c[b] || 0);
           return diff !== 0 ? diff : a.localeCompare(b, 'ru');
         });
-        if (sorted.length) (role === 'cook' ? cookSel : cleanupSel).value = sorted[0];
-      });
-    });
-
-    overlay.querySelector('#mn-duty-save').addEventListener('click', () => {
-      const cook = cookSel.value || null;
-      const cleanup = cleanupSel.value || null;
-      MenuState.setMealDuty(_tripId, dayId, mealId, 'cook', cook);
-      MenuState.setMealDuty(_tripId, dayId, mealId, 'cleanup', cleanup);
-      MenuFirebase.saveMealDuty(_tripId, dayId, mealId, { cook, cleanup });
-      overlay.remove();
-      _rerenderDay(dayId);
+        if (sorted.length) { sel[role] = sorted[0]; bodyEl.innerHTML = _body(); }
+      } else if (a === 'save') {
+        // Всегда целиком {cook, cleanup} — Firestore заменяет вложенный
+        // объект по ключу мапы целиком (см. MenuFirebase.saveMealDuty).
+        MenuState.setMealDuty(_tripId, dayId, mealId, 'cook', sel.cook);
+        MenuState.setMealDuty(_tripId, dayId, mealId, 'cleanup', sel.cleanup);
+        MenuFirebase.saveMealDuty(_tripId, dayId, mealId, { cook: sel.cook, cleanup: sel.cleanup });
+        overlay.remove();
+        _rerender();
+        if (_cookModeOpenFor && _cookModeOpenFor.dayId === dayId && _cookModeOpenFor.mealId === mealId) {
+          _showCookMode(dayId, mealId);
+        }
+      }
     });
   }
 
@@ -598,45 +752,71 @@ const MenuRender = (() => {
   function _showCookMode(dayId, mealId) {
     document.getElementById('mn-cookmode-overlay')?.remove();
 
-    const day  = _days.find(d => d.id === dayId);
+    const day  = _findDay(dayId);
     const meal = MenuData.getMeals().find(m => m.id === mealId);
     const mealData = day?.meals[mealId];
     if (!day || !meal || !mealData) { _cookModeOpenFor = null; return; }
 
+    // Новый приём — галочки с нуля; перерисовка того же — сохраняем.
+    if (!_cookModeOpenFor || _cookModeOpenFor.dayId !== dayId || _cookModeOpenFor.mealId !== mealId) _cmChecked = new Set();
     _cookModeOpenFor = { dayId, mealId };
     const filledSlots = mealData.slots.filter(s => s.item);
     const allergyWarnings = _allergyWarnings();
 
     const dishesHtml = filledSlots.map(slot => {
-      const ingredients = _ingredientsForItem(slot.item.id, slot.item.source, slot.item.name);
-      const recipe = slot.item.source === 'recipes' && typeof RecipesData !== 'undefined'
-        ? RecipesData.getRecipeById(slot.item.id)
-        : (slot.item.source === 'recipes_custom' && typeof RecipesState !== 'undefined'
-          ? RecipesState.getCustomRecipeById(slot.item.id) : null);
+      const typeMeta = MenuData.getSlotType(slot.type);
+      const recipe = _recipeFor(slot.item);
+      const ingredients = slot.item.source === 'proteins' ? [] : _ingredientsForItem(slot.item.id, slot.item.source, slot.item.name);
 
-      const ingRows = ingredients.map((ing, i) => `
-        <div class="cm-ing-row" data-action="cm-toggle-ing" data-key="${slot.id}_${i}">
-          <div class="cm-check" data-ing="${slot.id}_${i}"></div>
-          <div class="cm-ing-name" data-ing-name="${slot.id}_${i}">${_esc(ing.name)}</div>
-          <div class="cm-ing-qty">${_esc(ing.qty || '')}</div>
-        </div>`).join('');
+      const ingRows = ingredients.map((ing, i) => {
+        const key = `${slot.id}_${i}`;
+        const on = _cmChecked.has(key);
+        return `
+        <button type="button" class="cm-ing-row ${on ? 'done' : ''}" role="checkbox" aria-checked="${on ? 'true' : 'false'}" data-action="cm-toggle-ing" data-key="${key}">
+          <span class="mn-check ${on ? 'on' : ''}" aria-hidden="true">${UIUtils.ico('check')}</span>
+          <span class="cm-ing-name">${_esc(ing.name)}</span>
+          <span class="cm-ing-qty">${_esc(ing.qty || '')}</span>
+        </button>`;
+      }).join('');
+
+      let note = '';
+      if (!ingRows) {
+        if (slot.item.source === 'manual') note = 'Блюдо вписано вручную — рецепта и списка продуктов нет';
+        else if (slot.item.source === 'proteins') note = `Без рецепта — продукт из списка «${typeMeta?.label || 'Мясо/рыба'}»`;
+        else note = 'Ингредиенты не указаны в рецепте';
+      }
 
       const currentLeftover = !!slot.item.leftover;
 
       return `
-        <div class="cm-dish" data-slot="${slot.id}">
-          <div class="cm-dish-title">${_esc(slot.item.name)}</div>
-          ${ingRows ? `<div class="cm-ing-list">${ingRows}</div>` : '<div class="cm-no-ing">Ингредиенты не указаны в рецепте</div>'}
-          ${recipe?.method ? `<div class="cm-method">${_esc(recipe.method)}</div>` : ''}
+        <section class="mn-card cm-dish" data-slot="${slot.id}">
+          <div class="cm-dish-head">
+            <span class="cm-dish-kind">${_esc(typeMeta?.label || slot.type)}</span>
+            <h3 class="cm-dish-title">${_esc(slot.item.name)}</h3>
+          </div>
+          ${ingRows ? `<div class="cm-ing-list">${ingRows}</div>` : `<span class="cm-no-ing">${note}</span>`}
+          ${recipe?.method ? `
+          <details class="cm-method" open>
+            <summary>Как готовить</summary>
+            <p>${_esc(recipe.method)}</p>
+          </details>` : ''}
           <div class="cm-leftover-block">
-            <div class="cm-leftover-q">Остались излишки?</div>
-            <div class="cm-leftover-choices">
-              <div class="cm-lo-btn ${!currentLeftover ? 'picked' : ''}" data-action="cm-leftover" data-slot="${slot.id}" data-val="0">Нет</div>
-              <div class="cm-lo-btn ${currentLeftover ? 'picked' : ''}" data-action="cm-leftover" data-slot="${slot.id}" data-val="1">Да, хватит ещё</div>
+            <span class="cm-leftover-q">Останется на потом?</span>
+            <div class="cm-seg">
+              <button type="button" class="cm-lo-btn ${!currentLeftover ? 'picked' : ''}" aria-pressed="${!currentLeftover}" data-action="cm-leftover" data-slot="${slot.id}" data-val="0">Нет</button>
+              <button type="button" class="cm-lo-btn ${currentLeftover ? 'picked' : ''}" aria-pressed="${currentLeftover}" data-action="cm-leftover" data-slot="${slot.id}" data-val="1">Да, хватит ещё</button>
             </div>
           </div>
-        </div>`;
+        </section>`;
     }).join('');
+
+    // Роль: назначенный — просто имя (нажатие всё равно открывает лист
+    // дежурства, чтобы поменять), не назначенный — пунктир "назначить".
+    const role = (lbl, name) => `
+      <button type="button" class="cm-role ${name ? '' : 'empty'}" data-action="cm-duty">
+        <span class="cm-role-lbl">${lbl}</span>
+        <span class="cm-role-name">${name ? _esc(name) : 'назначить'}</span>
+      </button>`;
 
     const overlay = document.createElement('div');
     overlay.id = 'mn-cookmode-overlay';
@@ -644,31 +824,29 @@ const MenuRender = (() => {
     overlay.innerHTML = `
       <div class="cm-sheet">
         <div class="cm-topbar">
-          <button class="cm-close" id="cm-close" aria-label="Закрыть"><i class="ti ti-x" aria-hidden="true"></i></button>
+          <button type="button" class="cm-close" id="cm-close" aria-label="Закрыть режим готовки">${UIUtils.ico('x')}</button>
           <div class="cm-topbar__text">
-            <div class="cm-topbar__title">${_esc(meal.label)}</div>
-            <div class="cm-topbar__sub">${_esc(day.label)}</div>
+            <div class="cm-topbar__title">Готовим ${_esc(meal.label.toLowerCase())}</div>
+            <div class="cm-topbar__sub">${_esc(_dayLong(day))}</div>
           </div>
         </div>
-        <div class="cm-roles">
-          <div class="cm-role">
-            <div class="cm-role-lbl">Готовит</div>
-            <div class="cm-role-name">${mealData.cook ? _esc(mealData.cook) : '—'}</div>
-          </div>
-          <div class="cm-role">
-            <div class="cm-role-lbl">Уборка</div>
-            <div class="cm-role-name">${mealData.cleanup ? _esc(mealData.cleanup) : '—'}</div>
-          </div>
+        <div class="cm-content">
+          <div class="cm-roles">${role('Готовит', mealData.cook)}${role('Уборка', mealData.cleanup)}</div>
+          ${allergyWarnings.length ? `
+          <div class="cm-allergy-warn" role="note">
+            <span class="cm-allergy-warn__ico">${UIUtils.ico('alert-triangle')}</span>
+            <span class="cm-allergy-warn__text">
+              <span class="cm-allergy-warn__title">Аллергии в группе</span>
+              ${allergyWarnings.map(a => `<span class="cm-allergy-warn__row"><b>${_esc(a.name)}</b> — ${_esc(a.allergies)}</span>`).join('')}
+            </span>
+          </div>` : ''}
+          ${dishesHtml || '<span class="cm-no-ing">Ничего не выбрано на этот приём</span>'}
         </div>
-        ${allergyWarnings.length ? `
-        <div class="cm-allergy-warn">
-          <div class="cm-allergy-warn__title">⚠️ Аллергии в группе</div>
-          ${allergyWarnings.map(a => `<div class="cm-allergy-warn__row"><b>${_esc(a.name)}</b> — ${_esc(a.allergies)}</div>`).join('')}
-        </div>` : ''}
-        <div class="cm-dishes">${dishesHtml || '<div class="cm-no-ing" style="padding:14px">Ничего не выбрано на этот приём</div>'}</div>
         <div class="cm-actions">
-          <button class="cm-done-btn" id="cm-done">Готово</button>
-          <div class="cm-done-note">${mealData.cleanup ? 'Уборке придёт пуш в Telegram, если привязан бот.' : 'Уборка не назначена — пинговать некого.'}</div>
+          <button type="button" class="cm-done-btn" id="cm-done">${_esc(meal.label)} готов</button>
+          <div class="cm-done-note">${mealData.cleanup
+            ? `${_esc(mealData.cleanup)} (уборка) получит сообщение в Telegram, если привязан бот`
+            : 'Уборка не назначена — сообщить в Telegram некому'}</div>
         </div>
       </div>`;
 
@@ -676,177 +854,153 @@ const MenuRender = (() => {
 
     overlay.querySelector('#cm-close').addEventListener('click', () => { _cookModeOpenFor = null; overlay.remove(); });
 
-    // Чек-лист ингредиентов — локальное состояние на время готовки, не
-    // синхронизируется и не сохраняется: это "что я лично уже достал",
-    // не общие данные поездки, синк никому не нужен.
     overlay.addEventListener('click', e => {
+      // Чек-лист продуктов — локальное состояние на время готовки, не
+      // синхронизируется и не сохраняется: это "что я лично уже достал",
+      // не общие данные поездки, синк никому не нужен.
       const row = e.target.closest('[data-action="cm-toggle-ing"]');
-      if (!row) return;
-      const key = row.dataset.key;
-      overlay.querySelector(`[data-ing="${key}"]`)?.classList.toggle('on');
-      overlay.querySelector(`[data-ing-name="${key}"]`)?.classList.toggle('done');
-    });
+      if (row) {
+        const key = row.dataset.key;
+        const on = !_cmChecked.has(key);
+        if (on) _cmChecked.add(key); else _cmChecked.delete(key);
+        row.classList.toggle('done', on);
+        row.setAttribute('aria-checked', on ? 'true' : 'false');
+        row.querySelector('.mn-check')?.classList.toggle('on', on);
+        return;
+      }
 
-    overlay.addEventListener('click', e => {
+      if (e.target.closest('[data-action="cm-duty"]')) { _showDutyPicker(dayId, mealId); return; }
+
       const btn = e.target.closest('[data-action="cm-leftover"]');
       if (!btn) return;
       const slotId = btn.dataset.slot;
       const val = btn.dataset.val === '1';
       MenuState.setSlotLeftover(_tripId, dayId, mealId, slotId, val);
-      const slot = mealData.slots.find(s => s.id === slotId);
-      if (slot?.item) MenuFirebase.saveSlotItem(_tripId, slotId, slot.item);
+      // Слот берём свежий из стейта — снапшот мог заменить days, пока
+      // открыт режим готовки, и замкнутый mealData уже устарел.
+      const fresh = _findMeal(dayId, mealId)?.slots.find(s => s.id === slotId);
+      if (fresh?.item) MenuFirebase.saveSlotItem(_tripId, slotId, fresh.item);
       overlay.querySelectorAll(`.cm-lo-btn[data-slot="${slotId}"]`).forEach(b => {
-        b.classList.toggle('picked', (b.dataset.val === '1') === val);
+        const picked = (b.dataset.val === '1') === val;
+        b.classList.toggle('picked', picked);
+        b.setAttribute('aria-pressed', picked ? 'true' : 'false');
       });
+      _rerender();
     });
 
+    // "Готово" — узкая запись в очередь для бота (см. MenuFirebase.saveCookDone),
+    // бот пингует того, кто на уборке.
     overlay.querySelector('#cm-done').addEventListener('click', () => {
+      const fresh = _findMeal(dayId, mealId) || mealData;
       if (typeof MenuFirebase !== 'undefined') {
-        MenuFirebase.saveCookDone(_tripId, dayId, mealId, mealData.cook, mealData.cleanup);
+        MenuFirebase.saveCookDone(_tripId, dayId, mealId, fresh.cook, fresh.cleanup);
       }
       _cookModeOpenFor = null;
       overlay.remove();
-      _rerenderDay(dayId);
+      _rerender();
     });
   }
 
   // ── Events ──────────────────────────────────────────────────────────────
   function _bindEvents() {
     if (!_el) return;
-    // Remove previous listener if any
     if (_el._mnClickHandler) _el.removeEventListener('click', _el._mnClickHandler);
 
     _el._mnClickHandler = function(e) {
+      // Листы и Cook Mode вставлены внутрь _el — их клики обрабатывают они
+      // сами, сюда они не должны доходить.
+      if (e.target.closest('.mn-sheet-overlay, .cm-overlay')) return;
       const target = e.target.closest('[data-action]');
       if (!target) return;
       const action = target.dataset.action;
+      const { day, meal } = target.dataset;
 
-      if (action === 'toggle-day') {
-        const dayId = target.dataset.day;
-        if (_openDays.has(dayId)) _openDays.delete(dayId);
-        else _openDays.add(dayId);
-        _rerenderDay(dayId);
+      if (action === 'select-day') {
+        _selDayId = day;
+        _rerender();
+        _centerSelectedInStrip();
         return;
       }
 
-      // Клик по карточке "Сегодня" — открыть этот же день в списке ниже
-      // (там и правится) и проскроллить к нему, не заставляя искать глазами.
-      if (action === 'jump-today') {
-        const dayId = target.dataset.day;
-        _openDays.add(dayId);
-        _rerenderDay(dayId);
-        const card = _el.querySelector(`.mn-day-card[data-day-id="${dayId}"]`);
-        if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        return;
-      }
+      if (action === 'dish')      { _showDishSheet(day, meal, target.dataset.slot); return; }
+      if (action === 'edit-slot') { _showPicker(day, meal, target.dataset.slot, target.dataset.type); return; }
+      if (action === 'add-slot')  { _showTypePicker(day, meal); return; }
+      if (action === 'edit-duty') { _showDutyPicker(day, meal); return; }
+      if (action === 'cook-mode') { _showCookMode(day, meal); return; }
 
-      if (action === 'toggle-edit') {
-        e.stopPropagation();
-        const key = `${target.dataset.day}_${target.dataset.meal}`;
-        if (_editMeals.has(key)) _editMeals.delete(key);
-        else _editMeals.add(key);
-        _rerenderDay(target.dataset.day);
-        return;
-      }
-
-      if (action === 'edit-slot') {
-        e.stopPropagation();
-        _showPicker(target.dataset.day, target.dataset.meal, target.dataset.slot, target.dataset.type);
-        return;
-      }
-
-      if (action === 'remove-slot') {
-        e.stopPropagation();
-        MenuState.removeSlot(_tripId, target.dataset.day, target.dataset.meal, target.dataset.slot);
-        _syncFirebase();
-        _rerenderDay(target.dataset.day);
-        return;
-      }
-
-      if (action === 'add-slot') {
-        e.stopPropagation();
-        _showTypePicker(target.dataset.day, target.dataset.meal);
-        return;
-      }
-
-      if (action === 'push-shopping') {
-        e.stopPropagation();
-        _pushIngredientsToShopping(target, target.dataset.itemid, target.dataset.source, target.dataset.name);
-        return;
-      }
-
-      if (action === 'edit-duty') {
-        e.stopPropagation();
-        _showDutyPicker(target.dataset.day, target.dataset.meal);
-        return;
-      }
-
-      if (action === 'cook-mode') {
-        e.stopPropagation();
-        _showCookMode(target.dataset.day, target.dataset.meal);
+      if (action === 'push-day') {
+        const dayObj = _findDay(day);
+        if (!dayObj) return;
+        const items = [];
+        Object.values(dayObj.meals || {}).forEach(m => (m.slots || []).forEach(s => { if (s.item) items.push(s.item); }));
+        UIUtils.withBusyButton(target, async () => {
+          const res = await _pushIngredientsToShopping(items);
+          if (res) _flash(res.added ? `В закупку: +${res.added}` : 'Всё уже есть в закупке');
+        });
         return;
       }
 
       if (action === 'toggle-attendance-enabled') {
-        e.stopPropagation();
-        const trip = typeof TripsData !== 'undefined' ? TripsData.getById(_tripId) : null;
+        const trip = _trip();
         if (!trip) return;
         const next = !trip.attendanceEnabled;
         trip.attendanceEnabled = next;
         if (typeof TripsData !== 'undefined') TripsData.updateTrip(_tripId, { attendanceEnabled: next });
-        const toggleEl = _el.querySelector('#mn-attendance-toggle');
-        if (toggleEl) toggleEl.innerHTML = _attendanceToggleRow();
-        const container = _el.querySelector('#mn-days');
-        if (container) container.innerHTML = _renderDays();
+        _rerender();
+        return;
+      }
+
+      if (action === 'toggle-att-collapse') {
+        _attCollapsed = !_attCollapsed;
+        _rerender();
         return;
       }
 
       if (action === 'toggle-attendance-cell') {
-        e.stopPropagation();
-        const { day, name, meal } = target.dataset;
+        const name = target.dataset.name;
         const present = !MenuState.getDayAttendance(_tripId, day, name, meal);
         MenuState.setDayAttendance(_tripId, day, name, meal, present);
-        const dayObj = _days.find(d => d.id === day);
+        const dayObj = _findDay(day);
         if (dayObj?.attendance) MenuFirebase.saveDayAttendance(_tripId, day, dayObj.attendance);
-        target.classList.toggle('on', present);
-        _rerenderDay(day);
+        _rerender();
         return;
       }
     };
 
-    _el.querySelector('#mn-back') && _el.querySelector('#mn-back').addEventListener('click', function() {
+    _el.querySelector('#mn-back')?.addEventListener('click', function() {
       if (typeof MenuIndex !== 'undefined') MenuIndex.close();
     });
     _el.addEventListener('click', _el._mnClickHandler);
   }
 
-  function _rerenderDay(dayId) {
-    const day = _days.find(function(d) { return d.id === dayId; });
-    if (!day) return;
-    const container = _el ? _el.querySelector('#mn-days') : null;
-    if (container) container.innerHTML = _renderDays();
-    const todayEl = _el ? _el.querySelector('#mn-today') : null;
-    if (todayEl) todayEl.innerHTML = _todayBlock();
+  // Перерисовать полосу дней и выбранный день (без каркаса). Прокрутку
+  // полосы сохраняем — иначе каждый снапшот дёргал бы её в начало.
+  function _rerender() {
+    if (!_el) return;
+    _ensureSelectedDay();
+    const stripWrap = _el.querySelector('#mn-strip-wrap');
+    if (stripWrap) {
+      const prev = stripWrap.querySelector('#mn-strip')?.scrollLeft || 0;
+      stripWrap.innerHTML = _renderStrip();
+      const strip = stripWrap.querySelector('#mn-strip');
+      if (strip) strip.scrollLeft = prev;
+    }
+    const dayEl = _el.querySelector('#mn-day');
+    if (dayEl) dayEl.innerHTML = _renderDayView();
   }
 
   // Ингредиенты блюда по его source/id — те же каталоги, откуда слот
   // вообще заполняется (см. MenuData.getItemsForSlot). Белок сам по себе
-  // и есть один ингредиент — рецепта для него нет и не нужно.
+  // и есть один ингредиент — рецепта для него нет и не нужно. У "своего
+  // блюда" (source 'manual') ингредиентов нет.
   function _ingredientsForItem(itemId, source, fallbackName) {
-    let recipe = null;
-    if (source === 'recipes' && typeof RecipesData !== 'undefined') {
-      recipe = RecipesData.getRecipeById(itemId);
-    } else if (source === 'recipes_custom' && typeof RecipesState !== 'undefined') {
-      recipe = RecipesState.getCustomRecipeById(itemId);
-    } else if (source === 'bar' && typeof BarData !== 'undefined') {
-      recipe = BarData.getCocktailById(itemId);
-    } else if (source === 'proteins') {
-      return [{ name: fallbackName, qty: '' }];
-    }
+    if (source === 'proteins') return [{ name: fallbackName, qty: '' }];
+    const recipe = _recipeFor({ id: itemId, source });
     return (recipe && recipe.ingredients && recipe.ingredients.length) ? recipe.ingredients : [];
   }
 
-  // Закидывает ингредиенты блюда в Закупку этой же поездки — категория
+  // Закидывает ингредиенты блюд (одного — из листа блюда, или всех блюд
+  // дня — кнопкой-корзиной у дня) в Закупку этой же поездки — категория
   // резолвится через RecipesData.resolveShoppingCategory (каталог
   // ингредиентов → authored category на самом ингредиенте → угадывание по
   // ключевым словам → "Разное"), тот же резолвер использует и вставка
@@ -856,47 +1010,51 @@ const MenuRender = (() => {
   // целевой, чтобы не плодить то, что уже кто-то вписал руками. Полный
   // overwrite categories — тот же паттерн, что и у остальных мутаций в
   // самом модуле Закупки (см. shopping/render.js:_sync).
-  async function _pushIngredientsToShopping(btn, itemId, source, name) {
-    if (typeof ShoppingState === 'undefined' || typeof ShoppingFirebase === 'undefined') return;
-    const ingredients = _ingredientsForItem(itemId, source, name);
+  // Возвращает { added, total } или null, если закупки нет/нечего добавлять.
+  async function _pushIngredientsToShopping(items) {
+    if (typeof ShoppingState === 'undefined' || typeof ShoppingFirebase === 'undefined') return null;
+    const ingredients = [];
+    (items || []).forEach(it => ingredients.push(..._ingredientsForItem(it.id, it.source, it.name)));
     if (!ingredients.length) {
-      alert('У этого блюда пока нет списка ингредиентов — добавь их в Рецептах, и в следующий раз подтянутся сюда.');
-      return;
+      _flash('У этих блюд нет списка ингредиентов — добавь их в Рецептах');
+      return null;
     }
 
+    // Свежий список закупки берём с сервера в транзакции, а не из
+    // localStorage: Меню не подписано на Закупку, и старый код писал
+    // полный categories из пустого/устаревшего кэша — стирал весь чужой
+    // список закупки (нашёл аудит 2026-09-27).
     ShoppingState.load();
-    const cats = ShoppingState.getCategories(_tripId);
-
-    const existingNames = new Set();
-    cats.forEach(c => c.items.forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
-
+    const ref = db.collection('shopping').doc(_tripId);
     let added = 0;
-    ingredients.forEach(ing => {
-      const key = String(ing.name || '').trim().toLowerCase();
-      if (!key || existingNames.has(key)) return;
+    try {
+      await db.runTransaction(async tx => {
+        added = 0;
+        const snap = await tx.get(ref);
+        const cats = (snap.exists && snap.data().categories) || [];
+        const existingNames = new Set();
+        cats.forEach(c => (c.items || []).forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
 
-      const title = RecipesData.resolveShoppingCategory(ing.name, ing.category, ing.ingredientId);
-      const cat = ShoppingState.findOrCreateCategory(cats, title);
-
-      cat.items.push({
-        id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-        name: ing.name, qty: ing.qty || '', bought: false,
+        ingredients.forEach(ing => {
+          const key = String(ing.name || '').trim().toLowerCase();
+          if (!key || existingNames.has(key)) return;
+          const title = RecipesData.resolveShoppingCategory(ing.name, ing.category, ing.ingredientId);
+          const cat = ShoppingState.findOrCreateCategory(cats, title);
+          cat.items.push({
+            id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+            name: ing.name, qty: ing.qty || '', bought: false,
+          });
+          existingNames.add(key);
+          added++;
+        });
+        if (added) tx.set(ref, { categories: cats }, { merge: true });
       });
-      existingNames.add(key);
-      added++;
-    });
-
-    if (added) {
-      ShoppingState.persist();
-      await ShoppingFirebase.save(_tripId, cats);
+    } catch (e) {
+      console.error('menu → shopping:', e);
+      _flash('Не получилось добавить в закупку — проверь интернет');
+      return null;
     }
-
-    if (btn) {
-      const orig = btn.innerHTML;
-      btn.innerHTML = added ? `<i class="ti ti-check" aria-hidden="true"></i> ${added}` : '✓ уже есть';
-      btn.classList.add('done');
-      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('done'); }, 1500);
-    }
+    return { added, total: ingredients.length };
   }
 
   function _syncFirebase() {
@@ -911,10 +1069,7 @@ const MenuRender = (() => {
   function refresh() {
     const days = MenuState.getDays(_tripId);
     if (days) { _days = days; }
-    const container = _el?.querySelector('#mn-days');
-    if (container) container.innerHTML = _renderDays();
-    const todayEl = _el?.querySelector('#mn-today');
-    if (todayEl) todayEl.innerHTML = _todayBlock();
+    _rerender();
   }
 
   return { render, setDays, refresh };

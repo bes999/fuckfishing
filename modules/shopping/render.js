@@ -5,13 +5,18 @@ const ShoppingRender = (() => {
   let _el     = null;
   let _tripId = null;
   let _openCats = new Set();
+  let _boughtOpenCats = new Set(); // раскрытые блоки «Куплено · N» внутри категорий
   let _bodyHandler = null;
+  let _bodyKeydownHandler = null;
+  let _hideBought = false; // переключатель «Скрыть купленное» — держится между перерисовками, сбрасывается только при полном заходе на экран
 
   function render(el, tripId) {
     _el     = el;
     _tripId = tripId;
     if (!el) return;
     _openCats.clear();
+    _boughtOpenCats.clear();
+    _hideBought = false;
     el.innerHTML = `
       <div class="sh-wrap">
         ${_topbar()}
@@ -36,35 +41,127 @@ const ShoppingRender = (() => {
       </div>`;
   }
 
+  // Раскрыт ли блок «Ещё N пустых категорий» — живёт между перерисовками.
+  let _emptyOpen = false;
+
+  // Макет «Закупка»: прогресс «Куплено X из N», «Первый день», категории
+  // с позициями; пустые категории (0/0) свёрнуты в одну строку, разовые
+  // «вставить списком / стандартный список» — внизу, а не над списком.
   function _body() {
     const stats = ShoppingState.getStats(_tripId);
     const cats  = ShoppingState.getCategories(_tripId);
-
-    const catsHtml = cats.map(cat => _cat(cat)).join('');
+    const filled = cats.filter(c => c.items.length);
+    const empty  = cats.filter(c => !c.items.length);
 
     return `
       <div class="sh-stats">
         <div class="sh-stats__row">
-          <span class="sh-stats__label">Куплено</span>
-          <span class="sh-stats__val" style="color:${stats.pct === 100 ? '#34c759' : 'var(--accent)'}">${stats.bought} / ${stats.total}</span>
+          <span class="sh-stats__group">
+            <span class="sh-stats__label">Куплено</span>
+            <span class="sh-stats__val ${stats.pct === 100 ? 'done' : ''}">${stats.bought} <span class="sh-stats__of">из ${stats.total}</span></span>
+          </span>
+          <button type="button" class="sh-hide-toggle ${_hideBought ? 'on' : ''}" role="switch"
+            aria-checked="${_hideBought}" data-action="toggle-hide-bought">
+            <span class="sh-hide-toggle__track"><span class="sh-hide-toggle__knob"></span></span>
+            Скрыть купленное
+          </button>
         </div>
         <div class="sh-progress-bar">
           <div class="sh-progress-fill" style="width:${stats.pct}%"></div>
         </div>
       </div>
+      ${_quickAddBar()}
       <div id="sh-dayone-section">${_dayOneSection()}</div>
-      <div class="sh-paste-row" id="sh-paste" data-action="paste-list">
-        <i class="ti ti-clipboard-list" aria-hidden="true"></i> вставить список текстом
-      </div>
-      <div class="sh-paste-row" id="sh-load-defaults" data-action="load-defaults">
-        <i class="ti ti-download" aria-hidden="true"></i> загрузить стандартный список
-      </div>
       <div class="sh-cats">
-        ${catsHtml}
+        ${filled.map(cat => _cat(cat)).join('')}
+        ${empty.length ? `
+        <details class="sh-empty-cats" ${_emptyOpen || !filled.length ? 'open' : ''}
+                 ontoggle="ShoppingRender._setEmptyOpen(this.open)">
+          <summary>Ещё ${empty.length} ${_plural(empty.length, 'пустая категория', 'пустые категории', 'пустых категорий')} ${UIUtils.ico('chevron-down')}</summary>
+          ${empty.map(cat => _cat(cat)).join('')}
+        </details>` : ''}
         <div class="sh-add-cat" data-action="add-cat">
           <i class="ti ti-plus" aria-hidden="true"></i> добавить категорию
         </div>
+      </div>
+      <div class="sh-tools">
+        <button type="button" class="sh-tool" id="sh-paste" data-action="paste-list">
+          <i class="ti ti-clipboard-list" aria-hidden="true"></i> Вставить списком
+        </button>
+        <button type="button" class="sh-tool" id="sh-load-defaults" data-action="load-defaults">
+          <i class="ti ti-download" aria-hidden="true"></i> Стандартный список
+        </button>
+        ${stats.bought || ShoppingState.getDayOneItems(_tripId).some(i => i.ready) ? `
+        <button type="button" class="sh-tool" id="sh-clear-bought" data-action="clear-bought">
+          <i class="ti ti-circle-check" aria-hidden="true"></i> Очистить отметки
+        </button>` : ''}
       </div>`;
+  }
+
+  function _plural(n, f1, f2, f5) {
+    const m = n % 100;
+    if (m >= 11 && m <= 19) return f5;
+    const d = n % 10;
+    if (d === 1) return f1;
+    if (d >= 2 && d <= 4) return f2;
+    return f5;
+  }
+
+  // ── Быстрое добавление прямо на экране (без листа) — категория
+  //    подбирается сама по названию (тем же RecipesData.resolveShoppingCategory,
+  //    что и «вставить списком»), количество разбирается из хвоста строки
+  //    («кефир 2 шт»). Существующее добавление через лист (кнопка
+  //    «добавить позицию» внутри категории, см. _showAddItem) остаётся —
+  //    это просто более быстрый путь для одной позиции.
+  function _quickAddBar() {
+    return `
+      <div class="sh-quickadd">
+        <label class="sh-quickadd__field">
+          <i class="ti ti-plus" aria-hidden="true"></i>
+          <span class="sh-visually-hidden">Что купить</span>
+          <input type="text" id="sh-quickadd-input" class="sh-quickadd__input"
+            placeholder="Что купить — «кефир 2 шт»" autocomplete="off">
+        </label>
+        <span class="sh-quickadd__hint">Категорию подберём сами по названию — поправить можно потом</span>
+      </div>`;
+  }
+
+  // Разбирает свободный текст на название и количество: сперва пробуем явный
+  // разделитель тире/дефис (тот же формат, что и «вставить списком»:
+  // «Лук — 2 кг»), иначе ищем число (+ единицу измерения) в хвосте строки —
+  // «кефир 2 шт», «лук 1.5 кг», «яйца 20».
+  function _parseQuickAdd(raw) {
+    const text = String(raw || '').trim();
+    const dashParts = text.split(/\s+—\s+|\s+-\s+/);
+    if (dashParts.length > 1) {
+      return { name: dashParts[0].trim(), qty: dashParts.slice(1).join(' ').trim() };
+    }
+    const units = ShoppingData.getUnits().join('|');
+    const re = new RegExp(`\\s+(\\d+(?:[.,]\\d+)?\\s*(?:${units})?)\\s*$`, 'i');
+    const m = text.match(re);
+    if (m) return { name: text.slice(0, m.index).trim(), qty: m[1].trim() };
+    return { name: text, qty: '' };
+  }
+
+  async function _quickAdd() {
+    const input = _el?.querySelector('#sh-quickadd-input');
+    const raw = input?.value.trim();
+    if (!raw) return;
+    const { name, qty } = _parseQuickAdd(raw);
+    if (!name) return;
+
+    const cats = ShoppingState.getCategories(_tripId);
+    const title = RecipesData.resolveShoppingCategory(name);
+    const cat = ShoppingState.findOrCreateCategory(cats, title);
+    cat.items.push({
+      id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      name, qty, bought: false,
+    });
+    ShoppingState.persist();
+    if (input) input.value = '';
+    _openCats.add(cat.id);
+    await ShoppingFirebase.save(_tripId, cats);
+    _rebuildBody();
   }
 
   // ── "Первый день" — нужно сразу по приезду: либо уже везём, либо надо
@@ -72,7 +169,8 @@ const ShoppingRender = (() => {
   //    свой узкий список в состоянии/Firestore (см. ShoppingState/
   //    ShoppingFirebase — dayOneItems), не подкатегория "обычной" закупки.
   function _dayOneSection() {
-    const items = ShoppingState.getDayOneItems(_tripId);
+    const raw = ShoppingState.getDayOneItems(_tripId);
+    const items = _sortByChecked(raw, 'ready');
     const rows = items.map(item => `
       <div class="sh-item" data-item="${item.id}">
         <div class="sh-checkbox ${item.ready ? 'checked' : ''}"
@@ -87,11 +185,13 @@ const ShoppingRender = (() => {
     return `
       <div class="sh-dayone">
         <div class="sh-dayone__head">
-          <i class="ti ti-backpack" aria-hidden="true"></i>
-          <span class="sh-dayone__title">Первый день</span>
+          <div class="sh-dayone__icon"><i class="ti ti-backpack" aria-hidden="true"></i></div>
+          <div class="sh-dayone__headtext">
+            <span class="sh-dayone__title">Первый день</span>
+            <span class="sh-dayone__hint">что нужно сразу по приезду — отметь «везём», когда собрано</span>
+          </div>
         </div>
-        <p class="sh-dayone__hint">Что нужно сразу по приезду — отмечай «везём», когда уже собрано</p>
-        ${rows}
+        ${raw.length ? rows : `<p class="sh-dayone__empty">Пока пусто. Добавь сюда, что понадобится в первый вечер.</p>`}
         <div class="sh-dayone__add">
           <input class="sh-dayone__input" id="sh-dayone-name" type="text" placeholder="Название...">
           <input class="sh-dayone__qty" id="sh-dayone-qty" type="text" placeholder="Кол-во">
@@ -111,20 +211,37 @@ const ShoppingRender = (() => {
         <div class="sh-cat__head" data-action="toggle-cat" data-cat="${cat.id}">
           <div class="sh-cat__icon"><i class="ti ${cat.icon || 'ti-list'}" aria-hidden="true"></i></div>
           <span class="sh-cat__title">${_esc(cat.title)}</span>
-          <span class="sh-cat__count ${allDone ? 'done' : ''}">${allDone ? '✓' : `${bought}/${total}`}</span>
+          <span class="sh-cat__count ${allDone ? 'done' : ''}">${allDone ? '' + UIUtils.ico('check') + '' : `${bought}/${total}`}</span>
           <i class="ti ti-chevron-${isOpen ? 'up' : 'down'} sh-cat__chev" aria-hidden="true"></i>
         </div>
         ${isOpen ? _catBody(cat) : ''}
       </div>`;
   }
 
+  // Некупленные позиции показаны всегда; купленные сворачиваются в строку
+  // «Куплено · N» (раскрывается по тапу, состояние — в _boughtOpenCats) —
+  // чтобы длинный отмеченный хвост не занимал экран. При включённом
+  // «Скрыть купленное» строка вообще не рисуется.
   function _catBody(cat) {
-    const items = cat.items.map(item => _item(cat.id, item)).join('');
+    const unbought = cat.items.filter(i => !i.bought);
+    const bought   = cat.items.filter(i => i.bought);
+    const boughtOpen = _boughtOpenCats.has(cat.id);
+    const items = unbought.map(item => _item(cat.id, item)).join('');
+    const boughtRows = boughtOpen ? bought.map(item => _item(cat.id, item)).join('') : '';
     return `
       <div class="sh-cat__body">
         ${items}
-        <div class="sh-add-item" data-action="add-item" data-cat="${cat.id}">
-          <i class="ti ti-plus" aria-hidden="true"></i> добавить позицию
+        ${(bought.length && !_hideBought) ? `
+        <div class="sh-cat-bought-toggle" data-action="toggle-bought-list" data-cat="${cat.id}">
+          ${UIUtils.ico('check')} Куплено · ${bought.length}
+          <i class="ti ti-chevron-${boughtOpen ? 'up' : 'down'}" aria-hidden="true"></i>
+        </div>
+        ${boughtRows}` : ''}
+        <div class="sh-cat__body-actions">
+          <div class="sh-add-item" data-action="add-item" data-cat="${cat.id}">
+            <i class="ti ti-plus" aria-hidden="true"></i> добавить позицию
+          </div>
+          ${bought.length ? `<div class="sh-cat-clear" data-action="clear-cat" data-cat="${cat.id}">Очистить отметки</div>` : ''}
         </div>
       </div>`;
   }
@@ -149,6 +266,13 @@ const ShoppingRender = (() => {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // Неотмеченные сверху, отмеченные — вниз (прыгает сразу при отметке, как
+  // в обычном списке покупок). Только для отображения — порядок в
+  // ShoppingState не трогаем.
+  function _sortByChecked(items, key) {
+    return items.slice().sort((a, b) => (a[key] ? 1 : 0) - (b[key] ? 1 : 0));
+  }
+
   function _sync() {
     ShoppingFirebase.save(_tripId, ShoppingState.getCategories(_tripId));
   }
@@ -157,18 +281,28 @@ const ShoppingRender = (() => {
   // edit-qty-обработчика, чтобы refresh() могла навесить их заново на
   // подменённый узел (см. ниже) без дублирования логики сохранения.
   function _bindQtyEditHandlers(tag, catId, itemId) {
+    // Escape — отмена: вернуть старый текст и НЕ сохранять (раньше снятие
+    // contentEditable само вызывало blur → _save с уже изменённым текстом).
+    // keydown без {once}: иначе первая же набранная цифра снимала слушатель
+    // и Enter/Escape дальше не работали.
+    const orig = tag.textContent;
+    let cancelled = false;
+    const _onKey = e => {
+      if (e.key === 'Enter') { e.preventDefault(); tag.blur(); }
+      if (e.key === 'Escape') { cancelled = true; tag.textContent = orig; tag.blur(); }
+    };
     const _save = () => {
+      tag.removeEventListener('keydown', _onKey);
       tag.contentEditable = 'false';
       tag.classList.remove('editing');
+      if (cancelled) return;
       const newQty = tag.textContent.trim();
+      if (newQty === orig.trim()) return;
       ShoppingState.updateQty(_tripId, catId, itemId, newQty);
       _sync();
     };
     tag.addEventListener('blur', _save, { once: true });
-    tag.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { e.preventDefault(); tag.blur(); }
-      if (e.key === 'Escape') { tag.contentEditable = 'false'; tag.classList.remove('editing'); }
-    }, { once: true });
+    tag.addEventListener('keydown', _onKey);
   }
 
   function _rebuildBody() {
@@ -193,8 +327,8 @@ const ShoppingRender = (() => {
     const stats = ShoppingState.getStats(_tripId);
     const valEl = _el?.querySelector('.sh-stats__val');
     if (valEl) {
-      valEl.textContent = `${stats.bought} / ${stats.total}`;
-      valEl.style.color = stats.pct === 100 ? '#34c759' : 'var(--accent)';
+      valEl.innerHTML = `${stats.bought} <span class="sh-stats__of">из ${stats.total}</span>`;
+      valEl.classList.toggle('done', stats.pct === 100);
     }
     const fillEl = _el?.querySelector('.sh-progress-fill');
     if (fillEl) fillEl.style.width = stats.pct + '%';
@@ -210,6 +344,8 @@ const ShoppingRender = (() => {
   function _bindBody() {
     const body = _el?.querySelector('#sh-body');
     if (!body) return;
+    // Удаление позиции — свайпом влево (крестик спрятан под строкой).
+    UIUtils.swipeToDelete(body, '.sh-item', '.sh-del');
 
     if (_bodyHandler) body.removeEventListener('click', _bodyHandler, true);
 _bodyHandler = e => {
@@ -263,12 +399,46 @@ _bodyHandler = e => {
     _showAddCat();
     return;
   }
+  if (action === 'toggle-hide-bought') {
+    _hideBought = !_hideBought;
+    _rebuildBody();
+    return;
+  }
+  if (action === 'toggle-bought-list') {
+    e.stopPropagation();
+    if (_boughtOpenCats.has(catId)) _boughtOpenCats.delete(catId);
+    else _boughtOpenCats.add(catId);
+    _rebuildCat(catId);
+    return;
+  }
   if (action === 'paste-list') {
     _showPasteList();
     return;
   }
   if (action === 'load-defaults') {
     _loadDefaults(target);
+    return;
+  }
+  if (action === 'clear-bought') {
+    (async () => {
+      const ok = await UIUtils.confirmSheet('Снять все отметки «куплено»/«везём»?', { okLabel: 'Сбросить', danger: false });
+      if (!ok) return;
+      ShoppingState.clearBought(_tripId);
+      await ShoppingFirebase.save(_tripId, ShoppingState.getCategories(_tripId));
+      await ShoppingFirebase.saveDayOne(_tripId, ShoppingState.getDayOneItems(_tripId));
+      _rebuildBody();
+    })();
+    return;
+  }
+  if (action === 'clear-cat') {
+    e.stopPropagation();
+    (async () => {
+      const ok = await UIUtils.confirmSheet('Снять отметки «куплено» в этой категории?', { okLabel: 'Сбросить', danger: false });
+      if (!ok) return;
+      ShoppingState.clearBoughtInCategory(_tripId, catId);
+      await ShoppingFirebase.save(_tripId, ShoppingState.getCategories(_tripId));
+      _rebuildCat(catId);
+    })();
     return;
   }
   if (action === 'dayone-toggle') {
@@ -295,6 +465,18 @@ _bodyHandler = e => {
   }
 };
 body.addEventListener('click', _bodyHandler, true);
+
+    // Быстрое добавление — Enter в строке «Что купить» добавляет позицию
+    // (без отдельной кнопки, как в макете). Пересобираем ссылку на
+    // обработчик так же, как для клика — body переживает перерисовки.
+    if (_bodyKeydownHandler) body.removeEventListener('keydown', _bodyKeydownHandler);
+    _bodyKeydownHandler = e => {
+      if (e.key === 'Enter' && e.target?.id === 'sh-quickadd-input') {
+        e.preventDefault();
+        _quickAdd();
+      }
+    };
+    body.addEventListener('keydown', _bodyKeydownHandler);
   }
 
   function _showAddItem(catId) {
@@ -386,8 +568,28 @@ body.addEventListener('click', _bodyHandler, true);
         ShoppingState.persist();
         await ShoppingFirebase.save(_tripId, cats);
         _rebuildBody();
+        _showToast(`Добавлено ${added} ${_plural(added, 'позиция', 'позиции', 'позиций')}`);
+      } else {
+        _showToast('Всё это уже есть в списке');
       }
     });
+  }
+
+  // Короткое всплывающее сообщение внизу экрана — для разового фидбэка типа
+  // «стандартный список добавил N позиций», без общего toast-хелпера в
+  // shared (его в приложении пока нет, заводить ради одной надписи не
+  // стали — своя маленькая реализация внутри модуля).
+  let _toastTimer = null;
+  function _showToast(text) {
+    if (!_el) return;
+    _el.querySelector('#sh-toast')?.remove();
+    clearTimeout(_toastTimer);
+    const el = document.createElement('div');
+    el.id = 'sh-toast';
+    el.className = 'sh-toast';
+    el.textContent = text;
+    _el.appendChild(el);
+    _toastTimer = setTimeout(() => el.remove(), 2600);
   }
 
   function _showPasteList() {
@@ -451,6 +653,7 @@ body.addEventListener('click', _bodyHandler, true);
           ShoppingState.persist();
           await ShoppingFirebase.save(_tripId, cats);
           _rebuildBody();
+          _showToast(`Добавлено ${added} ${_plural(added, 'позиция', 'позиции', 'позиций')}`);
         }
       });
       overlay.remove();
@@ -526,5 +729,7 @@ body.addEventListener('click', _bodyHandler, true);
     }
   }
 
-  return { render, refresh };
+  function _setEmptyOpen(v) { _emptyOpen = !!v; }
+
+  return { render, refresh, _setEmptyOpen };
 })();

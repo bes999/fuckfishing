@@ -16,6 +16,9 @@ const NotesFirebase = (() => {
       text:       data.text || '',
       safety:     !!data.safety,
       pinned:     !!data.pinned,
+      isTask:     !!data.isTask,
+      done:       !!data.done,
+      private:    !!data.private,
       authorName: data.authorName || 'Участник',
       createdBy:  data.createdBy || null,
       createdAt:  data.createdAt || new Date().toISOString(),
@@ -54,11 +57,14 @@ const NotesFirebase = (() => {
     if (_unsub) { _unsub(); _unsub = null; }
   }
 
-  function addNote(tripId, { text, safety }) {
+  function addNote(tripId, { text, safety, isTask, private: isPrivate }) {
     const data = {
       text,
       safety:     !!safety,
       pinned:     false,
+      isTask:     !!isTask,
+      done:       false,
+      private:    !!isPrivate,
       authorName: window.APP?.profile?.displayName || 'Участник',
       createdBy:  window.APP?.user?.uid || null,
       createdAt:  new Date().toISOString(),
@@ -74,11 +80,45 @@ const NotesFirebase = (() => {
       .catch(e => console.warn('setPinned:', e));
   }
 
+  // Пометить существующую заметку задачей (или снять) — отдельно от чек-
+  // бокса "готово", чтобы уже написанные заметки (см. запрос Дмитрия)
+  // можно было превратить в задачу постфактум, не пересоздавая их.
+  function setTask(tripId, noteId, isTask) {
+    const data = { isTask: !!isTask };
+    if (!isTask) data.done = false;
+    return _ref(tripId).collection('notes').doc(noteId)
+      .update(data)
+      .catch(e => console.warn('setTask:', e));
+  }
+
+  function setDone(tripId, noteId, done) {
+    return _ref(tripId).collection('notes').doc(noteId)
+      .update({ done: !!done })
+      .catch(e => console.warn('setDone:', e));
+  }
+
+  // Личная/общая — переключается постфактум так же, как isTask. Реальную
+  // приватность (другие участники не видят документ вообще, а не просто UI
+  // прячет) даёт правило в firestore.rules, не эта функция.
+  function setPrivate(tripId, noteId, isPrivate) {
+    return _ref(tripId).collection('notes').doc(noteId)
+      .update({ private: !!isPrivate })
+      .catch(e => console.warn('setPrivate:', e));
+  }
+
+  // Пометка «Безопасность» постфактум (лист действий заметки в Инфо) —
+  // так же, как isTask/private, уже написанную заметку можно пометить.
+  function setSafety(tripId, noteId, safety) {
+    return _ref(tripId).collection('notes').doc(noteId)
+      .update({ safety: !!safety })
+      .catch(e => console.warn('setSafety:', e));
+  }
+
   function deleteNote(tripId, noteId) {
     return _ref(tripId).collection('notes').doc(noteId)
       .delete()
       .catch(e => console.warn('deleteNote:', e));
   }
 
-  return { listen, stopListening, addNote, setPinned, deleteNote };
+  return { listen, stopListening, addNote, setPinned, setTask, setDone, setPrivate, setSafety, deleteNote };
 })();

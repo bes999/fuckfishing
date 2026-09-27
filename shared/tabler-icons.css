@@ -3,8 +3,9 @@
    остальным приложением (см. shared/fonts/tabler-icons.woff2/.woff),
    чтобы упавший внешний CDN не ломал все иконки разом.
    Источник: https://github.com/tabler/tabler-icons (webfont, v2.47.0)
-   Здесь только те ~48 иконок, которые реально используются в приложении —
-   не весь набор (там их тысячи). */
+   Шрифт — полный набор (~5000 глифов), а классы .ti-* здесь только для
+   тех иконок, что реально используются. Нужна новая иконка — добавь
+   строку .ti-<имя>:before{content:"\<код>"} (код берётся из cmap шрифта). */
 @font-face{
   font-family:"tabler-icons";
   font-style:normal;
@@ -64,3 +65,89 @@
 .ti-trash:before{content:"\eb41"}
 .ti-users:before{content:"\ebf2"}
 .ti-x:before{content:"\eb55"}
+
+/* Иконки вместо эмодзи (редизайн 2026-09) — кодпоинты из того же шрифта */
+.ti-alert-triangle:before{content:"\ea06"}
+.ti-alien:before{content:"\ebde"}
+.ti-arrow-back-up:before{content:"\eb77"}
+.ti-ban:before{content:"\ea2e"}
+.ti-bandage:before{content:"\eb7a"}
+.ti-beer:before{content:"\efa1"}
+.ti-bell:before{content:"\ea35"}
+.ti-biohazard:before{content:"\ecb8"}
+.ti-bolt:before{content:"\ea38"}
+.ti-bone:before{content:"\edb8"}
+.ti-book:before{content:"\ea39"}
+.ti-brain:before{content:"\f59f"}
+.ti-brand-telegram:before{content:"\ec26"}
+.ti-bug:before{content:"\ea48"}
+.ti-building-hospital:before{content:"\ea4d"}
+.ti-calendar:before{content:"\ea53"}
+.ti-cash:before{content:"\ea55"}
+.ti-circle-check:before{content:"\ea67"}
+.ti-circle-dot:before{content:"\efb1"}
+.ti-cloud-rain:before{content:"\ea72"}
+.ti-compass:before{content:"\ea79"}
+.ti-dog:before{content:"\f660"}
+.ti-droplets:before{content:"\fc12"}
+.ti-eye:before{content:"\ea9a"}
+.ti-feather:before{content:"\ee8b"}
+.ti-fish-bone:before{content:"\f287"}
+.ti-fish-hook:before{content:"\f1f9"}
+.ti-flag:before{content:"\eaa6"}
+.ti-gauge:before{content:"\eab1"}
+.ti-glass-cocktail:before{content:"\fd9d"}
+.ti-hand-rock:before{content:"\ee97"}
+.ti-heart:before{content:"\eabe"}
+.ti-heartbeat:before{content:"\ef92"}
+.ti-helmet:before{content:"\efca"}
+.ti-hourglass:before{content:"\ef93"}
+.ti-layout-list:before{content:"\ec14"}
+.ti-list-check:before{content:"\eb6a"}
+.ti-lock:before{content:"\eae2"}
+.ti-lungs:before{content:"\ef62"}
+.ti-map:before{content:"\eae9"}
+.ti-map-pin:before{content:"\eae8"}
+.ti-mood-empty:before{content:"\eeb5"}
+.ti-mood-nervous:before{content:"\ef96"}
+.ti-mood-sick:before{content:"\f2e5"}
+.ti-mountain:before{content:"\ef97"}
+.ti-mushroom:before{content:"\ef14"}
+.ti-notes:before{content:"\eb6e"}
+.ti-paw:before{content:"\eff9"}
+.ti-phone:before{content:"\eb09"}
+.ti-pill:before{content:"\ec44"}
+.ti-pin:before{content:"\ec9c"}
+.ti-plane:before{content:"\eb6f"}
+.ti-plant:before{content:"\ed50"}
+.ti-player-play:before{content:"\ed46"}
+.ti-ripple:before{content:"\ed82"}
+.ti-robot:before{content:"\f00b"}
+.ti-scuba-mask:before{content:"\eed4"}
+.ti-settings:before{content:"\eb20"}
+.ti-shirt:before{content:"\ec0a"}
+.ti-snowboarding:before{content:"\fd4f"}
+.ti-snowflake:before{content:"\ec0b"}
+.ti-soup:before{content:"\ef2e"}
+.ti-speedboat:before{content:"\ed93"}
+.ti-spider:before{content:"\f293"}
+.ti-spray:before{content:"\f50b"}
+.ti-sun:before{content:"\eb30"}
+.ti-sunglasses:before{content:"\f239"}
+.ti-sunrise:before{content:"\ef1c"}
+.ti-sunset:before{content:"\ec31"}
+.ti-target:before{content:"\eb35"}
+.ti-temperature:before{content:"\eb38"}
+.ti-temperature-minus:before{content:"\ebed"}
+.ti-temperature-plus:before{content:"\ebee"}
+.ti-tent:before{content:"\eefb"}
+.ti-tools-kitchen-2:before{content:"\eeff"}
+.ti-trees:before{content:"\ec10"}
+.ti-trophy:before{content:"\eb45"}
+.ti-urgent:before{content:"\eb48"}
+.ti-user:before{content:"\eb4d"}
+.ti-vaccine:before{content:"\ef04"}
+.ti-virus:before{content:"\eb74"}
+.ti-walk:before{content:"\ec87"}
+.ti-wind:before{content:"\ec34"}
+.ti-zzz:before{content:"\f228"}

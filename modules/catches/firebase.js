@@ -96,6 +96,17 @@ const CatchesFirebase = (() => {
       .catch(e => console.warn('addCatch:', e));
   }
 
+  // Правка существующей поимки (лист «Улов» в режиме редактирования).
+  // Пишем только переданные поля — createdAt/createdBy не трогаем, модель
+  // данных та же, что у addCatch. Правила Firestore: update — любой участник.
+  function updateCatch(tripId, id, patch) {
+    const data = Object.assign({}, patch);
+    delete data._id; delete data.createdAt; delete data.createdBy;
+    return _ref(tripId).collection('catches').doc(id)
+      .update(data)
+      .catch(e => console.warn('updateCatch:', e));
+  }
+
   function deleteCatch(tripId, id) {
     return _ref(tripId).collection('catches').doc(id)
       .delete()
@@ -104,6 +115,6 @@ const CatchesFirebase = (() => {
 
   return {
     listen, stopListening, listenAll, getOnce,
-    addCatch, deleteCatch,
+    addCatch, updateCatch, deleteCatch,
   };
 })();

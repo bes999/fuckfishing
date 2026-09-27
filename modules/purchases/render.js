@@ -25,7 +25,7 @@ const PurchasesRender = (() => {
       .slice().sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
 
     if (!trips.length) {
-      _el.innerHTML = `<p style="color:var(--label3);font-size:14px;padding:12px 0">Нет поездок, к которым можно привязать покупки</p>`;
+      _el.innerHTML = `<p class="mb-empty">Нет поездок, к которым можно привязать покупки</p>`;
       return;
     }
 
@@ -37,19 +37,41 @@ const PurchasesRender = (() => {
     _subscribe();
   }
 
+  // Выбор поездки — нативный <select> поверх «кнопки» с подписью (на
+  // телефоне открывает системный список), строка добавления «название + ₽»
+  // прямо над списком вместо отдельного шита.
   function _shell(trips) {
-    const options = trips.map(t => `<option value="${t.id}" ${t.id === _tripId ? 'selected' : ''}>${_esc(t.name)}</option>`).join('');
+    const options = trips.map(t => `<option value="${_esc(t.id)}" ${t.id === _tripId ? 'selected' : ''}>${_esc(t.name)}</option>`).join('');
+    const cur = trips.find(t => t.id === _tripId);
     return `
-      <select class="invite-email-input" id="pur-trip-select">${options}</select>
+      <p class="pur-intro">Что купить лично себе к поездке. Видишь только ты.</p>
+      <label class="pur-trip">
+        <span class="pur-trip-txt"><span class="pur-trip-cap">Поездка</span><span class="pur-trip-name" id="pur-trip-name">${_esc(cur?.name || '')}</span></span>
+        <i class="ti ti-chevron-down" aria-hidden="true"></i>
+        <select id="pur-trip-select" aria-label="Поездка">${options}</select>
+      </label>
+      <form class="pur-add" id="pur-add-form" autocomplete="off">
+        <input class="pur-add-name" id="pur-add-name" type="text" placeholder="Кепка, гели, ремкомплект…" aria-label="Что купить">
+        <input class="pur-add-amount" id="pur-add-amount" type="number" inputmode="decimal" placeholder="₽" aria-label="Сумма, ₽">
+        <button class="pur-add-btn" type="submit" aria-label="Добавить">${UIUtils.ico('plus')}</button>
+      </form>
+      <span class="pur-hint pur-hint--tight">Сумма — необязательно</span>
       <div id="pur-list"></div>`;
   }
 
   function _bindShell() {
-    _el.querySelector('#pur-trip-select')?.addEventListener('change', e => {
+    const sel = _el.querySelector('#pur-trip-select');
+    sel?.addEventListener('change', e => {
       _tripId = e.target.value;
+      const nm = _el.querySelector('#pur-trip-name');
+      if (nm) nm.textContent = sel.options[sel.selectedIndex]?.text || '';
       _items = [];
       document.getElementById('pur-list').innerHTML = '';
       _subscribe();
+    });
+    _el.querySelector('#pur-add-form')?.addEventListener('submit', e => {
+      e.preventDefault();
+      _add(e.currentTarget.querySelector('.pur-add-btn'));
     });
   }
 
@@ -74,29 +96,34 @@ const PurchasesRender = (() => {
     const boughtTotal = bought.reduce((s, i) => s + (Number(i.amount) || 0), 0);
 
     const rows = _items.map(i => `
-      <div class="p-gear-item">
-        <div class="pur-check ${i.bought ? 'checked' : ''}" data-action="pur-toggle" data-id="${i.id}"></div>
-        <span class="pur-name ${i.bought ? 'pur-name--bought' : ''}">${_esc(i.name)}</span>
-        <span class="pur-amount">${i.amount ? _esc(String(i.amount)) + ' ₽' : ''}</span>
-        <span class="p-emerg-del" data-action="pur-del" data-id="${i.id}">×</span>
+      <div class="pur-row" data-id="${_esc(i.id)}">
+        <button type="button" class="pur-row-main" role="checkbox" aria-checked="${!!i.bought}" data-action="pur-toggle" data-id="${_esc(i.id)}">
+          <span class="pur-check ${i.bought ? 'checked' : ''}"></span>
+          <span class="pur-name ${i.bought ? 'pur-name--bought' : ''}">${_esc(i.name)}</span>
+          <span class="pur-amount">${i.amount ? _fmtRub(i.amount) : ''}</span>
+        </button>
+        <button type="button" class="pur-del" data-action="pur-del" data-id="${_esc(i.id)}" aria-label="Удалить"></button>
       </div>`).join('');
 
-    listEl.innerHTML = `
-      ${rows || '<p style="color:var(--label3);font-size:14px;padding:12px 0">Список пуст</p>'}
-      <div class="p-gear-add" id="pur-add-row">+ Добавить</div>
-      ${bought.length ? `<div class="p-sec-title" style="margin-top:16px">Куплено: ${boughtTotal} ₽</div>` : ''}
-    `;
+    listEl.innerHTML = _items.length ? `
+      <section class="mb-card mb-card--list pur-list">${rows}</section>
+      <div class="pur-sum"><span>Куплено</span><b>${bought.length} из ${_items.length} · ${_fmtRub(boughtTotal)}</b></div>
+      <span class="pur-hint">Кружок — куплено · смахни влево, чтобы удалить</span>`
+      : `<p class="mb-empty">Список пуст — добавь, что купить</p>`;
     _bindListEvents(listEl);
   }
 
   function _bindListEvents(listEl) {
-    listEl.querySelectorAll('[data-action="pur-toggle"]').forEach(el => {
-      el.addEventListener('click', () => _toggle(el.dataset.id));
+    const card = listEl.querySelector('.pur-list');
+    if (!card) return;
+    // Удаление — свайпом влево (кнопка спрятана под строкой).
+    UIUtils.swipeToDelete(card, '.pur-row', '.pur-del');
+    card.addEventListener('click', e => {
+      const del = e.target.closest('[data-action="pur-del"]');
+      if (del) { _remove(del.dataset.id); return; }
+      const tg = e.target.closest('[data-action="pur-toggle"]');
+      if (tg) _toggle(tg.dataset.id);
     });
-    listEl.querySelectorAll('[data-action="pur-del"]').forEach(el => {
-      el.addEventListener('click', () => _remove(el.dataset.id));
-    });
-    listEl.querySelector('#pur-add-row')?.addEventListener('click', _showAddForm);
   }
 
   function _toggle(id) {
@@ -113,41 +140,23 @@ const PurchasesRender = (() => {
     _renderList();
   }
 
-  function _showAddForm() {
-    document.getElementById('pur-add-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'profile-overlay';
-    overlay.id = 'pur-add-overlay';
-    overlay.innerHTML = `
-      <div class="profile-sheet">
-        <div class="profile-grab"></div>
-        <div class="profile-scroll">
-          <div class="modal-title" style="margin-bottom:14px">Новая покупка</div>
-          <input class="invite-email-input" id="pur-add-name" type="text" placeholder="Кепка, гели, ремкомплект..." autocomplete="off">
-          <input class="invite-email-input" id="pur-add-amount" type="number" inputmode="decimal" placeholder="Сумма, ₽ (необязательно)">
-          <div class="sheet-actions-row">
-            <button class="picker-cancel" data-action="pur-add-close">Отмена</button>
-            <button class="action-btn" id="pur-add-save">Добавить</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
-    overlay.querySelector('#pur-add-name')?.focus();
+  async function _add(btn) {
+    const nameEl = _el?.querySelector('#pur-add-name');
+    const amtEl  = _el?.querySelector('#pur-add-amount');
+    const name = nameEl?.value.trim();
+    if (!name) { nameEl?.focus(); return; }
+    const amount = Number(amtEl?.value) || 0;
+    _items.push({ id: 'pi_' + Date.now() + '_' + Math.random().toString(36).slice(2), name, amount, bought: false });
+    await UIUtils.withBusyButton(btn, async () => {
+      await PurchasesFirebase.save(_uid, _tripId, _items);
+    });
+    nameEl.value = ''; if (amtEl) amtEl.value = '';
+    _renderList();
+    nameEl.focus();
+  }
 
-    overlay.addEventListener('click', e => {
-      if (e.target === overlay || e.target.dataset.action === 'pur-add-close') overlay.remove();
-    });
-    overlay.querySelector('#pur-add-save').addEventListener('click', async e => {
-      const name = overlay.querySelector('#pur-add-name').value.trim();
-      if (!name) { overlay.querySelector('#pur-add-name').focus(); return; }
-      const amount = Number(overlay.querySelector('#pur-add-amount').value) || 0;
-      _items.push({ id: 'pi_' + Date.now() + '_' + Math.random().toString(36).slice(2), name, amount, bought: false });
-      await UIUtils.withBusyButton(e.currentTarget, async () => {
-        await PurchasesFirebase.save(_uid, _tripId, _items);
-      });
-      _renderList();
-      overlay.remove();
-    });
+  function _fmtRub(n) {
+    return (Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
   }
 
   return { init, destroy };

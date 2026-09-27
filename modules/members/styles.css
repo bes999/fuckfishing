@@ -1,59 +1,6 @@
 /* ═══════════════════════════════════════════════
-   MEMBERS — Участники поездки и профили
+   MEMBERS — участники и профили (редизайн v2 «Ночная река»)
 ═══════════════════════════════════════════════ */
-
-/* ── Список участников ───────────────────────── */
-.members-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
-  padding: 12px;
-}
-
-.m-card {
-  background: var(--bg2);
-  border-radius: var(--radius-lg);
-  padding: 14px 8px;
-  text-align: center;
-  box-shadow: var(--card-shadow);
-  position: relative;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: transform var(--duration-fast) var(--spring), box-shadow var(--duration-fast);
-}
-.m-card:active { transform: scale(.96); box-shadow: var(--card-shadow-pressed); }
-
-.m-ava  {
-  width: 44px; height: 44px; margin: 0 auto 6px; border-radius: 50%; overflow: hidden;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 28px; line-height: 1;
-}
-.m-ava img { width: 100%; height: 100%; object-fit: cover; }
-.m-name { font-size: 13px; font-weight: 600; color: var(--label); margin-bottom: 3px;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.m-role { font-size: 10px; color: var(--label3); }
-.m-role.org { color: var(--accent); font-weight: 600; }
-
-.m-me-badge {
-  position: absolute; top: 6px; right: 6px;
-  font-size: 9px; font-weight: 700;
-  background: var(--accent); color: #fff;
-  padding: 2px 5px; border-radius: 6px;
-}
-
-.m-add-card {
-  background: var(--bg2);
-  border-radius: var(--radius-lg);
-  padding: 14px 8px;
-  text-align: center;
-  border: 1.5px dashed var(--sep);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: border-color var(--duration-fast);
-}
-.m-add-card:active { border-color: var(--accent); }
-.m-add-icon  { font-size: 20px; color: var(--label4); margin-bottom: 4px; }
-.m-add-label { font-size: 10px; color: var(--label4); font-weight: 600; }
 
 /* ── Профиль (bottom sheet) ──────────────────── */
 .profile-overlay {
@@ -72,7 +19,7 @@
   max-width: 480px;
   margin: 0 auto;
   background: var(--modal-bg);
-  border-radius: 20px 20px 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   box-shadow: 0 -8px 40px rgba(0,0,0,.18);
   max-height: 94vh;
   display: flex; flex-direction: column;
@@ -91,130 +38,240 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Аптечка рендерится инлайн прямо сюда (см. switchTab('medkit') в
-   modules/members/index.js — #p-medkit-inline получает id="p-medkit" на
-   время вкладки). У #p-medkit есть свой padding (10px по бокам, отступ
-   сверху под фиксированный header отдельной страницы, 83px снизу под
-   нижнее меню) — рассчитанный для полноэкранной страницы. Внутри профиля
-   этот отступ складывается с уже имеющимся padding у .profile-scroll —
-   контент становится заметно уже, чем на самой странице Аптечки. Зануляем
-   паддинг у вложенного #p-medkit, полагаясь целиком на отступы профиля. */
-.profile-scroll #p-medkit {
-  padding: 0;
+/* ── Общие куски ─────────────────────────────── */
+.mb-body { padding: 4px 16px 24px; display: flex; flex-direction: column; gap: 12px; }
+.mb-body--prof { gap: 14px; padding-top: 0; }
+.mb-card {
+  background: var(--bg2); box-shadow: var(--card-shadow);
+  border-radius: var(--radius-lg);
+  display: flex; flex-direction: column;
 }
-
-/* Header */
-.p-header {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 14px 0 12px;
-  border-bottom: 0.5px solid var(--sep2);
+.mb-card--list { overflow: hidden; }
+.mb-card--pad { padding: 18px; gap: 14px; }
+.mb-card--links { padding: 0 16px; }
+.mb-hint { font-size: 12px; color: var(--label3); padding: 0 4px; margin: 0; line-height: 1.4; }
+.mb-empty { font-size: 14px; color: var(--label3); padding: 0 4px; margin: 0; }
+.mb-muted { font-size: 13px; color: var(--label3); }
+.mb-sec { margin: 4px 0 -2px; padding: 0 4px; font-size: 20px; font-weight: 700; color: var(--label); }
+.mb-cap {
+  font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--label3); padding: 6px 4px 0;
 }
-.p-header-edit {
-  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
-  background: var(--bg3); border: none; color: var(--label3);
+.mb-svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.mb-icon-btn {
+  width: 44px; height: 44px; flex-shrink: 0; border: none; background: none;
+  color: var(--label); font-size: 24px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  font-size: 15px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+  -webkit-tap-highlight-color: transparent;
 }
-.p-header-edit:active { background: var(--sep2); color: var(--accent); }
+.mb-icon-btn:active { opacity: .6; }
+.mb-text-btn {
+  align-self: flex-start; min-height: 44px; padding: 0 4px; border: none; background: none;
+  color: var(--accent); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.mb-btn {
+  width: 100%; height: 48px; border-radius: var(--radius-md);
+  font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mb-btn:active { opacity: .85; }
+.mb-btn--accent  { border: none; background: var(--accent); color: var(--on-accent); font-weight: 700; }
+.mb-btn--danger  { border: 1px solid var(--sep); background: none; color: var(--red); }
+.mb-btn--outline { border: 1px solid var(--sep); background: none; color: var(--label); margin-bottom: 10px; }
+.mb-input {
+  width: 100%; height: 48px; box-sizing: border-box; padding: 0 16px; margin-bottom: 8px;
+  border-radius: var(--radius-md); border: 1px solid var(--sep); background: var(--bg2);
+  color: var(--label); font-family: inherit; font-size: 16px; outline: none;
+}
+.mb-input:focus { border-color: var(--accent); }
 
-.p-ava-circle {
-  width: 52px; height: 52px; border-radius: 50%;
-  background: var(--topbar-bg); overflow: hidden;
+/* Аватар: фото или инициалы */
+.mb-ava {
+  width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%; overflow: hidden;
+  background: var(--bg3); color: var(--label2);
   display: flex; align-items: center; justify-content: center;
-  font-size: 24px; flex-shrink: 0;
+  font-size: 16px; font-weight: 700; line-height: 1;
 }
-.p-ava-circle img { width: 100%; height: 100%; object-fit: cover; }
+.mb-ava img { width: 100%; height: 100%; object-fit: cover; }
+.mb-ava--me { background: var(--accent-bg); color: var(--accent); }
+.mb-ava--xl { width: 72px; height: 72px; font-size: 24px; }
 
-.p-name  { font-size: 18px; font-weight: 700; color: var(--label); margin-bottom: 2px; }
-.p-meta  { font-size: 12px; color: var(--label3); margin-bottom: 1px; }
-.p-nickname { font-size: 0.8em; font-weight: 500; color: var(--label3); }
-.p-nick-add {
-  font-size: 0.75em; font-weight: 600; color: var(--accent);
-  cursor: pointer; -webkit-tap-highlight-color: transparent;
+/* ── Список участников ───────────────────────── */
+.mb-list-head { display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 16px; }
+.mb-list-titles { flex: 1; min-width: 0; }
+.mb-list-titles h1 { margin: 0; font-family: var(--font-display); font-size: 18px; font-weight: 700; line-height: 1.2; color: var(--label); }
+.mb-list-titles p { margin: 2px 0 0; font-size: 13px; color: var(--label3); }
+.mb-person {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  min-height: 68px; padding: 0 12px 0 16px; box-sizing: border-box;
+  border: none; border-bottom: 1px solid var(--sep2); background: none;
+  color: var(--label); font-family: inherit; text-align: left; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.p-badge {
-  display: inline-block; margin-top: 4px;
-  font-size: 11px; font-weight: 700;
-  padding: 3px 8px; border-radius: 8px;
+.mb-person:last-child { border-bottom: none; }
+.mb-person:active { background: var(--bg3); }
+.mb-person-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.mb-person-name { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-person-sub { font-size: 13px; color: var(--label3); }
+.mb-me {
+  padding: 2px 8px; border-radius: var(--radius-xs);
+  background: var(--accent-bg); color: var(--accent); font-size: 12px; font-weight: 700;
 }
-.p-badge.org { background: var(--orange); color: #fff; }
-.p-badge.mem { background: var(--bg3); color: var(--label3); }
+.mb-chev { font-size: 18px; color: var(--label4); }
 
-/* Stat-каллауты (поездок / активный месяц) — тот же паттерн, что в Атласе */
-.p-stats {
-  display: flex; gap: 10px;
-  margin: 14px 0 4px;
-}
-.p-stat { flex: 1; text-align: center; }
-.p-stat-num {
-  font-size: 26px; font-weight: 800; letter-spacing: -.5px; line-height: 1;
-  color: var(--label);
-}
-.p-stat-num--text { font-size: 17px; letter-spacing: -.2px; }
-.p-stat-lbl { font-size: 11px; color: var(--label3); margin-top: 4px; }
+/* ── Профиль ─────────────────────────────────── */
+.mb-bar { height: 60px; box-sizing: border-box; padding: 0 8px; display: flex; align-items: center; justify-content: space-between; }
+.mb-hero { display: flex; align-items: center; gap: 16px; padding: 0 4px; }
+.mb-hero-txt { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.mb-hero-name { font-family: var(--font-display); font-size: 24px; font-weight: 700; color: var(--label); overflow-wrap: anywhere; }
+.mb-hero-sub { font-size: 15px; color: var(--label3); }
+.mb-nick-add { color: var(--accent); font-weight: 600; cursor: pointer; }
+.mb-hero-phone { font-size: 14px; color: var(--label3); font-variant-numeric: tabular-nums; text-decoration: none; }
+.mb-hero-msgr { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mb-hero-tg { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--river); text-decoration: none; }
+.mb-hero-mail { font-size: 13px; color: var(--label4); overflow-wrap: anywhere; }
 
-/* Карточка-обёртка данных — та же визуальная единица, что в остальном app */
-.p-card {
-  background: var(--bg2); border-radius: var(--radius-lg);
-  box-shadow: var(--card-shadow);
-  padding: 2px 14px;
-  margin: 14px 0;
-}
-.p-card--signout { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.p-card--signout:active { background: var(--bg3); }
+.mb-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.mb-actions.single { grid-template-columns: 1fr; }
 
-.p-sec-title {
-  font-size: 11px; font-weight: 700; color: var(--label4);
-  text-transform: uppercase; letter-spacing: .5px; margin: 16px 0 7px;
-}
-
-/* Подвкладки — переиспользуем .stab из проекта */
-.p-subtabs {
-  display: flex; gap: 5px;
-  margin: 12px 0 10px; flex-wrap: nowrap;
-}
-.p-stab {
-  flex: 1; padding: 5px 8px; font-size: 12px; font-weight: 600;
-  border-radius: 20px; background: var(--bg3); color: var(--label3);
-  box-shadow: var(--card-shadow); text-align: center; cursor: pointer;
-  white-space: nowrap; font-family: inherit; border: none;
+/* Сегмент «Здоровье · Поездки · Покупки» */
+.mb-seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--bg3); }
+.mb-seg-btn {
+  flex: 1; height: 40px; border: none; border-radius: var(--radius-sm); background: none;
+  color: var(--label3); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition: background var(--duration-fast), color var(--duration-fast);
 }
-.p-stab.active { background: var(--accent); color: #fff; box-shadow: 0 2px 8px rgba(0,122,255,.3); }
+.mb-seg-btn.active { background: var(--bg2); color: var(--label); box-shadow: var(--card-shadow); }
+.mb-tab-content { display: flex; flex-direction: column; gap: 12px; }
 
-/* Строки данных — row из проекта */
-.p-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 0; border-bottom: 0.5px solid var(--sep2); font-size: 14px;
-}
-.p-row:last-child { border-bottom: none; }
-.p-row-lbl { color: var(--label); }
-.p-row-val { font-weight: 600; color: var(--label); }
-.p-row-val.green { color: var(--green); }
-.p-row-val.red   { color: var(--red); }
-.p-row-val.muted { color: var(--label3); font-weight: 400; font-size: 13px; }
-.p-row-action { font-size: 12px; font-weight: 600; color: var(--accent); margin-left: 6px; cursor: pointer; }
-.p-row-action.danger { color: var(--red); }
-.p-row-danger { cursor: pointer; -webkit-tap-highlight-color: transparent; }
-.p-row-danger .p-row-lbl { font-weight: 600; }
-
-/* Кружок группы крови */
-.blood-circle {
-  width: 26px; height: 26px; border-radius: 50%;
-  background: rgba(255,59,48,.12); color: var(--red);
+/* Здоровье */
+.mb-blood { display: flex; align-items: center; gap: 14px; }
+.mb-blood-big {
+  min-width: 56px; height: 56px; padding: 0 12px; box-sizing: border-box; flex-shrink: 0;
+  border-radius: var(--radius-md); background: rgba(var(--red-rgb), .12); color: var(--red);
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; font-weight: 800;
+  font-family: var(--font-display); font-size: 16px; font-weight: 700; white-space: nowrap;
 }
+.mb-blood-txt { display: flex; flex-direction: column; }
+.mb-blood-cap { font-size: 13px; color: var(--label3); }
+.mb-blood-words { font-size: 16px; font-weight: 700; color: var(--label); }
+.mb-rows { display: flex; flex-direction: column; }
+.mb-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  min-height: 48px; border-bottom: 1px solid var(--sep2);
+}
+.mb-row:last-child { border-bottom: none; }
+.mb-row-lbl { font-size: 15px; color: var(--label3); }
+.mb-row-val { font-size: 15px; font-weight: 600; text-align: right; color: var(--label); padding: 8px 0; }
+.mb-row-val.muted  { color: var(--label4); font-weight: 400; }
+.mb-row-val.accent { color: var(--accent); }
+.mb-row-val.green  { color: var(--green); }
+.mb-row-val.red    { color: var(--red); }
+.mb-row-val.warn   { color: var(--orange); }
+.mb-note { font-size: 12px; color: var(--label3); }
 
-/* Telegram-бот — компактная строка внутри карточки данных, см. .p-row выше */
-.p-tg-unlink {
-  font-size: 12px; font-weight: 600; color: var(--red);
-  padding: 6px 10px; cursor: pointer; flex-shrink: 0;
+/* Экстренные контакты — удаление свайпом (UIUtils.swipeToDelete) */
+.mb-emerg {
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; gap: 12px;
+  min-height: 64px; padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--sep2); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+.mb-emerg:last-child { border-bottom: none; }
+.mb-emerg > :not(.mb-emerg-del) { transition: transform var(--duration) var(--ease); }
+.mb-emerg.swiped > :not(.mb-emerg-del) { transform: translateX(-92px); }
+.mb-emerg-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: 10px 0; }
+.mb-emerg-name { font-size: 16px; font-weight: 600; color: var(--label); }
+.mb-emerg-phone { font-size: 15px; color: var(--label); font-variant-numeric: tabular-nums; }
+.mb-emerg-info .p-msgrs { margin-top: 2px; }
+.mb-call {
+  width: 44px; height: 44px; flex-shrink: 0; border-radius: 50%;
+  background: rgba(var(--green-rgb), .14); color: var(--green);
+  display: flex; align-items: center; justify-content: center; font-size: 20px; text-decoration: none;
+}
+.mb-emerg-del, .pur-del {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 88px;
+  border: none; background: var(--red); color: #fff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transform: translateX(calc(100% + 4px));
+  transition: transform var(--duration) var(--ease);
+}
+.mb-emerg-del::after, .pur-del::after { content: 'Удалить'; font-family: var(--font-body); font-size: 14px; font-weight: 600; }
+.mb-emerg.swiped > .mb-emerg-del { transform: translateX(0); }
+
+/* Строки-ссылки («Моё в приложении», «Аккаунт») */
+.mb-link {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  width: 100%; min-height: 52px; padding: 0; box-sizing: border-box;
+  border: none; border-bottom: 1px solid var(--sep2); background: none;
+  color: var(--label); font-family: inherit; font-size: 16px; text-align: left; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mb-link:last-child { border-bottom: none; }
+.mb-link--static { cursor: default; }
+.mb-link--danger { color: var(--red); }
+.mb-link-val { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--label3); text-align: right; }
+.mb-link-val .ti { font-size: 16px; color: var(--label4); }
+.mb-link-val.green  { color: var(--green); }
+.mb-link-val.accent { color: var(--accent); }
+.mb-tg-unlink {
+  border: none; background: none; padding: 8px 0 8px 8px; min-height: 44px;
+  color: var(--red); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.p-tg-cancel { border: none; background: none; font-family: inherit; min-height: 44px; }
+
+/* Поездки */
+.mb-trips-sum { font-size: 15px; color: var(--label3); padding: 0 4px; margin: 0; }
+.mb-trip {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  min-height: 64px; padding: 0 12px 0 16px; box-sizing: border-box;
+  border: none; border-bottom: 1px solid var(--sep2); background: none;
+  color: var(--label); font-family: inherit; text-align: left; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.mb-trip:last-child { border-bottom: none; }
+.mb-trip:active { background: var(--bg3); }
+.mb-trip-ico {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center; font-size: 20px;
+}
+.mb-trip-ico.exp  { background: var(--accent-bg); color: var(--accent); }
+.mb-trip-ico.fish { background: var(--river-bg); color: var(--river); }
+.mb-trip.past .mb-trip-ico { opacity: .6; }
+.mb-trip-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mb-trip-name { font-size: 16px; font-weight: 600; }
+.mb-trip-dates { font-size: 13px; color: var(--label3); }
+.mb-trip-status { font-size: 13px; color: var(--accent); white-space: nowrap; }
+.mb-trip.past .mb-trip-status { color: var(--label4); }
+
+/* Шиты (приглашение, пикер поездки) */
+.mb-sheet { display: flex; flex-direction: column; }
+.mb-sheet-title { font-size: 20px; font-weight: 700; color: var(--label); margin: 14px 0 8px; }
+.mb-sheet-desc { font-size: 15px; line-height: 1.5; color: var(--label3); margin: 0 0 14px; }
+.mb-inv-link {
+  display: flex; align-items: center; gap: 8px; min-height: 56px;
+  padding: 0 6px 0 16px; border-radius: var(--radius-md); background: var(--bg3);
+}
+.mb-inv-url { flex: 1; min-width: 0; font-size: 14px; color: var(--label3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mb-inv-copy {
+  height: 44px; padding: 0 14px; border: none; border-radius: var(--radius-sm);
+  background: var(--accent); color: var(--on-accent); font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.mb-inv-copy.copied { background: var(--green); color: var(--on-green); }
+.mb-inv-h { font-size: 15px; font-weight: 700; color: var(--label); margin-top: 8px; }
+.mb-inv-sub { font-size: 13px; color: var(--label3); margin-bottom: 8px; }
+.mb-inv-guest { border-top: 1px solid var(--sep2); padding-top: 12px; margin-top: 4px; display: flex; flex-direction: column; }
+.mb-inv-guest .mb-inv-h { margin: 0 0 8px; }
+.trip-pick-list { margin-bottom: 14px; }
+.trip-pick-row:not([data-action]) { cursor: default; opacity: .7; }
+
+/* Telegram-код привязки */
 .p-tg-code-card {
   background: var(--accent-bg);
-  border: 1.5px solid rgba(0,122,255,.2);
+  border: 1.5px solid rgba(var(--accent-rgb),.2);
   border-radius: var(--radius-md);
   padding: 14px; margin: 12px 0; text-align: center;
 }
@@ -230,22 +287,6 @@
   color: var(--label3); cursor: pointer;
 }
 
-/* Экстренные контакты (заголовок секции — общий .p-sec-title выше) */
-.p-emerg-card {
-  background: rgba(255,59,48,.06);
-  border: 1px solid rgba(255,59,48,.15);
-  border-radius: var(--radius-md);
-  padding: 10px 12px; margin-bottom: 8px;
-  display: flex; align-items: center; justify-content: space-between;
-}
-.p-emerg-info {}
-.p-emerg-name  { font-size: 13px; font-weight: 700; color: var(--label); }
-.p-emerg-phone-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 3px; }
-.p-emerg-phone { font-size: 13px; color: var(--accent); font-weight: 600; }
-.p-emerg-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.p-emerg-edit  { font-size: 14px; color: var(--label3); opacity: .8; cursor: pointer; padding: 0 4px; }
-.p-emerg-del   { font-size: 20px; color: var(--red); opacity: .7; cursor: pointer; padding: 0 4px; }
-
 /* Значки мессенджеров — переиспользуются и у экстренных контактов, и на
    карточке самого владельца профиля (см. _msgrBadges в render.js).
    Монохромные, без цветной подложки — тот же язык, что у ti-иконок. */
@@ -257,94 +298,13 @@
 }
 .msgr-badge svg { width: 100%; height: 100%; display: block; }
 .msgr-badge:active { color: var(--accent); }
-.p-emerg-add {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 0; color: var(--accent);
-  font-size: 14px; font-weight: 600; cursor: pointer;
-}
 
-/* Поездки */
-.p-trip-card {
-  background: var(--bg3); border-radius: var(--radius-md);
-  padding: 12px 14px; margin-bottom: 8px;
-}
-.p-trip-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; }
-.p-trip-name  { font-size: 14px; font-weight: 700; color: var(--label); }
-.p-trip-dates { font-size: 11px; color: var(--label3); margin-top: 2px; }
-.p-trip-badge {
-  font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 8px;
-  background: var(--accent-bg); color: var(--accent);
-}
-.p-trip-badge.past { background: var(--bg4); color: var(--label4); }
-.p-trip-stats { display: flex; gap: 12px; }
-.p-trip-stat  { font-size: 12px; color: var(--label3); }
-.p-trip-stat span { font-weight: 700; color: var(--label2); }
-.p-trip-add {
-  text-align: center; padding: 10px 0 4px;
-  font-size: 13px; color: var(--accent); font-weight: 600; cursor: pointer;
-}
-
-/* Снаряга */
-.p-gear-item {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 9px 0; border-bottom: 0.5px solid var(--sep2); font-size: 14px; color: var(--label);
-}
-.p-gear-item:last-child { border-bottom: none; }
-.p-gear-add {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 0; color: var(--accent); font-size: 14px; font-weight: 600; cursor: pointer;
-}
-
-/* Кнопки действий */
-.p-actions { display: flex; gap: 8px; margin-top: 16px; }
-.p-btn-edit {
-  flex: 1; padding: 10px;
-  border-radius: var(--radius-md);
-  border: 1.5px solid var(--sep2);
-  background: transparent; color: var(--accent);
-  font-size: 13px; font-weight: 600; text-align: center;
-  cursor: pointer; font-family: inherit;
-  transition: background var(--duration-fast);
-}
-.p-btn-edit:active { background: var(--bg3); }
-.p-btn-out {
-  padding: 10px 16px;
-  border-radius: var(--radius-md);
-  border: none; background: var(--bg3); color: var(--label3);
-  font-size: 13px; font-weight: 600; text-align: center;
-  cursor: pointer; font-family: inherit;
-  box-shadow: var(--card-shadow);
-}
-.p-btn-del {
-  flex: 1; padding: 10px;
-  border-radius: var(--radius-md);
-  background: rgba(255,59,48,.08);
-  border: 1.5px solid rgba(255,59,48,.2);
-  color: var(--red); font-size: 13px; font-weight: 600;
-  text-align: center; cursor: pointer; font-family: inherit;
-}
-
-/* Invite sheet */
-.invite-url-field {
-  display: flex; align-items: center; gap: 8px;
-  background: var(--bg3); border-radius: var(--radius-md);
-  padding: 12px 8px 12px 14px; margin-bottom: 14px;
-}
-.invite-url-text {
-  flex: 1; min-width: 0;
-  font-size: 13px; color: var(--label);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.invite-url-copy {
-  flex-shrink: 0; width: 30px; height: 30px; border-radius: var(--radius-sm);
-  background: var(--bg4); border: none; color: var(--label2); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-}
-.invite-url-copy:active { opacity: 0.7; }
-.invite-url-copy.copied { color: var(--green); }
+/* Приглашение (QR) и поле email — .invite-email-input переиспользуют
+   modules/tripcover и modules/trips */
 .invite-qr-wrap {
   display: flex; justify-content: center; padding: 4px 0 18px;
 }
+.invite-qr-wrap[hidden] { display: none; }
 .invite-qr {
   width: 150px; height: 150px; border-radius: var(--radius-sm);
   background: #fff; padding: 8px;
@@ -368,33 +328,15 @@
   padding-bottom: calc(83px + env(safe-area-inset-bottom));
 }
 
-.members-grid {
-  padding-bottom: calc(83px + env(safe-area-inset-bottom));
-}
 
-/* Trip picker sheet (профиль участника → "В поездку") */
-.trip-pick-list {
-  margin-bottom: 14px;
-}
-.trip-pick-row {
-  display: flex; align-items: center; justify-content: space-between;
-  gap: 10px;
-  padding: 12px 4px;
-  border-bottom: 0.5px solid var(--sep);
-  cursor: pointer;
-}
-.trip-pick-row:last-child { border-bottom: none; }
-.trip-pick-name { font-size: 14px; font-weight: 600; color: var(--label); }
-.trip-pick-dates { font-size: 12px; color: var(--label3); margin-top: 2px; }
-.trip-pick-status { font-size: 12px; color: var(--label3); white-space: nowrap; }
 
 /* Личные вкладки Гида (Профиль → Аккаунт → "Мои вкладки Гида") */
 .pgt-hint { font-size: 12.5px; color: var(--label3); line-height: 1.4; padding: 0 4px 4px; margin: 0; }
 .pgt-row { display: flex; align-items: center; gap: 10px; padding: 10px 4px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .pgt-label { flex: 1; font-size: 15px; color: var(--label); }
 .pgt-check {
-  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
-  border: 1.5px solid var(--label4);
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; box-sizing: border-box;
+  border: 2px solid var(--label4);
   display: flex; align-items: center; justify-content: center;
   transition: background var(--duration-fast), border-color var(--duration-fast);
 }
@@ -409,7 +351,7 @@
 }
 .pgt-save {
   width: 100%; margin-top: 8px;
-  background: var(--accent); color: #fff;
-  border: none; border-radius: 12px; padding: 13px;
-  font-size: 15px; font-weight: 600; cursor: pointer;
+  background: var(--accent); color: var(--on-accent);
+  border: none; border-radius: var(--radius-md); height: 52px;
+  font-family: inherit; font-size: 16px; font-weight: 700; cursor: pointer;
 }

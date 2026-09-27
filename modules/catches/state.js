@@ -58,6 +58,12 @@ const CatchesState = (() => {
     _ensure(tripId).catches.unshift(entry);
   }
 
+  // Оптимистичная правка до прихода снапшота из Firestore.
+  function updateCatch(tripId, id, patch) {
+    const s = _ensure(tripId);
+    s.catches = s.catches.map(c => c._id === id ? Object.assign({}, c, patch) : c);
+  }
+
   function removeCatch(tripId, id) {
     const s = _ensure(tripId);
     s.catches = s.catches.filter(c => c._id !== id);
@@ -147,7 +153,7 @@ const CatchesState = (() => {
     setMembers, getMembers,
     setRivers,  getRivers,
     setCatches, getCatches,
-    addCatch,   removeCatch,
+    addCatch,   updateCatch, removeCatch,
     computeStats,
     setAllCatches, getAllCatches, speciesForTrip,
   };

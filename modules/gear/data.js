@@ -142,6 +142,7 @@ const GearData = (() => {
   async function loadShared(tripId) {
     const doc = await db.collection('gear_trip_shared').doc(tripId).get();
     _shared[tripId] = doc.exists ? doc.data() : { tripId, categories: [], items: [], checked: [] };
+    _sharedBase[tripId] = _snapBase(_shared[tripId]);
     return _shared[tripId];
   }
 
@@ -149,15 +150,49 @@ const GearData = (() => {
     return _shared[tripId] || null;
   }
 
+  // Общий список правят все участники, а подписки на документ нет — поэтому
+  // пишем не свой массив целиком (затирало чужие правки, сделанные после
+  // того, как у нас открылась вкладка), а трёхстороннее слияние по id в
+  // транзакции: свежая серверная версия + только то, что поменяли мы
+  // относительно последней загруженной/сохранённой копии (_sharedBase).
+  const _sharedBase = {}; // { tripId: {categories:{id:json}, items:{id:json}} }
+  function _snapBase(d) {
+    const m = arr => Object.fromEntries((arr || []).map(x => [x.id, JSON.stringify(x)]));
+    return { categories: m(d?.categories), items: m(d?.items) };
+  }
+  function _merge3(server, local, base) {
+    const localById = new Map((local || []).map(x => [x.id, x]));
+    const out = [];
+    (server || []).forEach(x => {
+      const mine = localById.get(x.id);
+      if (mine) { out.push(JSON.stringify(mine) !== base[x.id] ? mine : x); localById.delete(x.id); }
+      else if (!(x.id in base)) out.push(x);   // добавили другие — оставляем
+      // было у нас в базе и мы удалили — не возвращаем
+    });
+    localById.forEach((x, id) => { if (!(id in base)) out.push(x); }); // добавили мы
+    return out;
+  }
+
   async function saveShared(tripId, tripName, categories, items) {
-    if (_shared[tripId]) {
-      _shared[tripId].categories = categories;
-      _shared[tripId].items = items;
-    }
-    await db.collection('gear_trip_shared').doc(tripId).set({
-      tripId, tripName, categories, items,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    const ref = db.collection('gear_trip_shared').doc(tripId);
+    const base = _sharedBase[tripId] || { categories: {}, items: {} };
+    const merged = await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const server = snap.exists ? snap.data() : {};
+      const res = {
+        categories: _merge3(server.categories, categories, base.categories),
+        items:      _merge3(server.items, items, base.items),
+      };
+      tx.set(ref, {
+        tripId, tripName, categories: res.categories, items: res.items,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+      return res;
+    });
+    if (!_shared[tripId]) _shared[tripId] = { tripId, checked: [] };
+    _shared[tripId].categories = merged.categories;
+    _shared[tripId].items = merged.items;
+    _sharedBase[tripId] = _snapBase(_shared[tripId]);
   }
 
   async function setSharedChecked(tripId, ids) {
@@ -165,6 +200,16 @@ const GearData = (() => {
     await db.collection('gear_trip_shared').doc(tripId)
       .set({ checked: ids }, { merge: true })
       .catch(err => console.error('GearData.setSharedChecked:', err));
+  }
+
+  // Точечные отметки общего списка — arrayUnion/arrayRemove, а не весь
+  // массив: иначе одновременная галочка другого участника пропадала.
+  async function markSharedChecked(tripId, ids, on) {
+    if (!ids || !ids.length) return;
+    const FV = firebase.firestore.FieldValue;
+    await db.collection('gear_trip_shared').doc(tripId)
+      .set({ checked: on ? FV.arrayUnion(...ids) : FV.arrayRemove(...ids) }, { merge: true })
+      .catch(err => console.error('GearData.markSharedChecked:', err));
   }
 
   /* ── Генератор ID ── */
@@ -176,7 +221,7 @@ const GearData = (() => {
     load, save,
     ensureLoaded, getChecked, setChecked, getTripSnapshot, saveTripSnapshot, getTripList, hasTripSnapshot,
     syncTripFromTemplate, updateTripSnapshotItems,
-    loadShared, getShared, saveShared, setSharedChecked,
+    loadShared, getShared, saveShared, setSharedChecked, markSharedChecked,
     uid,
   };
 })();

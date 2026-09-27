@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <title>FuckFishing</title>
+  <!-- Шрифты: Onest — текст, Unbounded — заголовки и крупные цифры (обе с полной кириллицей) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@600;700&display=swap">
   <link rel="stylesheet" href="shared/tabler-icons.css">
   <!-- Shared styles -->
   <link rel="stylesheet" href="shared/tokens.css">
@@ -32,6 +36,8 @@
   <link rel="stylesheet" href="modules/catches/styles.css">
   <link rel="stylesheet" href="modules/atlas/styles.css">
   <link rel="stylesheet" href="modules/print/styles.css">
+  <!-- Общий слой редизайна — строго последним, переопределяет модули -->
+  <link rel="stylesheet" href="shared/redesign.css">
 
   <!-- Firebase -->
   <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
@@ -208,6 +214,9 @@
       const el = document.getElementById('p-' + pageId);
       if (el) el.classList.add('active');
       this._current = pageId;
+      // Текущая страница на <body> — чтобы CSS мог, например, убрать
+      // сквозную шапку в Гиде (там своя шапка поездки, см. redesign.css).
+      document.body.dataset.page = pageId;
       window.scrollTo(0, 0);
       if (el) el.scrollTop = 0;
       }
@@ -355,7 +364,7 @@
         if (typeof setMedkitMode === 'function') setMedkitMode('reference');
       } else if (pageId === 'safety') {
         AppRouter.show('safety');
-        SafetyIndex.show(document.getElementById('p-safety'), () => onNavigate('home'));
+        SafetyIndex.show(document.getElementById('p-safety'), () => onNavigate('home'), tripId);
       }
 
       const tabId = BOTTOM_TAB_FOR[pageId];

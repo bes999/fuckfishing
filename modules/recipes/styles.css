@@ -54,7 +54,7 @@
   display: block;
   background: var(--bg3);
   border: 0.5px solid var(--sep);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 14px;
   font-family: inherit;
@@ -66,10 +66,15 @@
 }
 .rec-search::placeholder { color: var(--label3); }
 
-.rec-tags {
-  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+.rec-tags-row {
+  display: flex; align-items: center; gap: 8px;
   background: var(--bg2);
   padding: 10px 12px 8px;
+}
+.rec-tags-label { flex-shrink: 0; font-size: 13px; color: var(--label3); }
+.rec-tags {
+  display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none;
+  min-width: 0;
 }
 .rec-tags::-webkit-scrollbar { display: none; }
 .rec-tag {
@@ -79,11 +84,11 @@
   font-family: inherit;
   color: var(--label3);
   background: var(--bg3);
-  border: none; border-radius: 20px;
+  border: none; border-radius: var(--radius-lg);
   cursor: pointer; white-space: nowrap;
 }
 .rec-tag.active {
-  color: #fff;
+  color: var(--on-accent);
   background: var(--accent);
 }
 
@@ -120,20 +125,44 @@
   border-bottom-color: var(--accent);
 }
 
-.rec-tab-settings {
-  flex-shrink: 0;
-  width: 28px; height: 28px;
-  margin: 5px 0 5px 4px;
-  border-radius: 50%;
+/* Кнопка "…" в шапке — открывает rec-menu-list (настроить вкладки /
+   изменить порядок) и кнопка "Готово" режима перестановки. */
+.rec-menu-btn, .rec-done-btn {
   border: none;
-  background: var(--bg3);
-  color: var(--label3);
-  font-size: 15px;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
   cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
   -webkit-tap-highlight-color: transparent;
 }
-.rec-tab-settings:active { opacity: 0.7; }
+.rec-menu-btn {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.rec-menu-btn:active, .rec-done-btn:active { opacity: 0.7; }
+.rec-done-btn {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: var(--radius-lg);
+  font-family: inherit;
+  font-size: 13px; font-weight: 600;
+}
+.rec-menu-list { display: flex; flex-direction: column; padding-bottom: 6px; }
+.rec-menu-item {
+  text-align: left;
+  padding: 14px 4px;
+  border: none; background: none;
+  border-bottom: 0.5px solid var(--sep);
+  color: var(--label);
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-menu-item:last-child { border-bottom: none; }
+.rec-menu-item:active { opacity: 0.6; }
 
 /* Настройка вкладок-категорий (⚙-шит) — те же .tqp-* для обёртки/шита
    (modules/tripcover/styles.css, уже реально загруженная таблица стилей,
@@ -162,7 +191,7 @@
 .rcs-arrows { display: flex; gap: 4px; flex-shrink: 0; }
 .rcs-arrow {
   width: 30px; height: 30px;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   border: none;
   background: var(--bg3);
   color: var(--label2);
@@ -177,38 +206,51 @@
   border-radius: var(--radius-md);
   padding: 13px;
   font-size: 15px; font-weight: 700;
-  color: #fff;
+  color: var(--on-accent);
   cursor: pointer;
   margin-top: 12px;
 }
 
-.rec-cards {
+.rec-rows {
   padding: 10px 12px calc(83px + env(safe-area-inset-bottom));
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
 }
 
-.rec-card {
+.rec-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--label3);
+  font-size: 13px;
+}
+
+/* Список — строки внутри одной карточки (cc() в макете), не отдельные
+   раскрывающиеся карточки: тап по строке открывает рецепт отдельным
+   экраном (см. _renderDetailScreen). */
+.rec-list-card {
   background: var(--bg2);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   border: 0.5px solid var(--sep);
   overflow: hidden;
 }
 
-.rec-card__head {
-  padding: 13px 14px 11px;
+.rec-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 62px;
+  padding: 10px 14px;
+  border-bottom: 0.5px solid var(--sep);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+.rec-row:last-child { border-bottom: none; }
+.rec-row:active { background: var(--bg3); }
+.rec-row--reorder { cursor: default; }
+.rec-row--reorder:active { background: none; }
 
-.rec-move { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
+.rec-row__arrows { display: flex; flex-direction: column; gap: 3px; flex-shrink: 0; }
 .rec-move-btn {
   width: 24px; height: 20px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   border: none;
   background: var(--bg3);
   color: var(--label3);
@@ -219,20 +261,18 @@
 }
 .rec-move-btn:disabled { opacity: 0.3; cursor: default; }
 
-.rec-card__head:active { opacity: 0.7; }
+.rec-row__info { flex: 1; min-width: 0; }
 
-.rec-card__info { flex: 1; min-width: 0; }
-
-.rec-card__name {
+.rec-row__name {
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--label);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.rec-card__sub {
+.rec-row__sub {
   font-size: 12px;
   color: var(--label3);
   margin-top: 2px;
@@ -241,99 +281,105 @@
   text-overflow: ellipsis;
 }
 
-.rec-card__meta {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.rec-time-pill {
-  font-size: 11px;
-  color: var(--label3);
-}
-
-.rec-rating-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--label2);
-}
-
-.rec-rating-pill .ti-star { font-size: 12px; color: var(--orange); }
-.rec-rating-pill--empty .ti-star { color: var(--label3); }
-
-.rec-card__chevron {
-  color: var(--label3);
-  flex-shrink: 0;
-  transition: transform var(--duration) var(--ease);
-}
-
-.rec-card.open .rec-card__chevron { transform: rotate(180deg); }
-
-.rec-card__body {
-  padding: 0 14px 14px;
-  border-top: 0.5px solid var(--sep);
-}
-
-.rec-ing-label {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--label3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 12px 0 6px;
-}
-
-.rec-ing-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 5px 0;
-  border-bottom: 0.5px solid var(--sep);
-  font-size: 14px;
-}
-
-.rec-ing-row:last-of-type { border-bottom: none; }
-.rec-ing-name { color: var(--label); }
-.rec-ing-qty { color: var(--label3); font-size: 13px; }
-
-.rec-method {
-  background: var(--bg3);
-  border-radius: var(--radius-sm);
-  border: 0.5px solid var(--sep);
-  padding: 10px 12px;
-  margin-top: 8px;
-  font-size: 13px;
-  color: var(--label2);
-  line-height: 1.55;
-}
-
-.rec-serve-with {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--accent);
-}
-
-.rec-serve-with .ti { font-size: 13px; }
-
-.rec-rate-row {
+.rec-row__meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 12px;
-}
-
-.rec-rate-label {
-  font-size: 13px;
+  flex-shrink: 0;
+  font-size: 12px;
   color: var(--label3);
 }
+
+.rec-row__time { display: flex; align-items: center; gap: 3px; }
+.rec-row__time .ti { font-size: 13px; }
+
+.rec-row__rating { display: flex; align-items: center; gap: 3px; color: var(--label2); font-weight: 500; }
+.rec-row__rating .ti-star { font-size: 12px; color: var(--orange); }
+
+.rec-row__chevron { color: var(--label3); flex-shrink: 0; display: flex; }
+
+/* ── Экран рецепта (V2Recipe) ── */
+.rec-det-topbar {
+  background: var(--topbar-bg);
+  padding: 8px 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.rec-det-crumb { flex: 1; font-size: 14px; color: rgba(255,255,255,0.6); }
+.rec-det-edit {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: none;
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-det-edit:active { opacity: 0.7; }
+
+.rec-det-body {
+  padding: 8px 14px calc(24px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.rec-det-head { display: flex; flex-direction: column; gap: 6px; padding: 0 2px; }
+.rec-det-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--label); line-height: 1.15; }
+.rec-det-meta {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; color: var(--label2);
+}
+.rec-det-time { display: flex; align-items: center; gap: 5px; }
+.rec-det-time .ti { font-size: 14px; }
+
+.rec-det-card {
+  background: var(--bg2);
+  border: 0.5px solid var(--sep);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rec-det-card__title { margin: 0; font-size: 16px; font-weight: 700; color: var(--label); }
+.rec-det-hint { font-size: 12px; color: var(--label3); }
+
+.rec-det-ing { display: flex; flex-direction: column; }
+.rec-det-ing__row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 0.5px solid var(--sep);
+  font-size: 14px;
+}
+.rec-det-ing__row:last-child { border-bottom: none; }
+.rec-det-ing__name { color: var(--label); }
+.rec-det-ing__qty { color: var(--label3); font-size: 13px; }
+
+.rec-det-steps { display: flex; flex-direction: column; gap: 10px; }
+.rec-det-step { display: flex; gap: 10px; align-items: flex-start; }
+.rec-det-step__n {
+  width: 22px; height: 22px; flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--bg3);
+  color: var(--label2);
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.rec-det-step__txt { font-size: 14px; color: var(--label); line-height: 1.5; }
+
+.rec-det-serve {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--accent);
+}
+.rec-det-serve .ti { font-size: 13px; }
+
+.rec-det-stars { display: flex; gap: 4px; margin: -4px; }
 
 .rec-stars { display: flex; gap: 4px; }
 
@@ -408,7 +454,7 @@
   flex: 1;
   background: var(--bg3);
   border: 0.5px solid var(--sep);
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   padding: 8px 14px;
   font-size: 13px;
   font-family: inherit;
@@ -431,7 +477,7 @@
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  color: #fff;
+  color: var(--on-accent);
   transition: opacity var(--duration-fast);
   -webkit-tap-highlight-color: transparent;
 }
@@ -451,21 +497,6 @@
 }
 .rec-add-btn:active { opacity: 0.7; }
 
-.rec-edit-row {
-  display: flex; gap: 16px;
-}
-.rec-edit-btn, .rec-del-btn {
-  display: flex; align-items: center; gap: 6px;
-  background: none; border: none;
-  font-size: 13px; font-weight: 600;
-  padding: 10px 0;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.rec-edit-btn { color: var(--accent); }
-.rec-del-btn { color: var(--red); }
-.rec-edit-btn:active, .rec-del-btn:active { opacity: 0.6; }
-
 /* 1100, не 400: .bottomnav фиксирован с z-index 1000 (shared/nav.css),
    иначе шит рисуется под нижней навигацией. */
 .rec-add-overlay {
@@ -480,7 +511,7 @@
 .rec-add-sheet {
   width: 100%; max-width: 480px; margin: 0 auto;
   background: var(--bg2);
-  border-radius: 20px 20px 0 0;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   padding: 8px 16px calc(20px + env(safe-area-inset-bottom));
   max-height: 88vh;
   overflow-y: auto;
@@ -500,7 +531,7 @@
   width: 100%;
   background: var(--bg3);
   border: 0.5px solid var(--sep);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   color: var(--label);
   font-size: 14px;
@@ -514,6 +545,43 @@
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
+.rec-add-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--label3);
+  margin: -6px 0 8px;
+}
+.rec-chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.rec-cat-chip {
+  padding: 7px 13px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--sep);
+  background: none;
+  color: var(--label2);
+  font-family: inherit;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-cat-chip.active {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.rec-add-delete {
+  width: 100%;
+  height: 48px;
+  margin-top: 8px;
+  border: 1px solid var(--sep);
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--red);
+  font-family: inherit;
+  font-size: 15px; font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.rec-add-delete:active { opacity: 0.7; }
 .rec-ing-row-edit {
   display: grid;
   grid-template-columns: 1.4fr 0.8fr auto;
@@ -549,7 +617,7 @@
 .rec-add-save {
   width: 100%;
   background: var(--accent);
-  color: #fff; border: none;
+  color: var(--on-accent); border: none;
   border-radius: var(--radius-md);
   padding: 13px; font-size: 15px; font-weight: 600;
   cursor: pointer;

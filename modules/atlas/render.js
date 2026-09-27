@@ -64,7 +64,7 @@ const AtlasRender = (() => {
     const empty = !r.rivers.length;
     return `
       <div class="atl-tile ${empty ? 'atl-tile--empty' : ''}" data-atl-region="${r.id}">
-        <div class="atl-tile-emoji">${r.emoji}</div>
+        <div class="atl-tile-emoji">${UIUtils.emojiIcon(r.emoji)}</div>
         <div class="atl-tile-name">${_esc(r.name)}</div>
         <div class="atl-tile-sub">${empty ? 'скоро' : r.rivers.length + ' точек'}</div>
       </div>`;
@@ -84,11 +84,11 @@ const AtlasRender = (() => {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           <div class="atl-topbar-eyebrow">${_esc(r.subtitle)}</div>
-          <div class="atl-topbar-title">${r.emoji} ${_esc(r.name)}</div>
+          <div class="atl-topbar-title">${UIUtils.emojiIcon(r.emoji)} ${_esc(r.name)}</div>
         </div>
         <div class="atl-scroll">
           <div class="atl-empty">
-            <div class="atl-empty-icon">📍</div>
+            <div class="atl-empty-icon">${UIUtils.ico('map-pin')}</div>
             <div class="atl-empty-title">Пока пусто</div>
             <div class="atl-empty-sub">Как только определимся с поездкой сюда или ты расскажешь, что уже знаешь по прошлым разам — начнём собирать виды рыб, реки и точки.</div>
           </div>
@@ -101,7 +101,7 @@ const AtlasRender = (() => {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div class="atl-topbar-eyebrow">${_esc(r.subtitle)}</div>
-        <div class="atl-topbar-title">${r.emoji} ${_esc(r.name)}</div>
+        <div class="atl-topbar-title">${UIUtils.emojiIcon(r.emoji)} ${_esc(r.name)}</div>
       </div>
       <div class="atl-scroll">
         <div class="atl-stats">
@@ -110,10 +110,10 @@ const AtlasRender = (() => {
           <div class="atl-stat"><div class="atl-stat-num">${trips.length}</div><div class="atl-stat-lbl">наших поездок</div></div>
         </div>
 
-        ${r.species.length ? _acc('🐟 Виды рыбы и сроки хода', _speciesTable(r.species)) : ''}
-        ${r.landmarks.length ? _acc('🏞 Природные особенности', _list(r.landmarks)) : ''}
-        ${r.history ? _acc('📜 История', `<p>${_esc(r.history)}</p>`) : ''}
-        ${r.tourism.length ? _acc('🧭 Туристическая справка', _list(r.tourism)) : ''}
+        ${r.species.length ? _acc('' + UIUtils.ico('fishing') + ' Виды рыбы и сроки хода', _speciesTable(r.species)) : ''}
+        ${r.landmarks.length ? _acc('' + UIUtils.ico('trees') + ' Природные особенности', _list(r.landmarks)) : ''}
+        ${r.history ? _acc('' + UIUtils.ico('book') + ' История', `<p>${_esc(r.history)}</p>`) : ''}
+        ${r.tourism.length ? _acc('' + UIUtils.ico('compass') + ' Туристическая справка', _list(r.tourism)) : ''}
 
         <div class="atl-sec-label">Реки и точки${licensed ? ` · ${licensed} по путёвке` : ''}</div>
         <div class="atl-riverlist">
@@ -184,7 +184,7 @@ const AtlasRender = (() => {
           <div class="atl-river-hero-facts">${_esc(facts)}</div>
           <div class="atl-badge ${riv.license !== 'Свободная' ? 'atl-badge--warn' : 'atl-badge--ok'}" style="margin-top:8px;display:inline-block">${_esc(riv.license)}</div>
           ${riv.note ? `<div class="atl-river-hero-note">${_esc(riv.note)}</div>` : ''}
-          ${riv.lat != null ? `<div class="atl-nav-btn" data-atl-nav="${_navUrl(riv.lat, riv.lon, riv.name)}">📍 Открыть на карте</div>` : ''}
+          ${riv.lat != null ? `<div class="atl-nav-btn" data-atl-nav="${_navUrl(riv.lat, riv.lon, riv.name)}">${UIUtils.ico('map-pin')} Открыть на карте</div>` : ''}
         </div>
       </div>`;
   }

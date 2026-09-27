@@ -9,11 +9,34 @@
 const PrintIndex = (() => {
 
   const SECTIONS = [
-    { id: 'route',   label: 'Маршрут / Инфо поездки' },
-    { id: 'menu',    label: 'Меню и дежурства' },
-    { id: 'medical', label: 'Контакты и аллергии участников' },
-    { id: 'people',  label: 'Список участников' },
+    { id: 'route',   label: 'Маршрут и инфо поездки', sub: 'дни, рейсы, места' },
+    { id: 'menu',    label: 'Меню и дежурства', sub: 'что едим и кто готовит' },
+    { id: 'medical', label: 'Контакты и аллергии', sub: 'медданные и экстренные контакты' },
+    { id: 'people',  label: 'Список участников', sub: 'имена и телефоны' },
   ];
+
+  // Группа крови для печати — по-русски (I/II/III/IV + Rh), а не хранимый
+  // латинский id (O+, AB− и т.д.). Только для печатной карточки — сама
+  // модель данных и остальные экраны это поле не трогают.
+  const BLOOD_RU = { O: 'I', A: 'II', B: 'III', AB: 'IV' };
+  function _bloodRu(id) {
+    const m = /^([A-Z]+)([+−-])$/.exec(String(id || '').trim());
+    if (!m || !BLOOD_RU[m[1]]) return id || '';
+    return `${BLOOD_RU[m[1]]} Rh${m[2] === '+' ? '+' : '−'}`;
+  }
+
+  function _pluralSections(n) {
+    const mod10 = n % 10, mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return `${n} раздел`;
+    if ([2, 3, 4].includes(mod10) && ![12, 13, 14].includes(mod100)) return `${n} раздела`;
+    return `${n} разделов`;
+  }
+
+  function _updateGoLabel(overlay) {
+    const n = overlay.querySelectorAll('[data-pv-check].checked').length;
+    const btn = overlay.querySelector('[data-action="print-go"]');
+    if (btn) btn.textContent = n ? `Печать · ${_pluralSections(n)}` : 'Печать';
+  }
 
   const MONTHS = ['января','февраля','марта','апреля','мая','июня',
                    'июля','августа','сентября','октября','ноября','декабря'];
@@ -53,17 +76,21 @@ const PrintIndex = (() => {
       <div class="tqp-sheet">
         <div class="tqp-handle"></div>
         <div class="tqp-title">Печать</div>
-        <div class="pv-hint">Пригодится офлайн в поле, если пропадёт связь. Выбери, что распечатать.</div>
+        <div class="pv-hint">${_esc(trip.name)} — на бумагу, без интернета</div>
         <div class="pv-list">
           ${SECTIONS.map(s => `
             <div class="pv-row" data-pv-toggle="${s.id}">
               <div class="pv-check checked" data-pv-check="${s.id}"></div>
-              <span class="pv-label">${_esc(s.label)}</span>
+              <span class="pv-label-group">
+                <span class="pv-label">${_esc(s.label)}</span>
+                <span class="pv-sub">${_esc(s.sub)}</span>
+              </span>
             </div>`).join('')}
         </div>
         <button class="pv-go-btn" data-action="print-go">Печать</button>
       </div>`;
     document.body.appendChild(overlay);
+    _updateGoLabel(overlay);
     requestAnimationFrame(() => overlay.classList.add('open'));
 
     overlay.addEventListener('click', e => {
@@ -71,6 +98,7 @@ const PrintIndex = (() => {
       const row = e.target.closest('[data-pv-toggle]');
       if (row) {
         row.querySelector('[data-pv-check]').classList.toggle('checked');
+        _updateGoLabel(overlay);
         return;
       }
       if (e.target.closest('[data-action="print-go"]')) {
@@ -199,7 +227,7 @@ const PrintIndex = (() => {
       if (!profile) return '';
       const age = _age(profile.birthday);
       const fields = [
-        profile.bloodType ? `<div class="pp-field"><b>Группа крови:</b> ${_esc(profile.bloodType)}</div>` : '',
+        profile.bloodType ? `<div class="pp-field"><b>Группа крови:</b> ${_esc(_bloodRu(profile.bloodType))}</div>` : '',
         age ? `<div class="pp-field"><b>Возраст:</b> ${age}</div>` : '',
         profile.allergies ? `<div class="pp-field"><b>Аллергии:</b> ${_esc(profile.allergies)}</div>` : '',
         profile.conditions ? `<div class="pp-field"><b>Хронические:</b> ${_esc(profile.conditions)}</div>` : '',

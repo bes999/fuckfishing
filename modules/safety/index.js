@@ -5,10 +5,10 @@ const SafetyIndex = (() => {
   let _el = null;
   let _onClose = null;
 
-  function show(el, onClose) {
+  function show(el, onClose, tripId) {
     _el = el;
     _onClose = onClose || null;
-    SafetyRender.render(el);
+    SafetyRender.render(el, tripId);
   }
 
   function close() {

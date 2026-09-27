@@ -64,7 +64,7 @@
 .sf-warn-banner {
   background: #FFF3CD;
   border-left: 3px solid var(--orange);
-  border-radius: var(--radius-sm, 10px);
+  border-radius: var(--radius-sm);
   padding: 14px;
   margin-bottom: 16px;
   display: flex;
@@ -72,7 +72,7 @@
   align-items: flex-start;
 }
 [data-theme="dark"] .sf-warn-banner {
-  background: rgba(255,159,10,0.12);
+  background: rgba(var(--accent-rgb),0.12);
 }
 .sf-warn-icon {
   font-size: 24px;
@@ -107,7 +107,7 @@
 /* Generic card */
 .sf-card {
   background: var(--bg2);
-  border-radius: var(--radius-md, 14px);
+  border-radius: var(--radius-md);
   margin-bottom: 12px;
   overflow: hidden;
   box-shadow: var(--card-shadow);
@@ -168,11 +168,11 @@
   flex-shrink: 0;
 }
 .sf-step-num.danger {
-  background: rgba(255, 59, 48, 0.1);
+  background: rgba(var(--red-rgb), 0.1);
   color: var(--red);
 }
 [data-theme="dark"] .sf-step-num.danger {
-  background: rgba(255, 69, 58, 0.15);
+  background: rgba(var(--red-rgb), 0.15);
 }
 
 .sf-step-text {
@@ -186,7 +186,7 @@
 /* Contacts card */
 .sf-contacts-card {
   background: var(--bg2);
-  border-radius: var(--radius-md, 14px);
+  border-radius: var(--radius-md);
   margin-bottom: 12px;
   overflow: hidden;
   box-shadow: var(--card-shadow);
@@ -213,37 +213,96 @@
   color: var(--label3);
   margin-top: 1px;
 }
-
-.sf-contact-btn {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--accent);
-  text-decoration: none;
-  flex-shrink: 0;
-  padding: 6px 0 6px 8px;
-  white-space: nowrap;
+.sf-contact-tel {
+  font-size: 13px;
+  color: var(--label3);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
 }
-.sf-contact-btn.emergency {
-  background: rgba(255, 59, 48, 0.1);
-  color: var(--red);
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 15px;
+
+/* Круглая кнопка звонка/внешней ссылки справа от строки контакта —
+   вместо текстовой ссылки-номера (номер теперь текстом под названием). */
+.sf-call-btn, .sf-ext-btn {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.sf-call-btn {
+  background: rgba(var(--green-rgb), 0.14);
+  color: var(--green);
+}
+.sf-ext-btn {
+  background: var(--bg3);
+  color: var(--label2);
+}
+.sf-call-btn:active, .sf-ext-btn:active { opacity: 0.75; }
+
+/* ── Экстренный блок: большая красная «Позвонить 112» + плитки 103/102/101 ── */
+.sf-sos {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 72px;
+  padding: 0 18px;
+  margin-bottom: 8px;
+  border-radius: var(--radius-lg);
+  background: var(--red);
+  color: #fff;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.sf-sos:active { opacity: 0.9; }
+.sf-sos-icon { font-size: 26px; display: flex; flex-shrink: 0; }
+.sf-sos-text { display: flex; flex-direction: column; }
+.sf-sos-title {
+  font-family: var(--font-display);
+  font-size: 20px;
   font-weight: 700;
 }
-[data-theme="dark"] .sf-contact-btn.emergency {
-  background: rgba(255, 69, 58, 0.15);
-  color: var(--red);
+.sf-sos-sub { font-size: 13px; opacity: 0.85; margin-top: 1px; }
+
+.sf-sos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
 }
+.sf-sos-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--sep);
+  background: var(--bg2);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.sf-sos-tile:active { background: var(--bg3); }
+.sf-sos-tile-num {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--label);
+}
+.sf-sos-tile-lbl { font-size: 12px; color: var(--label3); margin-top: 1px; }
 
 /* License card */
 .sf-license-card {
   margin-bottom: 12px;
 }
 .sf-license-badge {
-  background: rgba(255, 159, 10, 0.12);
-  border: 1px solid rgba(255, 159, 10, 0.3);
-  border-radius: var(--radius-sm, 10px);
+  background: rgba(var(--accent-rgb), 0.12);
+  border: 1px solid rgba(var(--accent-rgb), 0.3);
+  border-radius: var(--radius-sm);
   padding: 10px 14px;
   font-size: 13px;
   font-weight: 600;

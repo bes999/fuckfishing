@@ -1,29 +1,37 @@
 'use strict';
-/* globals GearData, GearRender, TripsData */
+/* globals GearData, GearRender, TripsData, UIUtils */
 
 const GearModule = (() => {
   var _uid        = null;
   var _isMe       = false;
   var _container  = null;
   var _template   = null;
-  var _activeTrip = 'template';
+  var _activeTrip = 'template'; // 'template' (Вещи) | 'catalog' (Сумки) | tripId
   var _tripList   = [];
-  var _scope      = 'personal'; // 'personal' | 'shared' — только для вкладок поездки
+  var _scope      = 'personal'; // 'personal' | 'shared' — только внутри поездки
+  var _tripMode   = 'cats';     // 'cats' | 'bags' — «По категориям / По сумкам»
   var _sharedData = null;       // загруженный общий список текущей поездки
-  var _sharedAddCatId = null;   // категория, в которую добавляем предмет (шит)
-  var _pickMode     = false;    // режим "собрать список для поездки" (внутри Шаблона)
-  var _pickStep     = 'items';  // 'items' | 'locations' — два шага режима сбора
-  var _pickSelected = [];       // id отмеченных предметов
-  var _pickSelectedLocations = []; // id отмеченных мест (из каталога)
-  var _tripLocPickItemId = null; // какому предмету поездки назначаем место (пикер)
+  var _sharedAddCatId = null;   // категория, в которую добавляем вещь (лист)
+  var _pickMode     = false;    // мастер «Собрать список на поездку»
+  var _pickStep     = 'items';  // 'items' | 'locations'
+  var _pickTrip     = null;     // {id, name} — для какой поездки собираем
+  var _pickSelected = [];       // id отмеченных вещей
+  var _pickSelectedLocations = []; // id отмеченных сумок (из каталога)
+  var _tripLocPickItemId = null; // какой вещи поездки назначаем сумку (пикер)
+  var _open = {};               // раскрытые карточки: 'c:'/'t:'/'d:'/'s:'/'w:'/'b:' + id
 
   /* ── Инициализация ──
-     openTrip — необязательный id поездки, на вкладку которой сразу открыться
-     (используется кнопкой снаряги на обложке поездки, если снимок уже есть). */
+     openTrip — необязательный id поездки, на список которой сразу открыться
+     (кнопка снаряги на обложке поездки, если список уже есть). */
   async function init(uid, isMe, container, openTrip) {
     _uid        = uid;
     _isMe       = isMe;
     _container  = container;
+    _scope      = 'personal';
+    _sharedData = null;
+    _pickMode   = false;
+    _pickStep   = 'items';
+    _open       = {};
     await GearData.ensureLoaded(uid);
     _tripList   = GearData.getTripList(uid);
     _activeTrip = (openTrip && GearData.hasTripSnapshot(openTrip)) ? openTrip : 'template';
@@ -32,29 +40,23 @@ const GearModule = (() => {
     } catch (err) {
       console.error('GearModule.init: не удалось загрузить снаряжение', err);
       if (_container) {
-        _container.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--label3)">Не удалось загрузить снаряжение. Проверь соединение и открой вкладку заново.</div>';
+        _container.innerHTML = '<div class="gear-hint gear-hint-c">Не удалось загрузить снаряжение. Проверь соединение и открой вкладку заново.</div>';
       }
       return;
     }
     _render();
   }
 
-  // Собирает урезанный шаблон только из отмеченных предметов — плюс их
-  // категории и цепочку мест хранения (включая родителей, иначе вложенный
-  // "Несессер" останется без "Баула", в котором он лежит).
+  // Собирает урезанный шаблон только из отмеченных вещей — плюс их
+  // категории и цепочку сумок (включая родителей, иначе вложенный
+  // «Несессер» останется без «Баула», в котором он лежит).
   function _buildPickedTemplate(template, selectedIds, selectedLocationIds) {
     var selSet = {};
     selectedIds.forEach(function(id) { selSet[id] = true; });
-
     var items = template.items.filter(function(i) { return selSet[i.id]; });
-
     var catSet = {};
     items.forEach(function(i) { if (i.categoryId) catSet[i.categoryId] = true; });
     var categories = template.categories.filter(function(c) { return catSet[c.id]; });
-
-    // Места — то, что явно отметили на втором шаге, плюс цепочка родителей
-    // (если внутри выбранного места есть вложенное, родитель должен поехать
-    // с ним, иначе вложенность потеряется).
     var locSet = {};
     (selectedLocationIds || []).forEach(function(id) { locSet[id] = true; });
     var changed = true;
@@ -65,37 +67,66 @@ const GearModule = (() => {
       });
     }
     var locations = (template.locations || []).filter(function(l) { return locSet[l.id]; });
-
     return { locations: locations, categories: categories, items: items };
+  }
+
+  function _trip(id) {
+    return (typeof TripsData !== 'undefined' && TripsData.getById) ? TripsData.getById(id) : null;
+  }
+
+  // Имя поездки — актуальное из TripsData (снимок хранит имя на момент сбора)
+  function _tripName(id) {
+    var t = _trip(id);
+    if (t && t.name) return t.name;
+    return (_tripList.find(function(x) { return x.id === id; }) || {}).name || 'Поездка';
+  }
+
+  // Строки блока «Списки на поездки»: свежие поездки сверху
+  function _tripRows() {
+    return _tripList.map(function(t) {
+      var snap = GearData.getTripSnapshot(_uid, t.id) || { items: [] };
+      var ids = {};
+      (snap.items || []).forEach(function(i) { ids[i.id] = true; });
+      var done = GearData.getChecked(_uid, t.id).filter(function(id) { return ids[id]; }).length;
+      var trip = _trip(t.id);
+      return { id: t.id, name: _tripName(t.id), done: done, total: (snap.items || []).length, start: (trip && trip.startDate) || '' };
+    }).sort(function(a, b) { return a.start < b.start ? 1 : (a.start > b.start ? -1 : 0); });
   }
 
   function _render() {
     if (!_container) return;
     if (_pickMode) {
-      if (_pickStep === 'locations') {
-        _container.innerHTML = GearRender.pickLocationsView(_template.locations || [], _pickSelectedLocations);
-      } else {
-        _container.innerHTML = GearRender.pickView(_template, _pickSelected);
-      }
-    } else if (_activeTrip === 'template') {
-      _container.innerHTML = GearRender.tabMain(_template, _tripList, _isMe);
-    } else if (_activeTrip === 'catalog') {
-      _container.innerHTML = GearRender.tabCatalog(_template, _tripList, _isMe);
-    } else if (_scope === 'shared') {
-      var sharedChecked = (_sharedData && _sharedData.checked) || [];
-      _container.innerHTML = GearRender.tabTrip(null, [], _tripList, _activeTrip, 'shared', _sharedData, sharedChecked);
+      _container.innerHTML = _pickStep === 'locations'
+        ? GearRender.pickLocationsView(_template.locations || [], _pickSelectedLocations, _pickTrip.name, _pickSelected.length)
+        : GearRender.pickView(_template, _pickSelected, _pickTrip.name, _open);
+    } else if (_activeTrip === 'template' || _activeTrip === 'catalog') {
+      _container.innerHTML = GearRender.rootView(_template, _tripRows(), _isMe, _activeTrip, _open);
     } else {
-      var snap    = GearData.getTripSnapshot(_uid, _activeTrip);
-      var checked = GearData.getChecked(_uid, _activeTrip);
-      _container.innerHTML = GearRender.tabTrip(snap, checked, _tripList, _activeTrip, 'personal');
+      _container.innerHTML = GearRender.tripView({
+        snap: GearData.getTripSnapshot(_uid, _activeTrip),
+        checked: GearData.getChecked(_uid, _activeTrip),
+        tripName: _tripName(_activeTrip),
+        scope: _isMe ? _scope : 'personal',
+        shared: _sharedData,
+        sharedChecked: (_sharedData && _sharedData.checked) || [],
+        mode: _tripMode, isMe: _isMe, open: _open
+      });
     }
+    // Удаление свайпом (привязывается к контейнеру один раз)
+    if (typeof UIUtils !== 'undefined' && UIUtils.swipeToDelete) {
+      UIUtils.swipeToDelete(_container, '.gear-swipe', '.gear-swipe-del');
+    }
+  }
+
+  // При смене экрана — к началу, если шапка модуля уехала за верх
+  function _scrollTop() {
+    if (_container && _container.getBoundingClientRect().top < 0) _container.scrollIntoView();
   }
 
   async function _saveShared() {
     if (!_sharedData) return;
-    var tripName = (_tripList.find(function(t) { return t.id === _activeTrip; }) || {}).name || '';
     try {
-      await GearData.saveShared(_activeTrip, tripName, _sharedData.categories, _sharedData.items);
+      await GearData.saveShared(_activeTrip, _tripName(_activeTrip), _sharedData.categories, _sharedData.items);
     } catch (err) {
       console.error('GearModule._saveShared: не удалось сохранить общий список', err);
       alert('Не удалось сохранить общий список. Проверь соединение и попробуй ещё раз.');
@@ -129,36 +160,6 @@ const GearModule = (() => {
     if (el) el.remove();
   }
 
-  // Запоминаем открытые аккордеоны перед ре-рендером
-  function _getOpenCats() {
-    if (!_container) return [];
-    var open = [];
-    _container.querySelectorAll('.gear-cat-body').forEach(function(el) {
-      if (el.style.display !== 'none') open.push(el.id.replace('gear-cat-body-', ''));
-    });
-    return open;
-  }
-
-  // Восстанавливаем открытые аккордеоны после ре-рендера
-  function _restoreOpenCats(openIds) {
-    if (!openIds.length || !_container) return;
-    openIds.forEach(function(catId) {
-      var body = document.getElementById('gear-cat-body-' + catId);
-      if (body) {
-        body.style.display = 'block';
-        var hd = _container.querySelector('[data-action="gear-cat-toggle"][data-catid="' + catId + '"]');
-        var chev = hd ? hd.querySelector('.gear-chev') : null;
-        if (chev) chev.textContent = '∨';
-      }
-    });
-  }
-
-  function _renderAndRestore() {
-    var openCats = _getOpenCats();
-    _render();
-    _restoreOpenCats(openCats);
-  }
-
   function _openSheet(html) {
     _closeAllSheets();
     var div = document.createElement('div');
@@ -166,7 +167,7 @@ const GearModule = (() => {
     document.body.appendChild(div.firstElementChild);
   }
 
-  // Открыть вложенный шит (пикер) поверх существующего, не закрывая его
+  // Вложенный лист (пикер) поверх существующего, не закрывая его
   function _openSubSheet(html) {
     _closeSheet('gear-pick-sheet');
     var div = document.createElement('div');
@@ -176,9 +177,15 @@ const GearModule = (() => {
 
   function _esc(s) { return GearRender._esc(s); }
 
-  // Разбирает вставленный текст на категории/предметы: строка, оканчивающаяся
+  // Вещи категории в шаблоне (включая псевдо-категорию «Без категории»)
+  function _catItems(catId) {
+    var g = GearRender.groups(_template.categories, _template.items).find(function(x) { return x.cat.id === catId; });
+    return g ? g.items : [];
+  }
+
+  // Разбирает вставленный текст на категории/вещи: строка, оканчивающаяся
   // двоеточием, открывает новую категорию, остальные непустые строки —
-  // предметы в неё (bullets вроде "-"/"•"/"1." отбрасываются). Без заголовков
+  // вещи в неё (bullets вроде "-"/"•"/"1." отбрасываются). Без заголовков
   // всё уходит в одну категорию "Импорт".
   function _parseImportText(text) {
     var lines = String(text || '').split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
@@ -198,11 +205,13 @@ const GearModule = (() => {
     return groups;
   }
 
+  // Чужая снаряга — только просмотр: пропускаем лишь навигацию.
+  var _RO_OK = { 'gear-sheet-close': 1, 'gear-trip-switch': 1, 'gear-toggle': 1, 'gear-trip-mode': 1 };
+
   /* ══════════════════════════════════════════════
      СОБЫТИЯ — один глобальный обработчик
   ══════════════════════════════════════════════ */
   document.addEventListener('click', async function(e) {
-    // Клик по оверлею — закрыть шит
     if (e.target.classList && e.target.classList.contains('gear-sheet-overlay')) {
       _closeAllSheets();
       return;
@@ -211,24 +220,37 @@ const GearModule = (() => {
     var t = e.target.closest('[data-action]');
     if (!t) return;
     var action = t.dataset.action;
-
-    // Только gear-* экшены
     if (action.slice(0,5) !== 'gear-') return;
     if (!_uid) return;
+    if (!_isMe && !_RO_OK[action]) return;
 
-    /* ── Закрыть шит ── */
     if (action === 'gear-sheet-close') { _closeAllSheets(); return; }
 
-    /* ── Переключатель поездок ── */
+    /* ── Навигация: Вещи / Сумки / список поездки / «Назад» ── */
     if (action === 'gear-trip-switch') {
       _activeTrip = t.dataset.trip;
       _scope = 'personal';
       _sharedData = null;
-      _renderAndRestore();
+      _render();
+      _scrollTop();
       return;
     }
 
-    /* ── Переключатель "Моё / Общее" внутри поездки ── */
+    /* ── Раскрыть/свернуть карточку (категория, сумка, «Собрано») ── */
+    if (action === 'gear-toggle') {
+      _open[t.dataset.key] = t.dataset.open !== '1';
+      _render();
+      return;
+    }
+
+    /* ── «По категориям / По сумкам» ── */
+    if (action === 'gear-trip-mode') {
+      _tripMode = t.dataset.mode === 'bags' ? 'bags' : 'cats';
+      _render();
+      return;
+    }
+
+    /* ── «Моё / Общее» внутри поездки ── */
     if (action === 'gear-scope-switch') {
       var newScope = t.dataset.scope;
       if (newScope === _scope) return;
@@ -241,137 +263,151 @@ const GearModule = (() => {
           _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
         }
       }
-      _renderAndRestore();
+      _render();
+      return;
+    }
+
+    /* ── «+» и «…» в шапке ── */
+    if (action === 'gear-head-add') {
+      if (_activeTrip === 'catalog') { _openSheet(GearRender.sheetAddLocation(_template, null)); return; }
+      var firstCat = _template.categories[0];
+      _openSheet(GearRender.sheetAddItem(_template, null, firstCat ? firstCat.id : ''));
+      return;
+    }
+
+    if (action === 'gear-head-more') {
+      _openSheet(GearRender.sheetActions('', [
+        { action: 'gear-cat-add',     icon: 'layout-list', label: 'Новая категория' },
+        { action: 'gear-import-open', icon: 'notes',       label: 'Импорт текстом' },
+        { action: 'gear-loc-add',     icon: 'backpack',    label: 'Новая сумка' }
+      ]));
+      return;
+    }
+
+    if (action === 'gear-trip-more') {
+      _openSheet(GearRender.sheetActions('', _scope === 'shared'
+        ? [ { action: 'gear-shared-cat-add',       icon: 'layout-list',  label: 'Новая категория' },
+            { action: 'gear-shared-clear-checked', icon: 'circle-check', label: 'Снять все отметки' } ]
+        : [ { action: 'gear-trip-sync',     icon: 'download',     label: 'Обновить из шаблона' },
+            { action: 'gear-clear-checked', icon: 'circle-check', label: 'Снять все отметки' } ]));
       return;
     }
 
     /* ── Обновить личный список поездки из шаблона ── */
     if (action === 'gear-trip-sync') {
-      if (_activeTrip === 'template') return;
+      _closeAllSheets();
+      if (_activeTrip === 'template' || _activeTrip === 'catalog') return;
       try {
         var result = await GearData.syncTripFromTemplate(_uid, _activeTrip, _template);
         if (result) {
-          var addedTotal = result.categories + result.items;
-          if (addedTotal) {
-            var parts = [];
-            if (result.categories) parts.push(result.categories + ' кат.');
-            if (result.items)      parts.push(result.items + ' предм.');
-            alert('Добавлено из шаблона: ' + parts.join(', '));
-          } else {
-            alert('Список поездки уже совпадает с шаблоном.');
-          }
+          var parts = [];
+          if (result.categories) parts.push(result.categories + ' кат.');
+          if (result.items)      parts.push(result.items + ' вещ.');
+          alert(parts.length ? 'Добавлено из шаблона: ' + parts.join(', ') : 'Список поездки уже совпадает с шаблоном.');
         }
       } catch (err) {
         console.error('GearData.syncTripFromTemplate:', err);
         alert('Не удалось обновить из шаблона. Проверь соединение и попробуй ещё раз.');
         return;
       }
-      _renderAndRestore();
+      _render();
       return;
     }
 
-    /* ── Раскрыть/свернуть категорию ── */
-    if (action === 'gear-cat-toggle') {
-      e.stopPropagation();
-      var catId = t.dataset.catid;
-      var body  = document.getElementById('gear-cat-body-' + catId);
-      if (!body) return;
-      var isOpen = body.style.display !== 'none';
-      body.style.display = isOpen ? 'none' : 'block';
-      var chev = t.querySelector('.gear-chev');
-      if (chev) chev.textContent = isOpen ? '›' : '∨';
+    // Снять разом все отметки в списке поездки.
+    if (action === 'gear-clear-checked') {
+      _closeAllSheets();
+      if (_activeTrip === 'template' || _activeTrip === 'catalog') return;
+      var gcOk = await UIUtils.confirmSheet('Снять все отметки собранности?', { okLabel: 'Сбросить', danger: false });
+      if (!gcOk) return;
+      await GearData.setChecked(_uid, _activeTrip, []);
+      _render();
       return;
     }
 
-    /* ═════════════ МЕСТА ХРАНЕНИЯ ═════════════ */
-
-    if (action === 'gear-loc-expand') {
-      e.stopPropagation();
-      var locId = t.dataset.locid;
-      var isTripView = _activeTrip !== 'template' && _activeTrip !== 'catalog';
-      var activeLocs, activeItems;
-      if (isTripView) {
-        var snapForLoc = GearData.getTripSnapshot(_uid, _activeTrip);
-        if (!snapForLoc) return;
-        activeLocs = snapForLoc.locations; activeItems = snapForLoc.items;
-      } else {
-        activeLocs = _template.locations; activeItems = _template.items;
-      }
-      var loc = activeLocs.find(function(l) { return l.id === locId; });
-      if (!loc) return;
-      var panel  = document.getElementById('gear-nested-panel');
-      var isOpen = panel && panel.dataset.openId === locId;
-      // Убираем активный класс со всех карточек
-      if (_container) _container.querySelectorAll('.gear-loc-card').forEach(function(el) {
-        el.classList.remove('gear-loc-card-active');
-      });
-      if (isOpen) {
-        if (panel) { panel.innerHTML = ''; panel.dataset.openId = ''; }
-        return;
-      }
-      t.classList.add('gear-loc-card-active');
-      if (panel) {
-        panel.innerHTML = GearRender.nestedPanel(loc, activeLocs, activeItems, isTripView);
-        panel.dataset.openId = locId;
-      }
+    if (action === 'gear-shared-clear-checked') {
+      _closeAllSheets();
+      if (!_sharedData) return;
+      var scClearOk = await UIUtils.confirmSheet('Снять все отметки в общем списке?', { okLabel: 'Сбросить', danger: false });
+      if (!scClearOk) return;
+      _sharedData.checked = [];
+      await GearData.setSharedChecked(_activeTrip, []);
+      _render();
       return;
     }
 
-    if (action === 'gear-loc-collapse') {
-      var panel2 = document.getElementById('gear-nested-panel');
-      if (panel2) { panel2.innerHTML = ''; panel2.dataset.openId = ''; }
-      if (_container) _container.querySelectorAll('.gear-loc-card').forEach(function(el) {
-        el.classList.remove('gear-loc-card-active');
-      });
+    // То же самое, но только для одной категории.
+    if (action === 'gear-cat-clear-checked') {
+      var ccCatId = t.dataset.catid;
+      var ccOk = await UIUtils.confirmSheet('Снять отметки в этой категории?', { okLabel: 'Сбросить', danger: false });
+      if (!ccOk) return;
+      var ccSnap = GearData.getTripSnapshot(_uid, _activeTrip);
+      if (!ccSnap) return;
+      var ccIds = GearRender.groups(ccSnap.categories || [], ccSnap.items || [])
+        .filter(function(g) { return g.cat.id === ccCatId; })
+        .reduce(function(a, g) { return a.concat(g.items.map(function(i) { return i.id; })); }, []);
+      var ccChecked = GearData.getChecked(_uid, _activeTrip).filter(function(id) { return ccIds.indexOf(id) < 0; });
+      await GearData.setChecked(_uid, _activeTrip, ccChecked);
+      _render();
       return;
     }
 
-    if (action === 'gear-loc-add-child') {
-      if (!_isMe) return;
-      var parentId = t.dataset.parentid;
-      var sheet = GearRender.sheetAddLocation(_template, null);
-      _openSheet(sheet);
-      // Устанавливаем parentId после открытия шита
-      setTimeout(function() {
-        var hidInp  = document.getElementById('gear-loc-parent-id');
-        var dispEl  = document.getElementById('gear-loc-parent-display');
-        var parent  = _template.locations.find(function(l) { return l.id === parentId; });
-        if (hidInp) hidInp.value = parentId;
-        if (dispEl && parent) dispEl.innerHTML = GearRender._esc(parent.name);
-      }, 0);
+    if (action === 'gear-shared-cat-clear-checked') {
+      if (!_sharedData) return;
+      var sccCatId = t.dataset.catid;
+      var sccOk = await UIUtils.confirmSheet('Снять отметки в этой категории?', { okLabel: 'Сбросить', danger: false });
+      if (!sccOk) return;
+      var sccIds = _sharedData.items.filter(function(i) { return i.categoryId === sccCatId; }).map(function(i) { return i.id; });
+      _sharedData.checked = (_sharedData.checked || []).filter(function(id) { return sccIds.indexOf(id) < 0; });
+      await GearData.markSharedChecked(_activeTrip, sccIds, false);
+      _render();
       return;
     }
+
+    /* ═════════════ СУМКИ (каталог) ═════════════ */
 
     if (action === 'gear-loc-add') {
-      if (!_isMe) return;
       _openSheet(GearRender.sheetAddLocation(_template, null));
       return;
     }
 
+    if (action === 'gear-loc-add-child') {
+      _openSheet(GearRender.sheetAddLocation(_template, null, t.dataset.parentid));
+      return;
+    }
+
     if (action === 'gear-loc-edit') {
-      if (!_isMe) return;
       _openSheet(GearRender.sheetAddLocation(_template, t.dataset.locid));
       return;
     }
 
     if (action === 'gear-loc-parent-pick') {
       var curId = (document.getElementById('gear-loc-parent-id') || {}).value || '';
-      // Исключаем текущее редактируемое место из пикера
-      var sheet = document.getElementById('gear-loc-sheet');
-      var editId = sheet ? (sheet.querySelector('[data-action="gear-loc-save"]') || {}).dataset.editid : '';
-      var locs = _template.locations.filter(function(l) { return l.id !== editId; });
+      var locSheet = document.getElementById('gear-loc-sheet');
+      var editId = locSheet ? ((locSheet.querySelector('.gear-btn-primary[data-action="gear-loc-save"]') || {}).dataset || {}).editid : '';
+      // Исключаем саму сумку и всё, что лежит внутри неё (иначе цикл)
+      var banned = {};
+      if (editId) {
+        banned[editId] = true;
+        var grew = true;
+        while (grew) {
+          grew = false;
+          _template.locations.forEach(function(l) { if (l.parentId && banned[l.parentId] && !banned[l.id]) { banned[l.id] = true; grew = true; } });
+        }
+      }
+      var locs = _template.locations.filter(function(l) { return !banned[l.id]; });
       _openSubSheet(GearRender.sheetPickLocation(locs, curId, 'parent'));
       return;
     }
 
-    /* ── Назначить место хранения вещи прямо внутри поездки ── */
+    /* ── Назначить сумку вещи прямо внутри поездки («куда») ── */
     if (action === 'gear-trip-item-loc-pick') {
-      if (_activeTrip === 'template' || _scope === 'shared') return;
+      if (_activeTrip === 'template' || _activeTrip === 'catalog' || _scope === 'shared') return;
       var snapForPick = GearData.getTripSnapshot(_uid, _activeTrip);
       if (!snapForPick) return;
       var itemForPick = snapForPick.items.find(function(i) { return i.id === t.dataset.itemid; });
       _tripLocPickItemId = t.dataset.itemid;
-      _openSheet(GearRender.sheetPickLocation(snapForPick.locations, itemForPick ? (itemForPick.locationId || '') : '', 'trip-item-loc'));
+      _openSheet(GearRender.sheetPickLocation(snapForPick.locations || [], itemForPick ? (itemForPick.locationId || '') : '', 'trip-item-loc'));
       return;
     }
 
@@ -385,25 +421,24 @@ const GearModule = (() => {
         if (snapForSave && _tripLocPickItemId) {
           var itemToUpdate = snapForSave.items.find(function(i) { return i.id === _tripLocPickItemId; });
           if (itemToUpdate) itemToUpdate.locationId = locId;
+          // Узкая запись — только items (checked/categories/locations не трогаем)
           GearData.updateTripSnapshotItems(_uid, _activeTrip, snapForSave.items).catch(function(err) {
             console.error('GearData.updateTripSnapshotItems:', err);
-            alert('Не удалось сохранить место хранения. Проверь соединение.');
+            alert('Не удалось сохранить сумку. Проверь соединение.');
           });
         }
         _tripLocPickItemId = null;
-        _renderAndRestore();
+        _render();
         return;
       }
 
-      _closeSheet('gear-pick-sheet');  // закрываем ТОЛЬКО пикер, не всё
-      var loc = _template.locations.find(function(l) { return l.id === locId; });
-      var locName = loc ? _esc(loc.name) : '';
-
+      _closeSheet('gear-pick-sheet');  // закрываем ТОЛЬКО пикер, не весь лист сумки
       if (trigger === 'parent') {
+        var loc = _template.locations.find(function(l) { return l.id === locId; });
         var inp  = document.getElementById('gear-loc-parent-id');
         var disp = document.getElementById('gear-loc-parent-display');
         if (inp)  inp.value = locId;
-        if (disp) disp.innerHTML = locName ? locName : '<span class="gear-field-ph">Не указано</span>';
+        if (disp) disp.innerHTML = loc ? _esc(loc.name) : '<span class="gear-field-ph">Не внутри другой сумки</span>';
       }
       return;
     }
@@ -411,14 +446,12 @@ const GearModule = (() => {
     if (action === 'gear-loc-save') {
       var eid  = t.dataset.editid;
       var name = (document.getElementById('gear-loc-name') || {value:''}).value.trim();
-      if (!name) { var n = document.getElementById('gear-loc-name'); if(n) n.focus(); return; }
-
+      if (!name) { var n = document.getElementById('gear-loc-name'); if (n) n.focus(); return; }
       var onIpic  = document.querySelector('#gear-loc-sheet .gear-ipic.on');
       var iconIdx = onIpic ? Number(onIpic.dataset.idx) : 1;
       var volume  = (document.getElementById('gear-loc-volume') || {value:''}).value.trim();
       var tare    = (document.getElementById('gear-loc-tare')   || {value:''}).value.trim();
       var pid     = (document.getElementById('gear-loc-parent-id') || {value:''}).value;
-
       if (eid) {
         var existing = _template.locations.find(function(l) { return l.id === eid; });
         if (existing) { existing.name = name; existing.iconIdx = iconIdx; existing.volume = volume; existing.tare = tare; existing.parentId = pid; }
@@ -427,52 +460,49 @@ const GearModule = (() => {
       }
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
     if (action === 'gear-loc-del') {
       var delLocId = t.dataset.locid;
+      var delLoc = _template.locations.find(function(l) { return l.id === delLocId; });
+      var dlOk = await UIUtils.confirmSheet('Удалить сумку «' + (delLoc ? delLoc.name : '') + '»? В уже собранных списках поездок она останется.');
+      if (!dlOk) return;
       _template.locations = _template.locations.filter(function(l) { return l.id !== delLocId; });
       _template.items.forEach(function(i) { if (i.locationId === delLocId) i.locationId = ''; });
       _template.locations.forEach(function(l) { if (l.parentId === delLocId) l.parentId = ''; });
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
     /* ═════════════ КАТЕГОРИИ ═════════════ */
 
     if (action === 'gear-cat-add') {
-      if (!_isMe) return;
       _openSheet(GearRender.sheetAddCategory(_template, null));
       return;
     }
 
     if (action === 'gear-cat-menu') {
-      e.stopPropagation();
-      var menuCatId = t.dataset.catid;
-      var menuCat   = _template.categories.find(function(c) { return c.id === menuCatId; });
+      var menuCat = _template.categories.find(function(c) { return c.id === t.dataset.catid; });
       if (!menuCat) return;
       _openSheet(GearRender.sheetCategoryMenu(menuCat));
       return;
     }
 
     if (action === 'gear-cat-edit') {
-      var editCatId = t.dataset.catid;
-      _closeAllSheets();
-      _openSheet(GearRender.sheetAddCategory(_template, editCatId));
+      _openSheet(GearRender.sheetAddCategory(_template, t.dataset.catid));
       return;
     }
 
     if (action === 'gear-cat-toggle-hidden') {
-      var hidCatId = t.dataset.catid;
-      var hidCat   = _template.categories.find(function(c) { return c.id === hidCatId; });
+      var hidCat = _template.categories.find(function(c) { return c.id === t.dataset.catid; });
       if (hidCat) hidCat.hidden = !hidCat.hidden;
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
@@ -482,41 +512,43 @@ const GearModule = (() => {
       _template.items.forEach(function(i) { if (i.categoryId === dciCatId) i.categoryId = ''; });
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
     if (action === 'gear-cat-del-all') {
       var dcaCatId = t.dataset.catid;
-      _template.categories = _template.categories.filter(function(c) { return c.id !== dcaCatId; });
-      _template.items      = _template.items.filter(function(i)      { return i.categoryId !== dcaCatId; });
+      var dcaCat = _template.categories.find(function(c) { return c.id === dcaCatId; });
+      var dcaN = _template.items.filter(function(i) { return i.categoryId === dcaCatId; }).length;
       _closeAllSheets();
+      var dcaOk = await UIUtils.confirmSheet('Удалить категорию «' + (dcaCat ? dcaCat.name : '') + '»' + (dcaN ? ' и ' + dcaN + ' вещ. в ней' : '') + '?');
+      if (!dcaOk) return;
+      _template.categories = _template.categories.filter(function(c) { return c.id !== dcaCatId; });
+      _template.items      = _template.items.filter(function(i) { return i.categoryId !== dcaCatId; });
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
     if (action === 'gear-cat-save') {
       var saveCatEid = t.dataset.editid;
       var catName    = (document.getElementById('gear-cat-name') || {value:''}).value.trim();
-      if (!catName) { var cn = document.getElementById('gear-cat-name'); if(cn) cn.focus(); return; }
-      var catIpic  = document.querySelector('#gear-cat-sheet .gear-ipic.on');
-      var catIcon  = catIpic ? Number(catIpic.dataset.idx) : 0;
-
+      if (!catName) { var cn = document.getElementById('gear-cat-name'); if (cn) cn.focus(); return; }
       if (saveCatEid) {
+        // iconIdx не трогаем — пикера иконки категории в новом дизайне нет
         var editCat = _template.categories.find(function(c) { return c.id === saveCatEid; });
-        if (editCat) { editCat.name = catName; editCat.iconIdx = catIcon; }
+        if (editCat) editCat.name = catName;
       } else {
-        _template.categories.push({ id: GearData.uid(), name: catName, iconIdx: catIcon });
+        var presetIdx = GearRender.PRESET_ICONS[catName];
+        _template.categories.push({ id: GearData.uid(), name: catName, iconIdx: presetIdx != null ? presetIdx : 0 });
       }
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
     if (action === 'gear-import-open') {
-      if (!_isMe) return;
       _openSheet(GearRender.sheetImportText());
       return;
     }
@@ -533,13 +565,13 @@ const GearModule = (() => {
           gCatId = GearData.uid();
           _template.categories.push({ id: gCatId, name: g.name, iconIdx: 0 });
         }
-        g.items.forEach(function(name) {
-          _template.items.push({ id: GearData.uid(), name: name, categoryId: gCatId, weight: '', locationId: '', note: '' });
+        g.items.forEach(function(nm) {
+          _template.items.push({ id: GearData.uid(), name: nm, categoryId: gCatId, weight: '', locationId: '', note: '' });
         });
       });
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
@@ -547,30 +579,21 @@ const GearModule = (() => {
       var preset    = t.dataset.preset;
       var nameInput = document.getElementById('gear-cat-name');
       if (nameInput) nameInput.value = preset;
-
-      var presetIdx = GearRender.PRESET_ICONS[preset] != null ? GearRender.PRESET_ICONS[preset] : 0;
       var catSheet  = document.getElementById('gear-cat-sheet');
-      if (catSheet) {
-        catSheet.querySelectorAll('.gear-ipic').forEach(function(el, i) {
-          el.classList.toggle('on', i === presetIdx);
-        });
-        catSheet.querySelectorAll('.gear-chip').forEach(function(el) {
-          el.classList.toggle('on', el.dataset.preset === preset);
-        });
-      }
+      if (catSheet) catSheet.querySelectorAll('.gear-chip').forEach(function(el) {
+        el.classList.toggle('on', el.dataset.preset === preset);
+      });
       return;
     }
 
-    /* ═════════════ ПРЕДМЕТЫ ═════════════ */
+    /* ═════════════ ВЕЩИ ═════════════ */
 
     if (action === 'gear-item-add') {
-      if (!_isMe) return;
       _openSheet(GearRender.sheetAddItem(_template, null, t.dataset.catid));
       return;
     }
 
     if (action === 'gear-item-edit') {
-      if (!_isMe) return;
       _openSheet(GearRender.sheetAddItem(_template, t.dataset.itemid, null));
       return;
     }
@@ -583,36 +606,29 @@ const GearModule = (() => {
       if (chipsWrap) chipsWrap.querySelectorAll('.gear-chip').forEach(function(el) {
         el.classList.toggle('on', el.dataset.catid === chipCatId);
       });
-      // Обновляем надпись кнопки
       var saveBtn = document.getElementById('gear-item-save-btn');
       var chipCat = _template.categories.find(function(c) { return c.id === chipCatId; });
-      if (saveBtn && chipCat && !saveBtn.dataset.editid) {
-        saveBtn.textContent = 'Добавить в ' + chipCat.name;
-      }
+      if (saveBtn && chipCat && !saveBtn.dataset.editid) saveBtn.textContent = 'Добавить в ' + chipCat.name;
       return;
     }
 
     if (action === 'gear-item-save') {
       var saveItemEid = t.dataset.editid;
       var itemName    = (document.getElementById('gear-item-name') || {value:''}).value.trim();
-      if (!itemName) { var in2 = document.getElementById('gear-item-name'); if(in2) in2.focus(); return; }
-
+      if (!itemName) { var in2 = document.getElementById('gear-item-name'); if (in2) in2.focus(); return; }
       var iCatId  = (document.getElementById('gear-item-catid')  || {value:''}).value;
       var iWeight = (document.getElementById('gear-item-weight') || {value:''}).value.trim();
       var iNote   = (document.getElementById('gear-item-note')   || {value:''}).value.trim();
-
       if (saveItemEid) {
         var editItem = _template.items.find(function(i) { return i.id === saveItemEid; });
-        if (editItem) {
-          editItem.name = itemName; editItem.categoryId = iCatId;
-          editItem.weight = iWeight; editItem.note = iNote;
-        }
+        if (editItem) { editItem.name = itemName; editItem.categoryId = iCatId; editItem.weight = iWeight; editItem.note = iNote; }
       } else {
         _template.items.push({ id: GearData.uid(), name: itemName, categoryId: iCatId, weight: iWeight, note: iNote });
+        if (iCatId) _open['c:' + iCatId] = true;
       }
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
@@ -621,34 +637,47 @@ const GearModule = (() => {
       _template.items = _template.items.filter(function(i) { return i.id !== delItemId; });
       _closeAllSheets();
       await _save();
-      _renderAndRestore();
+      _render();
       return;
     }
 
-    /* ═════════════ ВЫБОР ВЕЩЕЙ ДЛЯ ПОЕЗДКИ (из Шаблона) ═════════════ */
+    /* ═════════════ МАСТЕР «СОБРАТЬ СПИСОК НА ПОЕЗДКУ» ═════════════
+       Сначала — для какой поездки (заголовок мастера «Список на …»),
+       шаг 1 — какие вещи, шаг 2 — какие сумки, затем создание. */
 
     if (action === 'gear-pick-mode-enter') {
-      if (!_isMe) return;
-      _pickMode = true;
-      _pickStep = 'items';
+      var myTrips = (typeof TripsData !== 'undefined') ? TripsData.getMine(_uid).slice() : [];
+      myTrips.sort(function(a, b) { var x = a.startDate || '', y = b.startDate || ''; return x < y ? 1 : (x > y ? -1 : 0); });
+      _openSheet(GearRender.sheetPickTrip(myTrips, _tripList.map(function(x) { return x.id; })));
+      return;
+    }
+
+    if (action === 'gear-pick-trip-selected') {
+      _closeAllSheets();
+      _pickTrip = { id: t.dataset.tripid, name: t.dataset.tripname };
+      // Мастер открывается пустым — отмечаешь то, что берёшь в эту поездку
       _pickSelected = [];
       _pickSelectedLocations = [];
-      _renderAndRestore();
+      _pickMode = true;
+      _pickStep = 'items';
+      _render();
+      _scrollTop();
       return;
     }
 
     if (action === 'gear-pick-mode-cancel') {
       _pickMode = false;
       _pickStep = 'items';
+      _pickTrip = null;
       _pickSelected = [];
       _pickSelectedLocations = [];
-      _renderAndRestore();
+      _render();
       return;
     }
 
     if (action === 'gear-pick-back-to-items') {
       _pickStep = 'items';
-      _renderAndRestore();
+      _render();
       return;
     }
 
@@ -656,36 +685,31 @@ const GearModule = (() => {
       var pItemId = t.dataset.itemid;
       var pIdx = _pickSelected.indexOf(pItemId);
       if (pIdx >= 0) _pickSelected.splice(pIdx, 1); else _pickSelected.push(pItemId);
-      var pNowOn = _pickSelected.indexOf(pItemId) >= 0;
+      _render();
+      return;
+    }
 
-      var pcb = t.querySelector('.gear-cb');
-      var pcn = t.querySelector('.gear-cname');
-      if (pcb) pcb.classList.toggle('on', pNowOn);
-      if (pcn) pcn.classList.toggle('done', pNowOn);
+    // Отметить/снять всю категорию разом
+    if (action === 'gear-pick-toggle-cat') {
+      var ptIds = _catItems(t.dataset.catid).map(function(i) { return i.id; });
+      var allOn = ptIds.every(function(id) { return _pickSelected.indexOf(id) >= 0; });
+      _pickSelected = _pickSelected.filter(function(id) { return ptIds.indexOf(id) < 0; });
+      if (!allOn) _pickSelected = _pickSelected.concat(ptIds);
+      _render();
+      return;
+    }
 
-      var pCatEl = t.closest('.gear-cat');
-      if (pCatEl) {
-        var pCatId    = pCatEl.dataset.catid;
-        var pCatItems = _template.items.filter(function(i) { return i.categoryId === pCatId; });
-        var pCatDone  = pCatItems.filter(function(i) { return _pickSelected.indexOf(i.id) >= 0; }).length;
-        var pBadge = pCatEl.querySelector('[data-cat-badge]');
-        if (pBadge) {
-          pBadge.textContent = pCatDone + '/' + pCatItems.length;
-          pBadge.className   = (pCatItems.length && pCatDone === pCatItems.length) ? 'gear-badge-ok' : 'gear-badge-part';
-        }
-      }
-
-      var pDoneBar = _container ? _container.querySelector('.gear-pick-donebar') : null;
-      if (pDoneBar) {
-        pDoneBar.innerHTML = 'Готово' + (_pickSelected.length ? ' <span class="gear-pick-donecount">(' + _pickSelected.length + ')</span>' : '');
-      }
+    if (action === 'gear-pick-all') {
+      _pickSelected = t.dataset.on === '1' ? _template.items.map(function(i) { return i.id; }) : [];
+      _render();
       return;
     }
 
     if (action === 'gear-pick-done') {
       if (!_pickSelected.length) { alert('Отметь хотя бы одну вещь.'); return; }
       _pickStep = 'locations';
-      _renderAndRestore();
+      _render();
+      _scrollTop();
       return;
     }
 
@@ -693,43 +717,34 @@ const GearModule = (() => {
       var plId = t.dataset.locid;
       var plIdx = _pickSelectedLocations.indexOf(plId);
       if (plIdx >= 0) _pickSelectedLocations.splice(plIdx, 1); else _pickSelectedLocations.push(plId);
-      var plNowOn = _pickSelectedLocations.indexOf(plId) >= 0;
-      var plcb = t.querySelector('.gear-cb');
-      if (plcb) plcb.classList.toggle('on', plNowOn);
-      var plDoneBar = _container ? _container.querySelector('.gear-pick-donebar') : null;
-      if (plDoneBar) {
-        plDoneBar.innerHTML = 'Готово' + (_pickSelectedLocations.length ? ' <span class="gear-pick-donecount">(' + _pickSelectedLocations.length + ')</span>' : '');
+      _render();
+      return;
+    }
+
+    if (action === 'gear-pick-create') {
+      if (!_pickTrip) return;
+      if (GearData.hasTripSnapshot(_pickTrip.id)) {
+        var repOk = await UIUtils.confirmSheet('У «' + _pickTrip.name + '» уже есть список — заменить? Отметки и раскладка по сумкам сбросятся.', { okLabel: 'Заменить' });
+        if (!repOk) return;
       }
-      return;
-    }
-
-    if (action === 'gear-pick-locations-done') {
-      var myTrips = (typeof TripsData !== 'undefined') ? TripsData.getMine(_uid) : [];
-      var existingIds = _tripList.map(function(t2) { return t2.id; });
-      _openSheet(GearRender.sheetPickTrip(myTrips, existingIds));
-      return;
-    }
-
-    if (action === 'gear-pick-trip-selected') {
-      var targetTripId   = t.dataset.tripid;
-      var targetTripName = t.dataset.tripname;
-      _closeAllSheets();
       var payload = _buildPickedTemplate(_template, _pickSelected, _pickSelectedLocations);
       try {
-        await GearData.saveTripSnapshot(_uid, targetTripId, targetTripName, payload);
+        await GearData.saveTripSnapshot(_uid, _pickTrip.id, _pickTrip.name, payload);
       } catch (err) {
         console.error('GearData.saveTripSnapshot:', err);
         alert('Не удалось сохранить список поездки. Проверь соединение и попробуй ещё раз.');
         return;
       }
+      _activeTrip = _pickTrip.id;
       _pickMode = false;
       _pickStep = 'items';
+      _pickTrip = null;
       _pickSelected = [];
       _pickSelectedLocations = [];
-      _tripList   = GearData.getTripList(_uid);
-      _activeTrip = targetTripId;
-      _scope      = 'personal';
-      _renderAndRestore();
+      _tripList = GearData.getTripList(_uid);
+      _scope    = 'personal';
+      _render();
+      _scrollTop();
       return;
     }
 
@@ -737,18 +752,50 @@ const GearModule = (() => {
 
     if (action === 'gear-shared-cat-add') {
       if (!_sharedData) _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
-      _openSheet(GearRender.sheetAddSharedCategory());
+      _openSheet(GearRender.sheetAddSharedCategory(_sharedData, null));
+      return;
+    }
+
+    if (action === 'gear-shared-cat-edit') {
+      if (!_sharedData) return;
+      _openSheet(GearRender.sheetAddSharedCategory(_sharedData, t.dataset.catid));
       return;
     }
 
     if (action === 'gear-shared-cat-save') {
+      var scEditId = t.dataset.editid;
       var scName = (document.getElementById('gear-shared-cat-name') || {value:''}).value.trim();
       if (!scName) { var scn = document.getElementById('gear-shared-cat-name'); if (scn) scn.focus(); return; }
       if (!_sharedData) _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
-      _sharedData.categories.push({ id: GearData.uid(), name: scName, iconIdx: 0 });
+      if (scEditId) {
+        var scEditCat = _sharedData.categories.find(function(c) { return c.id === scEditId; });
+        if (scEditCat) scEditCat.name = scName;
+      } else {
+        var scNewId = GearData.uid();
+        _sharedData.categories.push({ id: scNewId, name: scName, iconIdx: 0 });
+        _open['s:' + scNewId] = true;
+      }
       _closeAllSheets();
       await _saveShared();
-      _renderAndRestore();
+      _render();
+      return;
+    }
+
+    if (action === 'gear-shared-cat-del') {
+      if (!_sharedData) return;
+      var scDelId = t.dataset.catid;
+      var scDelCat = _sharedData.categories.find(function(c) { return c.id === scDelId; });
+      if (!scDelCat) return;
+      var scDelCount = _sharedData.items.filter(function(i) { return i.categoryId === scDelId; }).length;
+      var scOk = await UIUtils.confirmSheet(scDelCount
+        ? 'Удалить категорию «' + scDelCat.name + '» и ' + scDelCount + ' вещ. в ней?'
+        : 'Удалить категорию «' + scDelCat.name + '»?');
+      if (!scOk) return;
+      _sharedData.categories = _sharedData.categories.filter(function(c) { return c.id !== scDelId; });
+      _sharedData.items      = _sharedData.items.filter(function(i)      { return i.categoryId !== scDelId; });
+      _closeAllSheets();
+      await _saveShared();
+      _render();
       return;
     }
 
@@ -766,7 +813,7 @@ const GearModule = (() => {
       _sharedData.items.push({ id: GearData.uid(), name: siName, owner: siOwner, categoryId: _sharedAddCatId });
       _closeAllSheets();
       await _saveShared();
-      _renderAndRestore();
+      _render();
       return;
     }
 
@@ -775,89 +822,37 @@ const GearModule = (() => {
       var sDelId = t.dataset.itemid;
       _sharedData.items = _sharedData.items.filter(function(i) { return i.id !== sDelId; });
       await _saveShared();
-      _renderAndRestore();
+      _render();
       return;
     }
 
     if (action === 'gear-shared-item-check') {
       if (!_sharedData) return;
-      var sciId     = t.dataset.itemid;
-      var sChecked  = _sharedData.checked || [];
-      var sIdx      = sChecked.indexOf(sciId);
+      var sciId    = t.dataset.itemid;
+      var sChecked = _sharedData.checked || [];
+      var sIdx     = sChecked.indexOf(sciId);
+      var sOn = sIdx < 0;
       if (sIdx >= 0) sChecked.splice(sIdx, 1); else sChecked.push(sciId);
       _sharedData.checked = sChecked;
-      GearData.setSharedChecked(_activeTrip, sChecked);
-
-      var nowOn = sChecked.indexOf(sciId) >= 0;
-      var scb  = t.querySelector('.gear-cb');
-      var scn2 = t.querySelector('.gear-cname');
-      if (scb)  scb.classList.toggle('on', nowOn);
-      if (scn2) scn2.classList.toggle('done', nowOn);
-
-      var catEl2 = t.closest('.gear-cat');
-      if (catEl2 && _sharedData) {
-        var sCatId    = catEl2.dataset.catid;
-        var sCatItems = _sharedData.items.filter(function(i) { return i.categoryId === sCatId; });
-        var sCatDone  = sCatItems.filter(function(i) { return sChecked.indexOf(i.id) >= 0; }).length;
-        var sBadge = catEl2.querySelector('[data-cat-badge]');
-        if (sBadge) {
-          sBadge.textContent = sCatDone + '/' + sCatItems.length;
-          sBadge.className   = (sCatItems.length && sCatDone === sCatItems.length) ? 'gear-badge-ok' : 'gear-badge-part';
-        }
-      }
+      GearData.markSharedChecked(_activeTrip, [sciId], sOn);
+      _render();
       return;
     }
 
-    /* ═════════════ ЧЕКБОКСЫ ПОЕЗДКИ ═════════════ */
+    /* ═════════════ ОТМЕТКИ В СПИСКЕ ПОЕЗДКИ ═════════════ */
 
     if (action === 'gear-item-check') {
-      if (_activeTrip === 'template') return;
+      if (_activeTrip === 'template' || _activeTrip === 'catalog') return;
       var checkItemId = t.dataset.itemid;
-      var checked     = GearData.getChecked(_uid, _activeTrip);
+      var checked     = GearData.getChecked(_uid, _activeTrip).slice();
       var idx         = checked.indexOf(checkItemId);
-      var nowChecked;
-      if (idx >= 0) { checked.splice(idx, 1); nowChecked = false; }
-      else          { checked.push(checkItemId); nowChecked = true; }
-      GearData.setChecked(_uid, _activeTrip, checked);
-
-      // Обновляем UI без полного ре-рендера
-      var cb   = t.querySelector('.gear-cb');
-      var name = t.querySelector('.gear-cname');
-      if (cb)   cb.classList.toggle('on', nowChecked);
-      if (name) name.classList.toggle('done', nowChecked);
-
-      // Прогресс-бар
-      var snap2   = GearData.getTripSnapshot(_uid, _activeTrip);
-      var checked2 = GearData.getChecked(_uid, _activeTrip);
-      if (snap2) {
-        var total2    = snap2.items.length;
-        var done2     = checked2.length;
-        var pct2      = total2 ? Math.round(done2/total2*100) : 0;
-        var wDone2    = snap2.items.filter(function(i) { return checked2.indexOf(i.id) >= 0; }).reduce(function(s,i) { return s+(Number(i.weight)||0); }, 0);
-        var fill = _container ? _container.querySelector('.gear-prog-fill') : null;
-        var lbl  = _container ? _container.querySelector('.gear-prog-lbl')  : null;
-        if (fill) fill.style.width = pct2+'%';
-        if (lbl) {
-          var wl = wDone2 >= 1000 ? (wDone2/1000).toFixed(1)+' кг' : (wDone2 ? wDone2+' г' : '');
-          lbl.textContent = done2+' / '+total2+(wl?' · '+wl:'');
-        }
-        // Бейдж категории
-        var catEl = t.closest('.gear-cat');
-        if (catEl) {
-          var catBadgeId = catEl.dataset.catid;
-          var catItems2  = snap2.items.filter(function(i) { return i.categoryId === catBadgeId; });
-          var catDone2   = catItems2.filter(function(i) { return checked2.indexOf(i.id) >= 0; }).length;
-          var badge = catEl.querySelector('[data-cat-badge]');
-          if (badge) {
-            badge.textContent = catDone2+'/'+catItems2.length;
-            badge.className   = catDone2 === catItems2.length ? 'gear-badge-ok' : 'gear-badge-part';
-          }
-        }
-      }
+      if (idx >= 0) checked.splice(idx, 1); else checked.push(checkItemId);
+      GearData.setChecked(_uid, _activeTrip, checked); // узкая merge-запись поля checked
+      _render();
       return;
     }
 
-    /* ═════════════ ПИКЕР ИКОНОК ═════════════ */
+    /* ═════════════ ПИКЕР ИКОНОК (сумки) ═════════════ */
 
     if (action === 'gear-icon-pick') {
       var sheetId2 = t.dataset.sheet;
@@ -883,9 +878,8 @@ const GearModule = (() => {
       tmpl = { locations: [], categories: [], items: [] };
     } else if (source === 'template') {
       var loaded = await GearData.load(uid);
-      // Места — отдельный каталог, не копируются автоматом целиком: какие
-      // места едут в эту поездку решается явно (см. "Собрать список для
-      // поездки" в самом Шаблоне).
+      // Сумки — отдельный каталог, целиком не копируются: какие едут в
+      // поездку, решается явно в мастере «Собрать список на поездку».
       tmpl = { locations: [], categories: loaded.categories, items: loaded.items };
     } else {
       var srcSnap = GearData.getTripSnapshot(uid, source);
@@ -896,7 +890,7 @@ const GearModule = (() => {
     await GearData.saveTripSnapshot(uid, tripId, tripName, tmpl);
     if (_uid === uid) {
       _tripList = GearData.getTripList(uid);
-      _renderAndRestore();
+      if (_template) _render();
     }
   }
 

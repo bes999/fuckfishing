@@ -27,7 +27,7 @@
   position: absolute;
   top: 6px; bottom: 6px; left: 0;
   width: calc(100% / 3);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: var(--accent-bg);
   transition: transform var(--duration) var(--ease);
   pointer-events: none;
@@ -69,3 +69,17 @@
 
 /* Icon-only tab (home in trip mode) */
 .bnav.icon-only { flex: 0 0 52px; }
+
+/* ── v2 (макет «Ночная река»): иконка над подписью, активная — просто
+   акцентным цветом и жирнее, без подложки-пилюли. ── */
+.bnav-pill { display: none; }
+.bnav {
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 4px 6px;
+  min-height: 52px;
+  color: var(--label3);
+}
+.bnav.active { font-weight: 600; }
+.bnav svg { width: 24px; height: 24px; }
+.bnav.active svg { transform: none; }

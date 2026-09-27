@@ -130,7 +130,7 @@
   display: block;
   background: var(--bg3);
   border: 0.5px solid var(--sep);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
   font-size: 14px;
   font-family: inherit;

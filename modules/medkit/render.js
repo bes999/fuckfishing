@@ -1,4 +1,6 @@
 /* ===== MEDKIT RENDER ===== */
+// Макеты v2: «Аптечка — общая / личная / что делать», карточка препарата
+// отдельным листом, «по местам», стек БАДов внутри категории БАДов.
 
 function escHtml(s) {
   if (!s) return '';
@@ -7,6 +9,14 @@ function escHtml(s) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function _mkPlural(n, one, few, many) {
+  var a = Math.abs(n) % 100, b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b > 1 && b < 5) return few;
+  if (b === 1) return one;
+  return many;
 }
 
 // Список поездок для свитчера — тот же источник и сортировка, что у
@@ -22,7 +32,7 @@ function rMedkitTripSelect(trips) {
   var options = trips.map(function(t) {
     return '<option value="' + escHtml(t.id) + '"' + (t.id === medkitTripId ? ' selected' : '') + '>' + escHtml(t.name) + '</option>';
   }).join('');
-  return '<select class="mk-trip-select" onchange="switchMedkitTrip(this.value)">' + options + '</select>';
+  return '<select class="mk-trip-select" aria-label="Сменить поездку" onchange="switchMedkitTrip(this.value)">' + options + '</select>';
 }
 
 function switchMedkitTrip(tripId) {
@@ -30,9 +40,12 @@ function switchMedkitTrip(tripId) {
   medkitTripId = tripId;
   medkitMode = 'common';
   medkitMemberId = '';
+  closeMedkitDrug();
   rMedkit();
   initFirebase();
 }
+
+var medkitFilters = { search: '', slot: '', status: '' };
 
 function rMedkit() {
   var el = document.getElementById('p-medkit');
@@ -49,86 +62,105 @@ function rMedkit() {
 
   var mode = medkitMode;
   var memberId = medkitMemberId;
-  var progress = getMedkitProgress(mode, memberId);
-  // Чужую личную аптечку можно только просматривать — переключаться на
-  // товарища в свитчере "Личная" задумано для "что у него есть на крайний
-  // случай", не для правки его списка (_canEditMedkit блокирует запись,
-  // тут — визуально гасим кнопки, чтобы не выглядело кликабельным).
+  // Чужую личную аптечку можно только просматривать (_canEditMedkit
+  // блокирует запись, тут — не рисуем кнопки правки вовсе).
   var readOnly = mode === 'personal' && !_canEditMedkit(mode, memberId);
   el.classList.toggle('mk-readonly', readOnly);
-  var h = '';
 
-  if (trips.length > 1) h += rMedkitTripSelect(trips);
+  // Верх: «Аптечка», под ним — поездка (нативный выбор спрятан под
+  // подписью), справа «…» с импортом, категориями и местами хранения.
+  var curTrip = trips.filter(function(t) { return t.id === medkitTripId; })[0];
+  var sub;
+  if (mode === 'reference') {
+    sub = '<span class="mk-sub">что делать, если…</span>';
+  } else {
+    sub = '<label class="mk-trip">' + escHtml(curTrip ? curTrip.name : '') + ' ' + UIUtils.ico('chevron-down')
+      + (trips.length > 1 ? rMedkitTripSelect(trips) : '') + '</label>';
+  }
+  var menu = '';
+  if (mode !== 'reference' && !readOnly) {
+    var close = 'this.closest(\'details\').open=false;';
+    menu = '<details class="mk-menu"><summary aria-label="Ещё: импорт списка, категории, места хранения">' + UIUtils.ico('dots') + '</summary><div class="mk-menu-pop">'
+      + '<button type="button" onclick="' + close + 'showMedkitImport()">' + UIUtils.ico('download') + ' Импорт списка</button>'
+      + '<button type="button" onclick="' + close + 'showMedkitCategoryPicker()">' + UIUtils.ico('list-check') + (mode === 'personal' ? ' Мои категории' : ' Категории') + '</button>'
+      + '<button type="button" onclick="' + close + 'showMedkitSlotsSheet()">' + UIUtils.ico('package') + ' Места хранения</button>'
+      + '</div></details>';
+  }
+  var h = '<header class="mk-head"><div class="mk-head-l"><h1 class="mk-title">Аптечка</h1>' + sub + '</div>'
+    + '<div class="mk-head-r"><span class="tb-sync" id="syncStatus"></span>' + menu + '</div></header>';
 
-  h += '<div class="topbar">';
-  h += '<div class="tb-left"><div class="tb1">Аптечка</div>';
-  h += '<div class="tb2">' + (mode === 'common' ? 'Общая' : 'Личная — ' + escHtml(getMemberName(memberId))) + ' · ' + progress.done + ' / ' + progress.total + (readOnly ? ' · только просмотр' : '') + '</div></div>';
-  h += '<div class="tb-right">';
-  h += '<span class="tb-sync" id="syncStatus"></span>';
-  if (mode === 'personal' && !readOnly) h += '<button class="tb-btn" onclick="showMedkitCategoryPicker()">☑ Категории</button>';
-  if (mode !== 'reference' && !readOnly) h += '<button class="tb-btn" onclick="showMedkitImport()">⬇ Импорт</button>';
-  h += '</div></div>';
-
-  h += '<div class="tabs">';
-  h += '<div class="tab' + (mode === 'common' ? ' active' : '') + '" onclick="setMedkitMode(\'common\')">Общая</div>';
-  h += '<div class="tab' + (mode === 'personal' ? ' active' : '') + '" onclick="setMedkitMode(\'personal\')">Личная</div>';
-  h += '<div class="tab' + (mode === 'reference' ? ' active' : '') + '" onclick="setMedkitMode(\'reference\')">Справка</div>';
+  h += '<div class="mk-seg" role="tablist">';
+  [['common', 'Общая'], ['personal', 'Личная'], ['reference', 'Что делать']].forEach(function(t) {
+    var on = mode === t[0];
+    h += '<button type="button" role="tab" aria-selected="' + on + '" class="mk-seg-b' + (on ? ' on' : '') + '" onclick="setMedkitMode(\'' + t[0] + '\')">' + t[1] + '</button>';
+  });
   h += '</div>';
-
-  if (mode === 'personal') h += rMedkitMemberSwitcher(memberId);
 
   if (mode === 'reference') {
     h += rMedkitReference();
   } else {
+    if (mode === 'personal') h += rMedkitMemberSwitcher(memberId);
+    else h += '<p class="mk-hint mk-hint--top">Одна на всю группу — отмечает любой участник</p>';
+    var sections = getMedkitSections(mode, memberId);
+    h += rMedkitProgressCard(mode, memberId, getMedkitProgress(mode, memberId));
     h += rMedkitFilters(mode);
-    h += '<div class="view-toggle">';
-    h += '<div class="vt' + (medkitViewMode === 'drugs' ? ' active' : '') + '" onclick="setMedkitViewMode(\'drugs\')">По препаратам</div>';
-    h += '<div class="vt' + (medkitViewMode === 'slots' ? ' active' : '') + '" onclick="setMedkitViewMode(\'slots\')">По местам хранения</div>';
-    h += '</div>';
-
-    if (medkitViewMode === 'slots') {
-      h += rMedkitBySlots(mode, memberId);
-    } else {
-      h += '<div class="prog">';
-      h += '<div class="prog-row"><span>Собрано</span><span><span class="prog-pct">' + progress.done + ' / ' + progress.total + '</span> · ' + progress.pct + '%</span></div>';
-      h += '<div class="bar-bg"><div class="bar-fill" style="width:' + progress.pct + '%"></div></div>';
-      h += '</div>';
-      if (mode === 'personal') h += rMedkitStack(memberId);
-      h += rMedkitGroups(mode, memberId);
-    }
+    h += rMedkitToolbar(mode, memberId, sections);
+    if (medkitViewMode === 'slots') h += rMedkitBySlots(mode, memberId, sections, readOnly);
+    else h += rMedkitGroups(mode, memberId, sections, readOnly);
   }
 
+  var scroll = el.scrollTop;
   el.innerHTML = h;
+  el.scrollTop = scroll;
+  UIUtils.swipeToDelete(el, '.mk-swipe', '.mk-del');
+  _mkSyncSheet(false);
+  if (document.getElementById('mkPickerOverlay')) _mkRefreshPicker();
+  if (document.getElementById('mkSlotsOverlay')) _mkRefreshSlotsSheet();
 }
 
-var medkitFilters = { search: '', slot: '', status: '' };
-
 function rMedkitFilters(mode) {
-  var h = '<div class="filter-row">';
-  h += '<div class="sb"><svg class="si" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
-  h += '<input class="si-i" id="medkitSearchInput" style="width:100%" placeholder="Поиск препарата..." value="' + escHtml(medkitFilters.search) + '" oninput="medkitSearchInput(this.value)">';
-  h += '</div>';
-  h += '<div class="vd"></div>';
-  h += '<div class="fi"><span class="fl">Статус</span><select class="fs" onchange="medkitFilters.status=this.value;rMedkit()">';
-  h += '<option value="">Все</option>';
-  h += '<option value="warn"' + (medkitFilters.status === 'warn' ? ' selected' : '') + '>Мало</option>';
-  h += '<option value="danger"' + (medkitFilters.status === 'danger' ? ' selected' : '') + '>Истёк</option>';
-  h += '</select></div>';
-  h += '</div>';
-  return h;
+  return '<label class="mk-search">' + UIUtils.ico('search')
+    + '<input class="si-i" id="medkitSearchInput" placeholder="Найти препарат" aria-label="Найти препарат" value="' + escHtml(medkitFilters.search) + '" oninput="medkitSearchInput(this.value)"></label>';
+}
+
+// «Собрано X из N» + шкала.
+function rMedkitProgressCard(mode, memberId, progress) {
+  return '<div class="mk-prog"><span class="mk-prog-t">Собрано <b>' + progress.done + '</b> из ' + progress.total + '</span>'
+    + '<div class="mk-prog-track"><div class="mk-prog-fill" style="width:' + progress.pct + '%"></div></div></div>';
+}
+
+// «Требуют внимания · N» (бывшие «Истёк срок» и «Мало» одним фильтром —
+// всё, у чего есть статус по сроку или остатку) + Список / По местам.
+function rMedkitToolbar(mode, memberId, sections) {
+  var n = 0;
+  sections.forEach(function(s) {
+    s.items.forEach(function(it) {
+      if (getMedkitItemColor(getMedkitItemStatus(getMedkitItem(mode, memberId, it.id)))) n++;
+    });
+  });
+  var h = '<div class="mk-toolbar">';
+  if (n || medkitFilters.status) {
+    var on = medkitFilters.status === 'attention';
+    h += '<button type="button" class="mk-pill mk-pill--warn' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="toggleMedkitAttention()">Требуют внимания · ' + n + '</button>';
+  }
+  h += '<span class="mk-grow"></span><div class="mk-seg mk-seg--sm">';
+  h += '<button type="button" aria-pressed="' + (medkitViewMode !== 'slots') + '" class="mk-seg-b' + (medkitViewMode !== 'slots' ? ' on' : '') + '" onclick="setMedkitViewMode(\'drugs\')">Список</button>';
+  h += '<button type="button" aria-pressed="' + (medkitViewMode === 'slots') + '" class="mk-seg-b' + (medkitViewMode === 'slots' ? ' on' : '') + '" onclick="setMedkitViewMode(\'slots\')">По местам</button>';
+  return h + '</div></div>';
+}
+
+function toggleMedkitAttention() {
+  medkitFilters.status = medkitFilters.status === 'attention' ? '' : 'attention';
+  rMedkit();
 }
 
 // Кэш реального списка участников поездки (источник — MembersFirebase,
-// см. modules/members/firebase.js). window.ST — не существует нигде в
-// проекте, это остаток от старой версии; тянем актуальные данные отсюда.
+// см. modules/members/firebase.js). getAllMembers() — сетевой запрос, не
+// подписка, поэтому кэш живёт ограниченное время (новый участник
+// появится в свитчере без перезагрузки).
 var _medkitMembersCache = null;
 var _medkitMembersLoading = false;
 var _medkitMembersFetchedAt = 0;
-// Кэш живёт ограниченное время, не вечно — раньше он не инвалидировался
-// никогда, и новый участник, присоединившийся к поездке посреди сессии
-// (или изменивший имя), не появлялся бы в свитчере "Личная" без полной
-// перезагрузки страницы. getAllMembers() — реальный сетевой запрос
-// (не подписка), поэтому кэш всё ещё нужен — просто не бессрочный.
 var MEDKIT_MEMBERS_TTL_MS = 60000;
 
 function _getMedkitMembers() {
@@ -140,28 +172,31 @@ function _getMedkitMembers() {
       _medkitMembersCache = members || [];
       _medkitMembersFetchedAt = Date.now();
       _medkitMembersLoading = false;
-      // Перерисовываем, если пользователь всё ещё на личной аптечке
       if (medkitMode === 'personal' && typeof rMedkit === 'function') rMedkit();
     }).catch(function() { _medkitMembersLoading = false; });
   }
   return _medkitMembersCache || [];
 }
 
+// Ряд участников-чипов с прогрессом; себя — первым.
 function rMedkitMemberSwitcher(currentMemberId) {
-  var members = _getMedkitMembers().filter(function(m) { return m.isActive !== false; });
+  var me = window.APP && window.APP.user && window.APP.user.uid;
+  var members = _getMedkitMembers().filter(function(m) { return m.isActive !== false; })
+    .slice().sort(function(a, b) { return (b.uid === me) - (a.uid === me); });
   if (!members.length) return '';
-  var h = '<div class="member-switcher"><div class="member-scroll">';
+  var h = '<div class="mk-people">';
   for (var i = 0; i < members.length; i++) {
     var m = members[i];
-    var initials = (m.displayName || 'NN').slice(0, 2).toUpperCase();
+    var name = m.displayName || 'Участник';
+    var on = m.uid === currentMemberId;
     var prog = getMedkitProgress('personal', m.uid);
-    h += '<div class="member-tab' + (m.uid === currentMemberId ? ' active' : '') + '" onclick="setMedkitMember(\'' + m.uid + '\')">';
-    h += '<div class="member-avatar">' + initials + '</div>';
-    h += '<span class="member-name">' + escHtml(m.displayName || 'Участник') + '</span>';
-    h += '<span class="member-prog">' + prog.done + ' / ' + prog.total + '</span>';
-    h += '</div>';
+    var av = (m.avatar && /^https?:\/\//.test(m.avatar)) ? '<img src="' + escHtml(m.avatar) + '" alt="">' : escHtml(UIUtils.initials(name, m.nickname));
+    h += '<button type="button" class="mk-person' + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="setMedkitMember(\'' + m.uid + '\')">'
+      + '<span class="mk-person-av">' + av + '</span>' + escHtml(name)
+      + (prog.total ? '<span class="mk-person-p">' + prog.done + '/' + prog.total + '</span>' : '') + '</button>';
   }
-  h += '</div></div>';
+  h += '</div>';
+  if (members.length > 1) h += '<p class="mk-hint mk-hint--top">Чужую аптечку можно только посмотреть</p>';
   return h;
 }
 
@@ -181,501 +216,524 @@ function applyMedkitItemFilters(item, itemState) {
   if (medkitFilters.slot) {
     if ((itemState.slot || '') !== medkitFilters.slot) return false;
   }
-  if (medkitFilters.status) {
-    var status = getMedkitItemStatus(itemState);
-    var color = getMedkitItemColor(status);
-    // FIX: 'warn' фильтр показывает и warn и yellow (оба — предупреждения об остатке)
-    if (medkitFilters.status === 'warn' && color !== 'warn' && color !== 'yellow') return false;
-    if (medkitFilters.status === 'danger' && color !== 'danger') return false;
+  if (medkitFilters.status === 'attention') {
+    if (!getMedkitItemColor(getMedkitItemStatus(itemState))) return false;
   }
   return true;
 }
-function rMedkitGroups(mode, memberId) {
-  var h = '';
-  var optionalNotEnabled = [];
 
-  for (var g = 0; g < MEDKIT_BASE.length; g++) {
-    var group = MEDKIT_BASE[g];
-    if (group.availableIn.indexOf(mode) < 0) continue;
-
-    var isOptional = (mode === 'personal' && group.personalOptional) ||
-                 (mode === 'common' && group.commonOptional);
-if (isOptional && !isGroupEnabled(mode, memberId, group.id)) {
-  optionalNotEnabled.push(group);
-  continue;
+function _mkFilterActive() {
+  return !!(medkitFilters.search || medkitFilters.status);
 }
 
-    if (isGroupHidden(mode, memberId, group.id)) continue;
+function _mkIsOptional(mode, group) {
+  return (mode === 'personal' && group.personalOptional) || (mode === 'common' && group.commonOptional);
+}
 
-    var visibleItems = [];
-    for (var i = 0; i < group.items.length; i++) {
-      var item = group.items[i];
-      if (isItemHidden(mode, memberId, item.id)) continue;
-      var itemState = getMedkitItem(mode, memberId, item.id);
-      if (!applyMedkitItemFilters(item, itemState)) continue;
-      visibleItems.push(item);
-    }
+// --- Строка препарата ---
 
-    var state = getMedkitState(mode, memberId);
-    var customItems = state.customItems.filter(function(ci) {
-      return ci.groupId === group.id && !isItemHidden(mode, memberId, ci.id);
-    });
+var MK_MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
-    var open = isGroupOpen(group.id);
-    h += '<div class="group' + (open ? '' : ' collapsed') + '" data-group="' + group.id + '">';
-    h += '<div class="group-hd">';
-    h += '<div class="gh-left" onclick="toggleMedkitGroupCollapse(\'' + group.id + '\')">';
-    h += '<span class="gh-arrow">▶</span>';
-    h += '<span class="gh-title">' + escHtml(group.label) + '</span>';
-    h += '<span class="gh-count">' + (visibleItems.length + customItems.length) + '</span>';
-    h += '</div>';
-    h += '<div class="gh-right">';
-    if (isOptional && group.id !== 'supplements') {
-    h += '<span class="hide-btn" style="color:var(--red);border-color:#F7C1C1" onclick="disableMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\')">отключить</span>';
-   }
-    h += '<div class="gh-btn" title="Добавить препарат" onclick="toggleMedkitAddRow(\'' + group.id + '\')">';
-    h += '<svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>';
-    h += '<div class="gh-btn" title="Скрыть категорию" onclick="hideMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\',event)">';
-    h += '<svg viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="3"/><line x1="3" y1="21" x2="21" y2="3"/></svg></div>';
-    h += '</div></div>';
+function _mkParseExpiry(v) {
+  if (!v) return null;
+  var m = /^(\d{4})-(\d{2})/.exec(v);
+  if (m) return { y: +m[1], m: +m[2] };
+  var p = v.split('.');
+  if (p.length === 3) return { y: 2000 + parseInt(p[2], 10), m: parseInt(p[1], 10) };
+  return null;
+}
 
-    h += '<div class="group-body">';
-    for (var vi = 0; vi < visibleItems.length; vi++) {
-      h += rMedkitDrugItem(mode, memberId, visibleItems[vi], false);
-    }
-    for (var ci2 = 0; ci2 < customItems.length; ci2++) {
-      h += rMedkitDrugItem(mode, memberId, customItems[ci2], true);
-    }
-    h += '<div class="add-drug-row" onclick="toggleMedkitAddRow(\'' + group.id + '\')">';
-    h += '<div class="add-plus">+</div>Добавить препарат</div>';
-    h += '<div class="add-item-input" id="addDrugForm_' + group.id + '">';
-    h += '<input type="text" id="addDrugInput_' + group.id + '" placeholder="Название препарата">';
-    h += '<button onclick="addMedkitCustomItem(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\',document.getElementById(\'addDrugInput_' + group.id + '\').value)">Добавить</button>';
-    h += '</div>';
-    h += '</div>';
-    h += '</div>';
+function _mkFmtExpiry(v) {
+  var e = _mkParseExpiry(v);
+  return e ? (e.m < 10 ? '0' : '') + e.m + '.' + e.y : v;
+}
+
+function _mkServings(itemState) {
+  var left = parseFloat(itemState.left), dose = parseFloat(itemState.dose);
+  if (isNaN(left) || isNaN(dose) || dose <= 0) return null;
+  return Math.floor(left / dose);
+}
+
+function _mkDrugMeta(mode, item, itemState, status, color, extraLabel) {
+  var info = MEDKIT_INFO[item.id] || null;
+  var bits = [];
+  if (extraLabel) bits.push(escHtml(extraLabel));
+  else if (info && info.label) bits.push(escHtml(info.label));
+  var slot = itemState.slot ? getSlotById(mode, itemState.slot) : null;
+  if (slot && !extraLabel) bits.push(escHtml(slot.label));
+  if (itemState.left) {
+    var q = itemState.left + (itemState.unit ? ' ' + itemState.unit : '');
+    var sv = _mkServings(itemState);
+    if (sv !== null) q += ' · ~' + sv + ' ' + _mkPlural(sv, 'приём', 'приёма', 'приёмов');
+    bits.push('<span class="' + (status.stock ? 'mk-tone-' + (status.stock === 'empty' ? 'danger' : 'warn') : '') + '">' + escHtml(q) + '</span>');
   }
-
-  h += rMedkitHidden(mode, memberId);
-  h += rMedkitHiddenGroups(mode, memberId);
-  for (var oi = 0; oi < optionalNotEnabled.length; oi++) {
-  var og = optionalNotEnabled[oi];
-  h += '<div class="optional-group"><div class="optional-hd">';
-  h += '<span class="opt-title">' + escHtml(og.icon) + ' ' + escHtml(og.label) + ' — не подключено</span>';
-  h += '<span class="enable-btn" onclick="enableMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + og.id + '\')">подключить</span>';
-  h += '</div></div>';
-}
-  h += '<div class="add-cat" onclick="showAddMedkitGroup()">';
-  h += '<div class="add-cat-icon">+</div>';
-  h += '<span class="add-cat-label">Добавить категорию</span>';
-  h += '</div>';
-  return h;
+  if (itemState.expiry) {
+    bits.push('<span class="' + (status.expiry ? 'mk-tone-' + (status.expiry === 'expired' ? 'danger' : 'warn') : '') + '">срок ' + escHtml(_mkFmtExpiry(itemState.expiry)) + '</span>');
+  }
+  return bits.join(' · ');
 }
 
-function rMedkitDrugItem(mode, memberId, item, isCustom) {
+function rMedkitDrugRow(mode, memberId, item, readOnly, extraLabel) {
   var itemState = getMedkitItem(mode, memberId, item.id);
   var status = getMedkitItemStatus(itemState);
   var color = getMedkitItemColor(status);
-  var statusLabel = getMedkitStatusLabel(status);
-  var info = MEDKIT_INFO[item.id] || null;
-  var cardOpen = isDrugCardOpen(item.id);
-
-  var cls = 'drug' + (color === 'danger' ? ' d' : color === 'warn' ? ' w' : '') + (cardOpen ? ' card-open' : '');
-  var h = '<div class="' + cls + '" data-drug="' + item.id + '">';
-  h += '<div class="drug-top">';
-  h += '<div class="cc' + (itemState.checked ? ' done' : '') + '" onclick="toggleMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',event)">';
-  if (itemState.checked) h += '<svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>';
-  h += '</div>';
-
-  var slot = itemState.slot ? getSlotById(mode, itemState.slot) : null;
-  var leftInfo = '';
-  if (itemState.left && itemState.unit) {
-    leftInfo = itemState.left + ' ' + itemState.unit;
-    var doseNum = parseFloat(itemState.dose);
-    if (itemState.dose && !isNaN(doseNum) && doseNum > 0) {
-      var servings = Math.floor(parseFloat(itemState.left) / doseNum);
-      if (!isNaN(servings) && isFinite(servings)) leftInfo += ' · ~' + servings + ' приём';
-    }
-  }
-  // Раньше подзаголовок (info.label) и место/остаток/срок жили на трёх
-  // разных строках (drug-info + отдельный drug-meta) — теперь одна строка
-  // через точки, максимум переносится на вторую, но не гарантированно
-  // занимает 2-3 строки на КАЖДЫЙ препарат.
-  var metaBits = [];
-  if (info && info.label) metaBits.push('<span>' + escHtml(info.label) + '</span>');
-  metaBits.push('<span' + (slot ? '' : ' class="muted"') + '>' + (slot ? escHtml(slot.label) : 'не указано') + '</span>');
-  if (leftInfo) {
-    var mtClass = color === 'warn' ? ' class="warn"' : color === 'danger' ? ' class="danger"' : '';
-    metaBits.push('<span' + mtClass + '>' + escHtml(leftInfo) + '</span>');
-  }
-  if (itemState.expiry) {
-    var expiryClass = (status.expiry === 'expired' || status.expiry === 'critical') ? ' class="danger"' : '';
-    metaBits.push('<span' + expiryClass + '>срок ' + escHtml(itemState.expiry) + '</span>');
-  }
-
-  h += '<div class="drug-info" onclick="toggleMedkitDrugCard(\'' + item.id + '\')">';
-  h += '<div class="dn">' + escHtml(item.name) + '</div>';
-  h += '<div class="dl">' + metaBits.join('<span class="dl-sep">·</span>') + '</div>';
-  h += '</div>';
-
-  h += '<div class="drug-right">';
-  if (statusLabel) h += '<span class="sp sp-' + color + '">' + statusLabel + '</span>';
-  h += '<span class="hide-btn" onclick="hideMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',event)">скрыть</span>';
-  h += '<i class="ti ti-chevron-' + (cardOpen ? 'down' : 'right') + ' chev" aria-hidden="true" onclick="toggleMedkitDrugCard(\'' + item.id + '\')"></i>';
-  h += '</div></div>';
-
-  h += rMedkitDrugCard(mode, memberId, item, itemState, info, status);
-  h += '</div>';
-  return h;
+  var label = getMedkitStatusLabel(status);
+  var meta = _mkDrugMeta(mode, item, itemState, status, color, extraLabel);
+  var canDel = item.custom && !readOnly;
+  var h = '<div class="mk-drug' + (canDel ? ' mk-swipe' : '') + '" data-item="' + item.id + '">';
+  h += '<button type="button" class="mk-check' + (itemState.checked ? ' on' : '') + '" role="checkbox" aria-checked="' + !!itemState.checked + '" aria-label="Собрано"'
+    + (readOnly ? ' disabled' : ' onclick="toggleMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',event)"') + '>' + UIUtils.ico('check') + '</button>';
+  h += '<button type="button" class="mk-drug-main" onclick="openMedkitDrug(\'' + item.id + '\')">'
+    + '<span class="mk-drug-txt"><span class="mk-drug-name">' + escHtml(item.name) + '</span>'
+    + (meta ? '<span class="mk-drug-meta">' + meta + '</span>' : '') + '</span>'
+    + (label ? '<span class="mk-badge mk-badge--' + (color === 'danger' ? 'danger' : 'warn') + '">' + label + '</span>' : '')
+    + UIUtils.ico('chevron-right', 'mk-chev') + '</button>';
+  if (canDel) h += '<button type="button" class="mk-del" aria-label="Удалить препарат" onclick="deleteMedkitCustomItem(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',event)"></button>';
+  return h + '</div>';
 }
 
-function rMedkitDrugCard(mode, memberId, item, itemState, info, status) {
-  var legend = getMedkitStatusLegend(status);
-  var slots = getSlotsFor(mode);
-  var units = ['', 'таб', 'капс', 'амп', 'мл', 'мг', 'г', 'шт', 'фл', 'тюб', 'саше', 'пак'];
+// --- Список по категориям ---
 
-  var infoOpen = isDrugInfoOpen(item.id);
-  var h = '<div class="drug-card' + (infoOpen ? ' info-open' : '') + '">';
+function rMedkitGroups(mode, memberId, sections, readOnly) {
+  var h = '';
+  var filtering = _mkFilterActive();
+  var shown = 0;
 
-  h += '<div class="row4">';
-  h += '<div class="cell"><span class="cl">Было</span><input class="ci" value="' + escHtml(itemState.total || '') + '" placeholder="—" onchange="updateMedkitTotal(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)"></div>';
-  h += '<div class="cell"><span class="cl">Осталось</span><input class="ci" value="' + escHtml(itemState.left || '') + '" placeholder="—" onchange="updateMedkitLeft(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)"></div>';
-  h += '<div class="cell"><span class="cl">Единица</span><select class="cs" onchange="updateMedkitUnit(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)">';
-  for (var u = 0; u < units.length; u++) {
-    h += '<option value="' + units[u] + '"' + ((itemState.unit || '') === units[u] ? ' selected' : '') + '>' + (units[u] || 'ед.') + '</option>';
-  }
-  h += '</select></div>';
-  h += '<div class="cell"><span class="cl">Срок</span><input type="month" class="ci" value="' + escHtml(itemState.expiry || '') + '" onchange="updateMedkitExpiry(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)"></div>';
-  h += '</div>';
+  for (var s = 0; s < sections.length; s++) {
+    var group = sections[s].group;
+    var entries = sections[s].items;
+    var matches = entries.filter(function(it) { return applyMedkitItemFilters(it, getMedkitItem(mode, memberId, it.id)); });
+    // При поиске/фильтре — только категории с совпадениями, и сразу раскрытые.
+    if (filtering && !matches.length) continue;
+    shown++;
+    var open = filtering || isGroupOpen(group.id);
+    var done = entries.filter(function(it) { return getMedkitItem(mode, memberId, it.id).checked; }).length;
+    var full = entries.length && done === entries.length;
 
-  h += '<div class="row2">';
-  h += '<div class="cell"><span class="cl">Место хранения</span><select class="cs" onchange="updateMedkitSlot(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)">';
-  h += '<option value="">Не указано</option>';
-  for (var s = 0; s < slots.length; s++) {
-    h += '<option value="' + slots[s].id + '"' + ((itemState.slot || '') === slots[s].id ? ' selected' : '') + '>' + escHtml(slots[s].label) + '</option>';
-  }
-  h += '</select></div>';
-  h += '<div class="cell"><span class="cl">Доза / 1 приём</span><input class="ci" value="' + escHtml(itemState.dose || '') + '" placeholder="—" onchange="updateMedkitDose(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)"></div>';
-  h += '</div>';
+    h += '<section class="mk-card mk-group' + (open ? ' open' : '') + '" data-group="' + group.id + '">';
+    h += '<button type="button" class="mk-group-hd" aria-expanded="' + open + '" onclick="toggleMedkitGroupCollapse(\'' + group.id + '\')">'
+      + '<span class="mk-group-t">' + escHtml(group.label) + '</span>'
+      + '<span class="mk-group-n' + (full ? ' full' : '') + '">' + done + '/' + entries.length + '</span>'
+      + UIUtils.ico(open ? 'chevron-up' : 'chevron-down', 'mk-group-chev') + '</button>';
+    h += '<div class="mk-group-body">';
+    if (group.id === 'supplements' && mode === 'personal') h += rMedkitStack(memberId, entries, readOnly);
+    for (var i = 0; i < matches.length; i++) h += rMedkitDrugRow(mode, memberId, matches[i], readOnly);
+    if (!entries.length) h += '<p class="mk-empty">В категории пока пусто</p>';
 
-  h += '<div class="comment-block"><div class="comment-label">Комментарий</div>';
-  h += '<input class="comment-input" value="' + escHtml(itemState.note || '') + '" placeholder="необязательно" onchange="updateMedkitNote(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)"></div>';
-
-  if (legend.length) {
-    h += '<div class="status-legend">';
-    for (var l = 0; l < legend.length; l++) {
-      h += '<div class="sl-row"><span class="dot dot-' + legend[l].color + '"></span>' + escHtml(legend[l].text) + '</div>';
-    }
-    h += '</div>';
-  }
-
-  if (info) {
-    h += '<div class="info-toggle" onclick="toggleMedkitDrugInfo(\'' + item.id + '\',event)">';
-    h += '<i class="ti ti-chevron-' + (infoOpen ? 'down' : 'right') + '" aria-hidden="true"></i>';
-    h += '<span>Справка о препарате</span></div>';
-    h += '<div class="info-section">';
-    if (info.purpose)  h += '<div class="info-row"><span class="ir-lbl">Для чего</span><span class="ir-val">' + escHtml(info.purpose) + '</span></div>';
-    if (info.symptoms) h += '<div class="info-row"><span class="ir-lbl">При симптомах</span><span class="ir-val">' + escHtml(info.symptoms) + '</span></div>';
-    if (info.how)      h += '<div class="info-row"><span class="ir-lbl">Как принимать</span><span class="ir-val">' + escHtml(info.how) + '</span></div>';
-    if (info.where)    h += '<div class="info-row"><span class="ir-lbl">Куда колоть</span><span class="ir-val">' + escHtml(info.where) + '</span></div>';
-    if (info.replace)  h += '<div class="info-row"><span class="ir-lbl">Чем заменить</span><span class="ir-val">' + escHtml(info.replace) + '</span></div>';
-    if (info.warn)     h += '<div class="info-row"><span class="ir-lbl">Важно</span><span class="ir-val">' + escHtml(info.warn) + '</span></div>';
-    h += '</div>';
-  }
-
-  // --- Поля для БАДов ---
-  if (mode === 'personal') {
-    var isSupp = false;
-    for (var sg = 0; sg < MEDKIT_BASE.length; sg++) {
-      if (MEDKIT_BASE[sg].id === 'supplements') {
-        for (var si2 = 0; si2 < MEDKIT_BASE[sg].items.length; si2++) {
-          if (MEDKIT_BASE[sg].items[si2].id === item.id) { isSupp = true; break; }
+    if (!readOnly) {
+      if (!group.pseudo) {
+        h += '<button type="button" class="mk-add-btn" onclick="toggleMedkitAddRow(\'' + group.id + '\')">' + UIUtils.ico('plus') + ' Добавить препарат</button>';
+        h += '<div class="mk-add-form" id="addDrugForm_' + group.id + '">'
+          + '<input type="text" id="addDrugInput_' + group.id + '" placeholder="Название препарата" aria-label="Название препарата"'
+          + ' onkeydown="if(event.key===\'Enter\'){this.nextElementSibling.click()}">'
+          + '<button type="button" onclick="addMedkitCustomItem(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\',document.getElementById(\'addDrugInput_' + group.id + '\').value)">Добавить</button></div>';
+        h += '<div class="mk-group-actions">';
+        h += '<button type="button" onclick="hideMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\',event)">Скрыть категорию</button>';
+        if (_mkIsOptional(mode, group)) {
+          h += '<button type="button" class="danger" onclick="disableMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + group.id + '\')">Отключить' + (group.id === 'supplements' ? ' вместе со стеком' : '') + '</button>';
         }
+        h += '</div>';
       }
     }
-    if (item.custom && item.groupId === 'supplements') isSupp = true;
+    h += '</div></section>';
+  }
+  if (filtering && !shown) h += '<p class="mk-empty mk-empty--page">Ничего не нашлось</p>';
 
-    if (isSupp) {
-      h += '<div class="row2" style="margin-top:6px">';
-      h += '<div class="cell"><span class="cl">Когда пить</span>';
-      h += '<select class="cs" onchange="updateMedkitSlotTime(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)">';
-      h += '<option value="Утро"' + ((itemState.slot_time || 'Утро') === 'Утро' ? ' selected' : '') + '>Утро</option>';
-      h += '<option value="День"' + ((itemState.slot_time || '') === 'День' ? ' selected' : '') + '>День</option>';
-      h += '<option value="Вечер"' + ((itemState.slot_time || '') === 'Вечер' ? ' selected' : '') + '>Вечер</option>';
-      h += '</select></div>';
-      h += '<div class="cell"><span class="cl">Как принимать</span>';
-      h += '<select class="cs" onchange="updateMedkitHow(\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\',this.value)">';
-      h += '<option value=""' + (!(itemState.how || '') ? ' selected' : '') + '>не указано</option>';
-      h += '<option value="натощак"' + ((itemState.how || '') === 'натощак' ? ' selected' : '') + '>натощак</option>';
-      h += '<option value="до еды"' + ((itemState.how || '') === 'до еды' ? ' selected' : '') + '>до еды</option>';
-      h += '<option value="во время еды"' + ((itemState.how || '') === 'во время еды' ? ' selected' : '') + '>во время еды</option>';
-      h += '<option value="после еды"' + ((itemState.how || '') === 'после еды' ? ' selected' : '') + '>после еды</option>';
-      h += '<option value="перед сном"' + ((itemState.how || '') === 'перед сном' ? ' selected' : '') + '>перед сном</option>';
-      h += '</select></div>';
-      h += '</div>';
+  if (!filtering) {
+    h += rMedkitOptional(mode, memberId, readOnly);
+    h += rMedkitHiddenRow(mode, memberId, readOnly);
+    if (!readOnly) {
+      h += '<button type="button" class="mk-dashed mk-dashed--center" onclick="showAddMedkitGroup()">' + UIUtils.ico('plus') + ' Своя категория</button>';
+      h += '<p class="mk-hint">Нажми на препарат — остаток, срок, место и справка.' + (mode === 'personal' ? ' У «БАДов» внутри — расписание приёма по дням.' : '') + '</p>';
     }
   }
-
-  h += '</div>';
   return h;
 }
-function rMedkitHidden(mode, memberId) {
+
+// «Можно подключить: …» — опциональные категории, которые не включены.
+function rMedkitOptional(mode, memberId, readOnly) {
+  if (readOnly) return '';
+  var list = MEDKIT_BASE.filter(function(g) {
+    return g.availableIn.indexOf(mode) >= 0 && _mkIsOptional(mode, g) && !isGroupEnabled(mode, memberId, g.id);
+  });
+  if (!list.length) return '';
+  var h = '<details class="mk-more"><summary class="mk-dashed">Можно подключить: ' + escHtml(list.map(function(g) { return g.label; }).join(', ')) + UIUtils.ico('chevron-down', 'mk-chev') + '</summary>';
+  h += '<div class="mk-card mk-more-body">';
+  list.forEach(function(g) {
+    h += '<div class="mk-line"><span class="mk-line-t">' + escHtml(g.label) + '<small>' + g.items.length + ' ' + _mkPlural(g.items.length, 'препарат', 'препарата', 'препаратов') + '</small></span>'
+      + '<button type="button" class="mk-line-b" onclick="enableMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + g.id + '\')">Подключить</button></div>';
+  });
+  return h + '</div></details>';
+}
+
+// Скрытые категории и препараты текущей аптечки — для строки внизу списка
+// и для листа «Категории».
+function _mkHiddenLists(mode, memberId) {
   var state = getMedkitState(mode, memberId);
-  var hidden = [];
-
-  for (var g = 0; g < MEDKIT_BASE.length; g++) {
-    var group = MEDKIT_BASE[g];
-    if (group.availableIn.indexOf(mode) < 0) continue;
-    for (var i = 0; i < group.items.length; i++) {
-      var item = group.items[i];
-      if (isItemHidden(mode, memberId, item.id)) {
-        hidden.push({ id: item.id, name: item.name, group: group.label, custom: false });
-      }
-    }
-  }
-  for (var c = 0; c < state.customItems.length; c++) {
-    var ci = state.customItems[c];
-    if (isItemHidden(mode, memberId, ci.id)) {
-      hidden.push({ id: ci.id, name: ci.name, group: 'Добавленные', custom: true });
-    }
-  }
-  if (!hidden.length) return '';
-
-  var h = '<div class="hidden-section">';
-  h += '<div class="hidden-hd"><span class="hidden-title"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg> Скрытые препараты</span>';
-  h += '<span class="hidden-count">' + hidden.length + '</span></div>';
-  h += '<div class="hidden-body">';
-  for (var hi = 0; hi < hidden.length; hi++) {
-    var hitem = hidden[hi];
-    h += '<div class="hidden-item">';
-    h += '<div><div class="hi-name">' + escHtml(hitem.name) + '</div><div class="hi-group">' + escHtml(hitem.group) + '</div></div>';
-    h += '<div style="display:flex;gap:5px">';
-    h += '<span class="restore-btn" onclick="restoreMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + hitem.id + '\')">показать</span>';
-    if (hitem.custom) {
-      h += '<span class="restore-btn" style="color:#A32D2D;border-color:#F7C1C1;background:#FCEBEB" onclick="deleteMedkitCustomItem(\'' + mode + '\',\'' + memberId + '\',\'' + hitem.id + '\',event)">удалить</span>';
-    }
-    h += '</div></div>';
-  }
-  h += '</div></div>';
-  return h;
+  var groups = [], items = [];
+  MEDKIT_BASE.forEach(function(g) {
+    if (g.availableIn.indexOf(mode) < 0) return;
+    if (isGroupHidden(mode, memberId, g.id) && isGroupEnabled(mode, memberId, g.id)) groups.push(g);
+    g.items.forEach(function(it) {
+      if (isItemHidden(mode, memberId, it.id)) items.push({ id: it.id, name: it.name, group: g.label, custom: false });
+    });
+  });
+  state.customItems.forEach(function(ci) {
+    if (isItemHidden(mode, memberId, ci.id)) items.push({ id: ci.id, name: ci.name, group: 'Добавленные', custom: true });
+  });
+  return { groups: groups, items: items };
 }
 
-function rMedkitHiddenGroups(mode, memberId) {
-  var hidden = [];
-  for (var g = 0; g < MEDKIT_BASE.length; g++) {
-    var group = MEDKIT_BASE[g];
-    if (group.availableIn.indexOf(mode) < 0) continue;
-    if (isGroupHidden(mode, memberId, group.id)) hidden.push(group);
-  }
-  if (!hidden.length) return '';
-
-  var h = '<div class="hidden-section">';
-  h += '<div class="hidden-hd"><span class="hidden-title"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg> Скрытые разделы</span>';
-  h += '<span class="hidden-count">' + hidden.length + '</span></div>';
-  h += '<div class="hidden-body">';
-  for (var hi = 0; hi < hidden.length; hi++) {
-    var hg = hidden[hi];
-    h += '<div class="hidden-item">';
-    h += '<div><div class="hi-name">' + escHtml(hg.label) + '</div><div class="hi-group">' + hg.items.length + ' препаратов</div></div>';
-    h += '<span class="restore-btn" onclick="restoreMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + hg.id + '\')">показать</span>';
-    h += '</div>';
-  }
-  h += '</div></div>';
-  return h;
+function _mkHiddenItemsHtml(mode, memberId, items) {
+  return items.map(function(it) {
+    return '<div class="mk-line' + (it.custom ? ' mk-swipe' : '') + '"><span class="mk-line-t">' + escHtml(it.name) + '<small>' + escHtml(it.group) + '</small></span>'
+      + '<button type="button" class="mk-line-b" onclick="restoreMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + it.id + '\')">Вернуть</button>'
+      + (it.custom ? '<button type="button" class="mk-del" aria-label="Удалить препарат" onclick="deleteMedkitCustomItem(\'' + mode + '\',\'' + memberId + '\',\'' + it.id + '\',event)"></button>' : '')
+      + '</div>';
+  }).join('');
 }
 
-function rMedkitStack(memberId) {
+// «Скрыто: Обезбол, Сон и 2 препарата — показать».
+function rMedkitHiddenRow(mode, memberId, readOnly) {
+  if (readOnly) return '';
+  var hid = _mkHiddenLists(mode, memberId);
+  if (!hid.groups.length && !hid.items.length) return '';
+  var parts = hid.groups.map(function(g) { return g.label; });
+  var n = hid.items.length;
+  var itemsTxt = n ? n + ' ' + _mkPlural(n, 'препарат', 'препарата', 'препаратов') : '';
+  var txt = parts.length ? 'Скрыто: ' + parts.join(', ') + (itemsTxt ? ' и ' + itemsTxt : '') : 'Скрыто ' + itemsTxt;
+  var h = '<details class="mk-more"><summary class="mk-dashed mk-dashed--quiet">' + escHtml(txt) + ' — показать' + UIUtils.ico('chevron-down', 'mk-chev') + '</summary>';
+  h += '<div class="mk-card mk-more-body">';
+  hid.groups.forEach(function(g) {
+    h += '<div class="mk-line"><span class="mk-line-t">' + escHtml(g.label) + '<small>категория</small></span>'
+      + '<button type="button" class="mk-line-b" onclick="restoreMedkitGroup(\'' + mode + '\',\'' + memberId + '\',\'' + g.id + '\')">Вернуть</button></div>';
+  });
+  h += _mkHiddenItemsHtml(mode, memberId, hid.items);
+  return h + '</div></details>';
+}
+
+// --- Стек БАДов: внутри категории «БАДы / витамины» (макет V2MedkitStack) ---
+function rMedkitStack(memberId, entries, readOnly) {
   var state = getMedkitState('personal', memberId);
   if (state.hiddenGroups && state.hiddenGroups['stack']) return '';
+  if (!entries.length) return '';
 
-  var suppGroup = null;
-  for (var g = 0; g < MEDKIT_BASE.length; g++) {
-    if (MEDKIT_BASE[g].id === 'supplements') { suppGroup = MEDKIT_BASE[g]; break; }
-  }
-  if (!suppGroup || !isGroupEnabled('personal', memberId, 'supplements')) return '';
-
-  var slots = { 'Утро': [], 'День': [], 'Вечер': [] };
-  var allItems = suppGroup.items.concat(state.customItems.filter(function(ci) {
-    return ci.groupId === 'supplements';
-  }));
-  for (var i = 0; i < allItems.length; i++) {
-    var item = allItems[i];
-    if (isItemHidden('personal', memberId, item.id)) continue;
-    var itemState = getMedkitItem('personal', memberId, item.id);
-    var slotName = itemState.slot_time || 'Утро';
-    if (!slots[slotName]) slots[slotName] = [];
-    slots[slotName].push({ item: item, state: itemState });
-  }
-  var hasAny = slots['Утро'].length || slots['День'].length || slots['Вечер'].length;
-  if (!hasAny) return '';
+  var byTime = { 'Утро': [], 'День': [], 'Вечер': [] };
+  entries.forEach(function(item) {
+    var st = getMedkitItem('personal', memberId, item.id);
+    var t = st.slot_time || 'Утро';
+    if (!byTime[t]) byTime[t] = [];
+    byTime[t].push({ item: item, state: st });
+  });
 
   var dayLabels = [['Пн','mon'],['Вт','tue'],['Ср','wed'],['Чт','thu'],['Пт','fri'],['Сб','sat'],['Вс','sun']];
-  var h = '<div class="stack-card">';
-  h += '<div class="stack-hd" onclick="toggleMedkitStack()" style="cursor:pointer">';
-  h += '<div class="stack-hd-l"><svg class="stack-hd-svg" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12h6M12 9v6"/></svg>';
-  h += '<span class="stack-hd-title">Стек БАДов</span></div>';
-  h += '<div class="stack-hd-r">';
-  h += '<span class="hide-link" style="color:var(--red);border-color:var(--red)" onclick="disableMedkitGroup(\'personal\',\'' + memberId + '\',\'supplements\');event.stopPropagation()">отключить</span>';
-  h += '<span class="stack-arrow" style="' + (medkitStackCollapsed ? '' : 'transform:rotate(90deg)') + '">▶</span>';
-  h += '</div></div>';
-  h += '<div class="stack-body"' + (medkitStackCollapsed ? ' style="display:none"' : '') + '>';
-  var slotOrder = ['Утро', 'День', 'Вечер'];
-  for (var si = 0; si < slotOrder.length; si++) {
-    var sn = slotOrder[si];
-    if (!slots[sn] || !slots[sn].length) continue;
-    h += '<div class="slot-label">' + sn + '</div>';
-    for (var ii = 0; ii < slots[sn].length; ii++) {
-      var entry = slots[sn][ii];
-      h += '<div class="stack-item"><div><div class="si-name">' + escHtml(entry.item.name) + '</div>';
-      if (entry.state.how) h += '<div class="si-how">' + escHtml(entry.state.how) + '</div>';
-      h += '</div><div class="days">';
-      for (var di = 0; di < dayLabels.length; di++) {
-        var dayKey = dayLabels[di][1];
-        var taken = entry.state.taken && entry.state.taken[dayKey];
-        h += '<div class="day' + (taken ? ' done' : '') + '" onclick="toggleMedkitTakenDay(\'personal\',\'' + memberId + '\',\'' + entry.item.id + '\',\'' + dayKey + '\',event)">' + dayLabels[di][0] + '</div>';
-      }
+  var h = '<div class="mk-stack' + (medkitStackCollapsed ? '' : ' open') + '">';
+  h += '<button type="button" class="mk-stack-hd" aria-expanded="' + !medkitStackCollapsed + '" onclick="toggleMedkitStack()"><span class="mk-stack-t">Расписание приёма</span>'
+    + '<span class="mk-stack-s">по дням недели</span>' + UIUtils.ico('chevron-down', 'mk-chev') + '</button>';
+  h += '<div class="mk-stack-body">';
+  ['Утро', 'День', 'Вечер'].forEach(function(t) {
+    if (!byTime[t].length) return;
+    h += '<div class="mk-caps">' + t + '</div>';
+    byTime[t].forEach(function(e) {
+      h += '<div class="mk-supp"><div class="mk-supp-top"><span class="mk-supp-n">' + escHtml(e.item.name) + '</span>'
+        + (e.state.how ? '<span class="mk-supp-h">' + escHtml(e.state.how) + '</span>' : '') + '</div><div class="mk-days">';
+      dayLabels.forEach(function(d) {
+        var on = !!(e.state.taken && e.state.taken[d[1]]);
+        h += '<button type="button" class="mk-day' + (on ? ' on' : '') + '" aria-pressed="' + on + '"'
+          + (readOnly ? ' disabled' : ' onclick="toggleMedkitTakenDay(\'personal\',\'' + memberId + '\',\'' + e.item.id + '\',\'' + d[1] + '\',event)"') + '>' + d[0] + '</button>';
+      });
       h += '</div></div>';
-    }
+    });
+  });
+  return h + '</div></div>';
+}
+
+// --- По местам хранения ---
+var medkitClosedSlots = {};
+
+function toggleMedkitSlotBlock(slotId) {
+  medkitClosedSlots[slotId] = !medkitClosedSlots[slotId];
+  rMedkit();
+}
+
+function rMedkitBySlots(mode, memberId, sections, readOnly) {
+  var entries = [];
+  sections.forEach(function(s) {
+    s.items.forEach(function(it) {
+      var st = getMedkitItem(mode, memberId, it.id);
+      if (applyMedkitItemFilters(it, st)) entries.push({ item: it, state: st, group: s.group.label });
+    });
+  });
+  var slots = getSlotsFor(mode);
+  var known = {};
+  var h = '';
+  var block = function(key, icon, name, list, defaultClosed) {
+    var closed = medkitClosedSlots[key] === undefined ? !!defaultClosed : medkitClosedSlots[key];
+    var done = list.filter(function(e) { return e.state.checked; }).length;
+    var meta = list.length ? list.length + ' ' + _mkPlural(list.length, 'препарат', 'препарата', 'препаратов') + ' · ' + done + ' собрано' : 'пусто';
+    var b = '<section class="mk-card mk-group mk-slot' + (closed ? '' : ' open') + '">';
+    b += '<button type="button" class="mk-group-hd" aria-expanded="' + !closed + '" onclick="medkitClosedSlots[\'' + key + '\']=' + !closed + ';rMedkit()">'
+      + '<span class="mk-slot-ico">' + icon + '</span><span class="mk-group-t">' + escHtml(name) + '<small>' + meta + '</small></span>'
+      + UIUtils.ico(closed ? 'chevron-down' : 'chevron-up', 'mk-group-chev') + '</button><div class="mk-group-body">';
+    if (!list.length) b += '<p class="mk-empty">Сюда пока ничего не положили</p>';
+    list.forEach(function(e) { b += rMedkitDrugRow(mode, memberId, e.item, readOnly, e.group); });
+    return b + '</div></section>';
+  };
+  slots.forEach(function(slot) {
+    known[slot.id] = true;
+    h += block(slot.id, UIUtils.emojiIcon(slot.icon), slot.label, entries.filter(function(e) { return e.state.slot === slot.id; }));
+  });
+  var loose = entries.filter(function(e) { return !e.state.slot || !known[e.state.slot]; });
+  if (loose.length) h += block('__none', UIUtils.ico('help-circle'), 'Место не указано', loose, true);
+  if (!readOnly) {
+    h += '<button type="button" class="mk-dashed mk-dashed--center" onclick="showAddMedkitSlot(\'' + mode + '\')">' + UIUtils.ico('plus') + ' Место хранения</button>';
   }
-  h += '</div></div>';
   return h;
 }
 
-function rMedkitBySlots(mode, memberId) {
+// ===== Карточка препарата — лист поверх списка (макет V2MedkitDrug) =====
+var _mkSheet = null; // { mode, memberId, itemId }
+
+function _mkFindItem(mode, memberId, itemId) {
+  for (var g = 0; g < MEDKIT_BASE.length; g++) {
+    for (var i = 0; i < MEDKIT_BASE[g].items.length; i++) {
+      if (MEDKIT_BASE[g].items[i].id === itemId) return { item: MEDKIT_BASE[g].items[i], group: MEDKIT_BASE[g] };
+    }
+  }
+  var state = getMedkitState(mode, memberId);
+  for (var c = 0; c < state.customItems.length; c++) {
+    var ci = state.customItems[c];
+    if (ci.id === itemId) {
+      var grp = null;
+      for (var k = 0; k < MEDKIT_BASE.length; k++) if (MEDKIT_BASE[k].id === ci.groupId) grp = MEDKIT_BASE[k];
+      return { item: ci, group: grp || { id: '__other', label: 'Другое', items: [] } };
+    }
+  }
+  return null;
+}
+
+function openMedkitDrug(itemId) {
+  _mkSheet = { mode: medkitMode, memberId: medkitMemberId, itemId: itemId };
+  document.getElementById('mkDrugOverlay')?.remove();
+  var overlay = document.createElement('div');
+  overlay.className = 'mk-import-overlay';
+  overlay.id = 'mkDrugOverlay';
+  overlay.innerHTML = '<section class="mk-import-sheet mk-drug-sheet" role="dialog" id="mkDrugSheet"></section>';
+  document.body.appendChild(overlay);
+  _mkSyncSheet(true);
+  requestAnimationFrame(function() { overlay.classList.add('open'); });
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeMedkitDrug(); });
+}
+
+function closeMedkitDrug() {
+  _mkSheet = null;
+  var overlay = document.getElementById('mkDrugOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  setTimeout(function() { overlay.remove(); }, 250);
+}
+
+// full=true — перерисовать лист целиком; false — только если в нём никто
+// не печатает (обновление с сервера), иначе — лишь «живые» части
+// (галочка, плашка статуса, единицы), чтобы не сбить ввод.
+function _mkSyncSheet(full) {
+  if (!_mkSheet) return;
+  var sheet = document.getElementById('mkDrugSheet');
+  if (!sheet) return;
+  var found = _mkFindItem(_mkSheet.mode, _mkSheet.memberId, _mkSheet.itemId);
+  if (!found) { closeMedkitDrug(); return; }
+  var typing = sheet.contains(document.activeElement) && /INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName);
+  if (full || !typing) {
+    sheet.innerHTML = _mkDrugSheetHtml(_mkSheet.mode, _mkSheet.memberId, found.item, found.group);
+    return;
+  }
+  var st = getMedkitItem(_mkSheet.mode, _mkSheet.memberId, _mkSheet.itemId);
+  var chk = sheet.querySelector('.mk-sheet-check');
+  if (chk) chk.outerHTML = _mkSheetCheckHtml(_mkSheet.mode, _mkSheet.memberId, _mkSheet.itemId, st);
+  var stEl = document.getElementById('mkDrugStatus');
+  if (stEl) stEl.outerHTML = _mkStatusHtml(st);
+  sheet.querySelectorAll('.mk-unit-txt').forEach(function(u) { u.textContent = st.unit || ''; });
+}
+
+function _mkSheetCheckHtml(mode, memberId, itemId, st) {
+  var ro = !_canEditMedkit(mode, memberId);
+  return '<button type="button" class="mk-sheet-check" role="checkbox" aria-checked="' + !!st.checked + '"'
+    + (ro ? ' disabled' : ' onclick="toggleMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + itemId + '\',event)"') + '>'
+    + '<span class="mk-check' + (st.checked ? ' on' : '') + '">' + UIUtils.ico('check') + '</span>Собрано в аптечку</button>';
+}
+
+// Плашка статуса понятными словами: «Мало — осталось на ~4 приёма».
+function _mkStatusHtml(st) {
+  var status = getMedkitItemStatus(st);
+  var lines = [];
+  var sv = _mkServings(st);
+  var svTxt = sv !== null ? 'осталось на ~' + sv + ' ' + _mkPlural(sv, 'приём', 'приёма', 'приёмов') : '';
+  if (status.stock === 'empty') lines.push(['danger', 'Закончился', 'пора пополнить']);
+  else if (status.stock === 'critical') lines.push(['warn', 'Почти закончился', svTxt + ' (меньше 2)']);
+  else if (status.stock === 'warning') lines.push(['warn', 'Мало', svTxt + ' (меньше 5)']);
+  var e = _mkParseExpiry(st.expiry);
+  if (e && status.expiry) {
+    var when = MK_MONTHS_GEN[e.m - 1] + (e.y !== new Date().getFullYear() ? ' ' + e.y : '');
+    if (status.expiry === 'expired') lines.push(['danger', 'Срок истёк', 'годен был до ' + when]);
+    else if (status.expiry === 'critical') lines.push(['warn', 'Скоро истечёт', 'срок до ' + when + ', меньше месяца']);
+    else lines.push(['warn', 'Скоро истечёт', 'срок до ' + when + ', меньше 3 месяцев']);
+  }
+  if (!lines.length) return '<div id="mkDrugStatus" hidden></div>';
+  var danger = lines.some(function(l) { return l[0] === 'danger'; });
+  return '<div id="mkDrugStatus" class="mk-status' + (danger ? ' danger' : '') + '" role="status">'
+    + lines.map(function(l) { return '<span><b class="mk-tone-' + l[0] + '">' + l[1] + '</b> — ' + escHtml(l[2]) + '</span>'; }).join('') + '</div>';
+}
+
+function _mkDrugSheetHtml(mode, memberId, item, group) {
+  var st = getMedkitItem(mode, memberId, item.id);
+  var ro = !_canEditMedkit(mode, memberId);
+  var dis = ro ? ' disabled' : '';
+  var info = MEDKIT_INFO[item.id] || null;
+  var args = '\'' + mode + '\',\'' + memberId + '\',\'' + item.id + '\'';
+  var units = ['', 'таб', 'капс', 'амп', 'мл', 'мг', 'г', 'шт', 'фл', 'тюб', 'саше', 'пак'];
+  var sub = escHtml(group.label) + (info && info.label ? ' · ' + escHtml(info.label) : '');
+
+  var h = '<div class="mk-import-sheet__handle"></div>';
+  h += '<div class="mk-sheet-head"><div class="mk-sheet-head-l"><h2 class="mk-sheet-title">' + escHtml(item.name) + '</h2><span class="mk-sheet-sub">' + sub + '</span></div>'
+    + '<button type="button" class="mk-sheet-x" aria-label="Закрыть" onclick="closeMedkitDrug()">' + UIUtils.ico('x') + '</button></div>';
+  h += '<div class="mk-sheet-body">';
+  if (ro) h += '<p class="mk-hint">Аптечка ' + escHtml(getMemberName(memberId)) + ' — только просмотр</p>';
+  h += _mkSheetCheckHtml(mode, memberId, item.id, st);
+  h += _mkStatusHtml(st);
+
+  var field = function(label, fn, val, suffix, extra) {
+    return '<label class="mk-field"><span class="mk-field-l">' + label + '</span><span class="mk-field-v">'
+      + '<input value="' + escHtml(val || '') + '" placeholder="—" aria-label="' + label + '"' + (extra || '') + dis
+      + ' onchange="' + fn + '(' + args + ',this.value)">' + (suffix || '') + '</span></label>';
+  };
+  var unitSel = '<select class="mk-unit" aria-label="Единица"' + dis + ' onchange="updateMedkitUnit(' + args + ',this.value)">'
+    + units.map(function(u) { return '<option value="' + u + '"' + ((st.unit || '') === u ? ' selected' : '') + '>' + (u || 'ед.') + '</option>'; }).join('') + '</select>';
+  var unitTxt = '<span class="mk-unit-txt">' + escHtml(st.unit || '') + '</span>';
+  h += '<div class="mk-fields">';
+  h += field('Было', 'updateMedkitTotal', st.total, unitSel, ' inputmode="decimal"');
+  h += field('Осталось', 'updateMedkitLeft', st.left, unitTxt, ' inputmode="decimal"');
+  h += field('На один приём', 'updateMedkitDose', st.dose, unitTxt, ' inputmode="decimal"');
+  h += '<label class="mk-field"><span class="mk-field-l">Годен до</span><span class="mk-field-v"><input type="month" aria-label="Годен до" value="' + escHtml(/^\d{4}-\d{2}$/.test(st.expiry || '') ? st.expiry : '') + '"' + dis
+    + ' onchange="updateMedkitExpiry(' + args + ',this.value)"></span></label>';
+  h += '</div>';
+
   var slots = getSlotsFor(mode);
-  var h = '<div class="sep-ref">Места хранения</div>';
-  for (var s = 0; s < slots.length; s++) {
-    var slot = slots[s];
-    var items = [];
-    for (var g = 0; g < MEDKIT_BASE.length; g++) {
-      var group = MEDKIT_BASE[g];
-      if (group.availableIn.indexOf(mode) < 0) continue;
-      for (var i = 0; i < group.items.length; i++) {
-        var item = group.items[i];
-        var itemState = getMedkitItem(mode, memberId, item.id);
-        if (itemState.slot === slot.id) items.push({ item: item, state: itemState, group: group.label });
-      }
-    }
-    var state = getMedkitState(mode, memberId);
-    for (var c = 0; c < state.customItems.length; c++) {
-      var ci = state.customItems[c];
-      var ciState = getMedkitItem(mode, memberId, ci.id);
-      if (ciState.slot === slot.id) items.push({ item: ci, state: ciState, group: 'Добавленные' });
-    }
-    var done = items.filter(function(it) { return it.state.checked; }).length;
-    var pct = items.length ? Math.round(done / items.length * 100) : 0;
+  h += '<label class="mk-field mk-field--sel"><span class="mk-field-l">Где лежит</span><span class="mk-field-v"><select aria-label="Где лежит"' + dis + ' onchange="updateMedkitSlot(' + args + ',this.value)">'
+    + '<option value="">Не указано</option>'
+    + slots.map(function(s) { return '<option value="' + s.id + '"' + ((st.slot || '') === s.id ? ' selected' : '') + '>' + escHtml(s.label) + '</option>'; }).join('')
+    + '</select>' + UIUtils.ico('chevron-down', 'mk-chev') + '</span></label>';
 
-    h += '<div class="slot-block"><div class="slot-hd"><div class="slot-hd-left">';
-    h += '<div class="slot-icon">' + slot.icon + '</div>';
-    h += '<div><div class="slot-name">' + escHtml(slot.label) + '</div>';
-    h += '<div class="slot-count">' + (items.length ? items.length + ' препаратов · ' + done + ' собрано' : 'Пусто') + '</div></div>';
-    h += '</div><div class="slot-hd-right">';
-    if (items.length) h += '<span class="slot-prog">' + pct + '%</span>';
-    h += '<span class="slot-arrow">▾</span></div></div>';
-
-    if (!items.length) {
-      h += '<div class="empty-slot">Ни одного препарата не привязано</div>';
-    } else {
-      for (var it = 0; it < items.length; it++) {
-        var entry = items[it];
-        var st = getMedkitItemStatus(entry.state);
-        var col = getMedkitItemColor(st);
-        var stLabel = getMedkitStatusLabel(st);
-        var slotCls = 'slot-item' + (col === 'danger' ? ' d' : col === 'warn' ? ' w' : '');
-        h += '<div class="' + slotCls + '"><div class="si-left">';
-        h += '<div class="cc' + (entry.state.checked ? ' done' : '') + '" onclick="toggleMedkitItem(\'' + mode + '\',\'' + memberId + '\',\'' + entry.item.id + '\',event)">';
-        if (entry.state.checked) h += '<svg viewBox="0 0 12 12"><polyline points="2,6 5,9 10,3"/></svg>';
-        h += '</div>';
-        h += '<div class="si-info"><div class="si-name">' + escHtml(entry.item.name) + '</div>';
-        h += '<div class="si-cat">' + escHtml(entry.group) + '</div></div>';
-        h += '</div><div class="si-right">';
-        if (entry.state.left && entry.state.unit) h += '<span class="si-qty">' + escHtml(entry.state.left) + ' ' + escHtml(entry.state.unit) + '</span>';
-        if (stLabel) h += '<span class="sp sp-' + col + '">' + stLabel + '</span>';
-        h += '</div></div>';
-      }
-    }
+  // Поля БАДов: когда пить и как — отсюда строится расписание приёма.
+  if (mode === 'personal' && group.id === 'supplements') {
+    var sel = function(label, fn, cur, opts) {
+      return '<label class="mk-field mk-field--sel"><span class="mk-field-l">' + label + '</span><span class="mk-field-v"><select aria-label="' + label + '"' + dis + ' onchange="' + fn + '(' + args + ',this.value)">'
+        + opts.map(function(o) { return '<option value="' + o[0] + '"' + (cur === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('')
+        + '</select>' + UIUtils.ico('chevron-down', 'mk-chev') + '</span></label>';
+    };
+    h += '<div class="mk-fields">';
+    h += sel('Когда пить', 'updateMedkitSlotTime', st.slot_time || 'Утро', [['Утро', 'Утро'], ['День', 'День'], ['Вечер', 'Вечер']]);
+    h += sel('Как принимать', 'updateMedkitHow', st.how || '', [['', 'не указано'], ['натощак', 'натощак'], ['до еды', 'до еды'], ['во время еды', 'во время еды'], ['после еды', 'после еды'], ['перед сном', 'перед сном']]);
     h += '</div>';
   }
-  h += '<div class="add-slot" onclick="showAddMedkitSlot(\'' + mode + '\')">';
-  h += '<div class="add-slot-icon">+</div>';
-  h += '<span class="add-slot-label">Добавить место хранения</span></div>';
+
+  h += field('Комментарий', 'updateMedkitNote', st.note, '', ' placeholder="необязательно"').replace(' placeholder="—"', '');
+
+  if (info) {
+    var row = function(l, v, cls) { return v ? '<div class="mk-ref-row"><span class="mk-ref-l' + (cls || '') + '">' + l + '</span><span>' + escHtml(v) + '</span></div>' : ''; };
+    h += '<details class="mk-ref" open><summary>Справка о препарате' + UIUtils.ico('chevron-down', 'mk-chev') + '</summary><div class="mk-ref-body">'
+      + row('Для чего', info.purpose) + row('При симптомах', info.symptoms) + row('Как принимать', info.how)
+      + row('Куда колоть', info.where) + row('Чем заменить', info.replace) + row('Важно', info.warn, ' danger')
+      + '</div></details>';
+  }
+
+  if (!ro) {
+    h += '<div class="mk-sheet-actions"><button type="button" class="mk-text-btn" onclick="hideMedkitItem(' + args + ',event);closeMedkitDrug()">Скрыть из списка</button>';
+    if (item.custom) h += '<button type="button" class="mk-text-btn danger" onclick="confirmDeleteMedkitCustomItem(' + args + ')">Удалить препарат</button>';
+    h += '</div>';
+  }
+  return h + '</div>';
+}
+
+function confirmDeleteMedkitCustomItem(mode, memberId, itemId) {
+  UIUtils.confirmSheet('Препарат и все его данные (остаток, срок, место) будут удалены.', { title: 'Удалить препарат?' }).then(function(ok) {
+    if (!ok) return;
+    closeMedkitDrug();
+    deleteMedkitCustomItem(mode, memberId, itemId);
+  });
+}
+
+// ===== «Что делать» (макет V2MedkitSOS) =====
+var emergencySearch = '';
+var emergencyType = '';
+
+function rMedkitReference() {
+  // 112 — первым и крупно: в экстренной ситуации он нужен сразу.
+  var h = '<a href="tel:112" class="mk-sos">' + UIUtils.ico('phone') + '<span><b>Позвонить 112</b><small>единый номер экстренных служб</small></span></a>';
+  h += '<div class="mk-phones">';
+  h += '<a href="tel:103"><b>103</b><small>Скорая</small></a>';
+  h += '<a href="tel:101"><b>101</b><small>МЧС</small></a>';
+  h += '<a href="tel:102"><b>102</b><small>Полиция</small></a>';
+  h += '</div>';
+  h += '<label class="mk-search">' + UIUtils.ico('search') + '<input class="si-i" placeholder="Кровотечение, укус, ожог…" aria-label="Поиск ситуации" value="' + escHtml(emergencySearch) + '" oninput="filterEmergency(this.value)"></label>';
+  h += '<div class="mk-pills" id="mkEmPills">' + _mkEmPills() + '</div>';
+  h += '<div id="emergencyList">' + rEmergencyList(_mkEmFiltered()) + '</div>';
   return h;
 }
 
-function rMedkitReference() {
-  var h = '<div class="filter-row">';
-  h += '<div class="sb"><svg class="si" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg>';
-  h += '<input class="si-i" placeholder="Поиск ситуации..." oninput="filterEmergency(this.value)"></div>';
-  h += '<div class="vd"></div>';
-  h += '<div class="fi"><span class="fl">Тип</span><select class="fs" onchange="filterEmergencyType(this.value)">';
-  h += '<option value="">Все</option><option value="danger">Критично</option><option value="warning">Внимание</option><option value="info">Обычное</option>';
-  h += '</select></div></div>';
-  h += '<div class="sep-ref">Экстренные телефоны</div>';
-  h += '<div class="contacts">';
-  h += '<div class="contact-item"><div><div class="contact-name">Единый экстренный</div></div><a href="tel:112" class="contact-phone">112</a></div>';
-  h += '<div class="contact-item"><div><div class="contact-name">Скорая</div></div><a href="tel:103" class="contact-phone">103</a></div>';
-  h += '<div class="contact-item"><div><div class="contact-name">Пожарные и спасатели (МЧС)</div></div><a href="tel:101" class="contact-phone">101</a></div>';
-  h += '<div class="contact-item"><div><div class="contact-name">Полиция</div></div><a href="tel:102" class="contact-phone">102</a></div>';
-  h += '</div>';
-  h += '<div class="sep-ref">Ситуации</div>';
-  h += '<div id="emergencyList">' + rEmergencyList(EMERGENCY) + '</div>';
-  return h;
+function _mkEmPills() {
+  return [['', 'Все', ''], ['danger', 'Критично', ' mk-pill--danger'], ['warning', 'Внимание', ' mk-pill--warn']].map(function(p) {
+    var on = emergencyType === p[0];
+    return '<button type="button" class="mk-pill' + p[2] + (on ? ' on' : '') + '" aria-pressed="' + on + '" onclick="filterEmergencyType(\'' + p[0] + '\')">' + p[1] + '</button>';
+  }).join('');
 }
 
 function rEmergencyList(list) {
+  if (!list.length) return '<p class="mk-empty mk-empty--page">Ничего не нашлось</p>';
+  var counts = {};
+  list.forEach(function(em) { counts[em.group] = (counts[em.group] || 0) + 1; });
   var h = '';
-  var currentGroup = '';
-
+  var currentGroup = null;
   for (var i = 0; i < list.length; i++) {
     var em = list[i];
-
-    // заголовок группы
     if (em.group !== currentGroup) {
+      if (currentGroup !== null) h += '</div>';
       currentGroup = em.group;
-      h += '<div class="em-group-header">';
-      h += '<span class="em-group-title">' + escHtml(currentGroup) + '</span>';
-      h += '<div class="em-group-line"></div>';
-      h += '</div>';
+      h += '<div class="mk-caps mk-caps--sec">' + escHtml(currentGroup) + ' · ' + counts[currentGroup] + '</div><div class="mk-card">';
     }
-
-    var bc = em.priority === 'danger' ? 'danger' : em.priority === 'warning' ? 'warn' : 'info';
-    var bl = em.priority === 'danger' ? 'критично' : em.priority === 'warning' ? 'внимание' : 'обычное';
-
-    h += '<div class="em-card"><div class="em-hd" onclick="this.parentNode.classList.toggle(\'open\')">';
-    h += '<div class="em-icon ' + bc + '">' + em.icon + '</div>';
-    h += '<div class="em-info"><div class="em-title">' + escHtml(em.title) + '</div>';
-    h += '<div class="em-sub">' + escHtml(em.sub) + '</div></div>';
-    h += '<div class="em-right"><span class="em-badge ' + bc + '">' + bl + '</span>';
-    h += '<span class="em-arrow">▶</span></div></div>';
-    h += '<div class="em-body"><div class="em-steps">';
+    var tone = em.priority === 'danger' ? 'danger' : em.priority === 'warning' ? 'warn' : 'info';
+    h += '<div class="mk-em">';
+    h += '<button type="button" class="mk-em-hd" aria-expanded="false" onclick="toggleMedkitEm(this)"><span class="mk-em-bar ' + tone + '"></span>'
+      + '<span class="mk-em-txt"><span class="mk-em-t">' + escHtml(em.title) + '</span><span class="mk-em-s">' + escHtml(em.sub) + '</span></span>'
+      + (tone === 'danger' ? '<span class="mk-badge mk-badge--danger">критично</span>' : '')
+      + UIUtils.ico('chevron-down', 'mk-chev') + '</button>';
+    h += '<div class="mk-em-body">';
     for (var s = 0; s < em.steps.length; s++) {
       var step = em.steps[s];
-      h += '<div class="em-step"><span class="em-num' + (step.critical ? ' danger' : '') + '">' + (s + 1) + '</span>';
-      h += '<span class="em-step-text">' + (step.critical ? '<b>' + escHtml(step.text) + '</b>' : escHtml(step.text)) + '</span></div>';
+      h += '<div class="mk-step' + (step.critical ? ' crit' : '') + '"><span class="mk-step-n">' + (s + 1) + '</span><span class="mk-step-t">' + escHtml(step.text) + '</span></div>';
     }
-    h += '</div>';
     if (em.drugs.length || em.call112) {
-      h += '<div class="em-footer"><div class="em-drugs">';
-      for (var d = 0; d < em.drugs.length; d++) {
-        var dn = em.drugs[d];
-        for (var gg = 0; gg < MEDKIT_BASE.length; gg++) {
-          for (var ii = 0; ii < MEDKIT_BASE[gg].items.length; ii++) {
-            if (MEDKIT_BASE[gg].items[ii].id === em.drugs[d]) dn = MEDKIT_BASE[gg].items[ii].name;
-          }
+      h += '<div class="mk-em-foot">';
+      if (em.drugs.length) {
+        h += '<span class="mk-em-from">Из аптечки:</span>';
+        for (var d = 0; d < em.drugs.length; d++) {
+          var found = _mkFindItem('common', '', em.drugs[d]);
+          h += '<span class="mk-tag">' + escHtml(found ? found.item.name : em.drugs[d]) + '</span>';
         }
-        h += '<span class="em-drug-tag">' + escHtml(dn) + '</span>';
       }
-      h += '</div>';
-      if (em.call112) h += '<a href="tel:112" class="call112">112</a>';
+      if (em.call112) h += '<a href="tel:112" class="mk-call112">' + UIUtils.ico('phone') + '112</a>';
       h += '</div>';
     }
     h += '</div></div>';
   }
+  if (currentGroup !== null) h += '</div>';
   return h;
 }
 
-var emergencySearch = '';
-var emergencyType = '';
+function toggleMedkitEm(btn) {
+  var card = btn.parentNode;
+  var open = card.classList.toggle('open');
+  btn.setAttribute('aria-expanded', open);
+}
 
 function filterEmergency(q) {
   emergencySearch = q.toLowerCase();
@@ -684,28 +742,110 @@ function filterEmergency(q) {
 
 function filterEmergencyType(type) {
   emergencyType = type;
+  var pills = document.getElementById('mkEmPills');
+  if (pills) pills.innerHTML = _mkEmPills();
   updateEmergencyList();
 }
 
-function updateEmergencyList() {
-  var filtered = EMERGENCY.filter(function(em) {
-    if (emergencySearch && em.title.toLowerCase().indexOf(emergencySearch) < 0) return false;
+function _mkEmFiltered() {
+  return EMERGENCY.filter(function(em) {
+    if (emergencySearch && (em.title + ' ' + em.sub).toLowerCase().indexOf(emergencySearch) < 0) return false;
     if (emergencyType && em.priority !== emergencyType) return false;
     return true;
   });
+}
+
+function updateEmergencyList() {
   var el = document.getElementById('emergencyList');
-  if (el) el.innerHTML = rEmergencyList(filtered);
+  if (el) el.innerHTML = rEmergencyList(_mkEmFiltered());
+}
+
+// ===== Маленький лист «введи название» вместо нативного prompt() =====
+function _mkAsk(title, placeholder, okLabel) {
+  return new Promise(function(resolve) {
+    document.getElementById('mkAskOverlay')?.remove();
+    var overlay = document.createElement('div');
+    overlay.className = 'mk-import-overlay';
+    overlay.id = 'mkAskOverlay';
+    overlay.innerHTML = '<div class="mk-import-sheet"><div class="mk-import-sheet__handle"></div>'
+      + '<div class="mk-sheet-head"><h2 class="mk-sheet-title">' + escHtml(title) + '</h2>'
+      + '<button type="button" class="mk-sheet-x" aria-label="Закрыть" data-ask="cancel">' + UIUtils.ico('x') + '</button></div>'
+      + '<div class="mk-sheet-body"><input class="mk-input" id="mkAskInput" placeholder="' + escHtml(placeholder) + '" aria-label="' + escHtml(title) + '">'
+      + '<button type="button" class="mk-import-btn" data-ask="ok">' + escHtml(okLabel || 'Добавить') + '</button></div></div>';
+    document.body.appendChild(overlay);
+    requestAnimationFrame(function() { overlay.classList.add('open'); });
+    var input = overlay.querySelector('#mkAskInput');
+    setTimeout(function() { input.focus(); }, 50);
+    var done = function(val) {
+      overlay.classList.remove('open');
+      setTimeout(function() { overlay.remove(); }, 250);
+      resolve(val);
+    };
+    input.addEventListener('keydown', function(e) { if (e.key === 'Enter') done(input.value); });
+    overlay.addEventListener('click', function(e) {
+      if (e.target === overlay) return done(null);
+      var a = e.target.closest('[data-ask]');
+      if (a) done(a.dataset.ask === 'ok' ? input.value : null);
+    });
+  });
 }
 
 function showAddMedkitGroup() {
-  var label = prompt('Название категории (например, «Аллергия»):');
-  if (!addCustomGroup(label)) return;
-  saveMedkit();
-  rMedkit();
+  _mkAsk('Своя категория', 'Например, «Горы / высота»', 'Добавить').then(function(label) {
+    if (!addCustomGroup(label)) return;
+    saveMedkit();
+    rMedkit();
+    if (document.getElementById('mkPickerOverlay')) _mkRefreshPicker();
+  });
 }
+
 function showAddMedkitSlot(mode) {
-  var label = prompt('Название места хранения (например, «Гермомешок №2»):');
-  if (!addCustomSlot(mode, label)) return;
-  saveMedkit();
-  rMedkit();
+  _mkAsk('Место хранения', 'Например, «Гермомешок №2»', 'Добавить').then(function(label) {
+    if (!addCustomSlot(mode || medkitMode, label)) return;
+    saveMedkit();
+    rMedkit();
+    if (document.getElementById('mkSlotsOverlay')) _mkRefreshSlotsSheet();
+  });
+}
+
+// ===== Лист «Места хранения» (из «…») =====
+function showMedkitSlotsSheet() {
+  if (medkitMode === 'reference') return;
+  document.getElementById('mkSlotsOverlay')?.remove();
+  var overlay = document.createElement('div');
+  overlay.className = 'mk-import-overlay';
+  overlay.id = 'mkSlotsOverlay';
+  overlay.innerHTML = '<div class="mk-import-sheet" id="mkSlotsSheet"></div>';
+  document.body.appendChild(overlay);
+  _mkRefreshSlotsSheet();
+  UIUtils.swipeToDelete(overlay, '.mk-swipe', '.mk-del');
+  requestAnimationFrame(function() { overlay.classList.add('open'); });
+  overlay.addEventListener('click', function(e) { if (e.target === overlay) closeMedkitSlotsSheet(); });
+}
+
+function closeMedkitSlotsSheet() {
+  var overlay = document.getElementById('mkSlotsOverlay');
+  if (!overlay) return;
+  overlay.classList.remove('open');
+  setTimeout(function() { overlay.remove(); }, 250);
+}
+
+function _mkRefreshSlotsSheet() {
+  var sheet = document.getElementById('mkSlotsSheet');
+  if (!sheet) return;
+  var mode = medkitMode, memberId = medkitMemberId;
+  var state = getMedkitState(mode, memberId);
+  var rows = getSlotsFor(mode).map(function(s) {
+    var n = Object.keys(state.items).filter(function(k) { return state.items[k] && state.items[k].slot === s.id; }).length;
+    return '<div class="mk-line' + (s.custom ? ' mk-swipe' : '') + '"><span class="mk-slot-ico">' + UIUtils.emojiIcon(s.icon) + '</span>'
+      + '<span class="mk-line-t">' + escHtml(s.label) + '<small>' + (n ? n + ' ' + _mkPlural(n, 'препарат', 'препарата', 'препаратов') : 'пусто') + (s.custom ? ' · своё' : '') + '</small></span>'
+      + (s.custom ? '<button type="button" class="mk-del" aria-label="Удалить место" onclick="removeMedkitSlot(\'' + mode + '\',\'' + s.id + '\');_mkRefreshSlotsSheet()"></button>' : '')
+      + '</div>';
+  }).join('');
+  sheet.innerHTML = '<div class="mk-import-sheet__handle"></div>'
+    + '<div class="mk-sheet-head"><div class="mk-sheet-head-l"><h2 class="mk-sheet-title">Места хранения</h2><span class="mk-sheet-sub">' + (mode === 'personal' ? 'личной аптечки' : 'общей аптечки') + '</span></div>'
+    + '<button type="button" class="mk-sheet-x" aria-label="Закрыть" onclick="closeMedkitSlotsSheet()">' + UIUtils.ico('x') + '</button></div>'
+    + '<div class="mk-sheet-body"><div class="mk-list">' + rows + '</div>'
+    + '<p class="mk-hint">Свои места удаляются свайпом влево. Препараты из удалённого места попадут в «Место не указано».</p>'
+    + '<button type="button" class="mk-text-btn accent" onclick="showAddMedkitSlot(\'' + mode + '\')">+ Место хранения</button></div>';
 }

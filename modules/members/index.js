@@ -8,12 +8,12 @@ var MembersModule = (() => {
   let _listenerBound = false;
   let _unsub = null;
 
-  const AVATARS = ['🎣','🤙','🐟','🦈','😎','🧔','🏕️','🌊','🦅','🐻','🍺','🥃','👾','🎯','🐠','🦑','🐙','🏔️','🎿','🚤'];
+  // Хранение — международные id ('AB−' и т.п.), кнопки — по-русски I+…IV−.
   const BLOOD_TYPES = [
-    {id:'A+',ru:'II +'},{id:'A−',ru:'II −'},
-    {id:'B+',ru:'III +'},{id:'B−',ru:'III −'},
-    {id:'AB+',ru:'IV +'},{id:'AB−',ru:'IV −'},
-    {id:'O+',ru:'I +'},{id:'O−',ru:'I −'},
+    {id:'O+',ru:'I+'},{id:'O−',ru:'I−'},
+    {id:'A+',ru:'II+'},{id:'A−',ru:'II−'},
+    {id:'B+',ru:'III+'},{id:'B−',ru:'III−'},
+    {id:'AB+',ru:'IV+'},{id:'AB−',ru:'IV−'},
   ];
   const SWIM_LEVELS = [
     {id:'none', label:'Не умею'},
@@ -72,22 +72,21 @@ var MembersModule = (() => {
     const pg = el || document.getElementById('p-members');
     if (!pg) return;
 
+    // Заголовок («Участники · N человек в приложении» + «Пригласить»)
+    // рисует MembersRender.renderList — он знает число людей.
+    if (typeof PurchasesRender !== 'undefined') PurchasesRender.destroy();
     pg.innerHTML = `
-      <div class="topbar">
-        <div class="topbar-left">
-          <h1>Участники поездки</h1>
-          <p>Сахалин 2026</p>
-        </div>
-      </div>
-      <div id="members-list" style="padding-top:4px">
-        <p style="padding:20px;color:var(--label3);font-size:14px">Загрузка…</p>
+      <div id="members-list">
+        <p class="mb-empty" style="padding:20px">Загрузка…</p>
       </div>`;
 
     if (_unsub) _unsub();
     _unsub = MembersFirebase.subscribeMembers(members => {
       const profile = window.APP?.profile;
       if (!profile) return;
-      MembersRender.renderList(members, profile.uid, profile.role === 'organizer');
+      // «Пригласить» — тем, кто создал хотя бы одну поездку (trip.ownerId),
+      // а не по глобальной роли.
+      MembersRender.renderList(members, profile.uid, MembersRender.canInvite(profile.uid));
     });
   }
 
@@ -121,9 +120,9 @@ var MembersModule = (() => {
           <button class="save-btn" data-action="edit-save" data-uid="${uid}"
                   style="width:auto;padding:8px 16px;font-size:14px;margin:0">Сохранить</button>
         </div>
-        <div style="display:flex;gap:5px;padding:10px 16px 0;flex-shrink:0">
-          <button class="p-stab active" data-action="edit-tab" data-tab="personal">Личные</button>
-          <button class="p-stab" data-action="edit-tab" data-tab="medical">Медданные</button>
+        <div class="mb-seg" role="tablist" style="margin:10px 16px 0;flex-shrink:0">
+          <button type="button" class="mb-seg-btn active" data-action="edit-tab" data-tab="personal">Личные</button>
+          <button type="button" class="mb-seg-btn" data-action="edit-tab" data-tab="medical">Медданные</button>
         </div>
         <div class="ob-scroll" id="edit-body" style="padding-top:14px">
           ${_editTabPersonal(_draftProfile)}
@@ -136,9 +135,9 @@ var MembersModule = (() => {
 
   function _editTabPersonal(p) {
     return `
-      <p class="ob-lbl" style="margin-top:0">Аватар</p>
+      <p class="ob-lbl" style="margin-top:0">Фото или инициалы</p>
       <div class="ob-avatar-preview" data-action="edit-avatar-open">
-        <div class="ob-avatar-circle" id="edit-avatar-circle">${UIUtils.avatarHtml(p.avatar, '🎣')}</div>
+        <div class="mb-ava mb-ava--xl" id="edit-avatar-circle">${MembersRender.avatarInner(p)}</div>
         <div class="ob-avatar-change">Изменить ›</div>
       </div>
       <p class="ob-lbl">Имя и никнейм</p>
@@ -166,8 +165,8 @@ var MembersModule = (() => {
   function _editTabMedical(p) {
     const bloodBtns = BLOOD_TYPES.map(b =>
       `<button class="ob-blood-btn${p.bloodType===b.id?' sel':''}" data-action="edit-blood" data-blood="${b.id}">
-        <span class="ob-blood-intl">${b.id}</span>
-        <span class="ob-blood-ru">${b.ru}</span>
+        <span class="ob-blood-intl">${b.ru}</span>
+        <span class="ob-blood-ru">${b.id}</span>
        </button>`
     ).join('');
     const swimBtns = SWIM_LEVELS.map(s =>
@@ -178,6 +177,7 @@ var MembersModule = (() => {
     ).join('');
     return `
       <p class="ob-lbl" style="margin-top:0">Группа крови</p>
+      <p class="mb-hint" style="margin:-4px 0 8px">I — O, II — A, III — B, IV — AB</p>
       <div class="ob-blood-grid">${bloodBtns}</div>
       <p class="ob-lbl">Рост и вес</p>
       <div class="ob-row2">
@@ -203,33 +203,34 @@ var MembersModule = (() => {
       <div class="ob-pill-grid">${swimBtns}</div>
       <p class="ob-lbl">Полис ОМС/ДМС</p>
       <input class="auth-input" id="edit-insurance" type="text"
-             placeholder="Номер полиса" value="${_esc(p.insurance||'')}">`;
+             placeholder="Номер полиса" value="${_esc(p.insurance||'')}">
+      <p class="ob-lbl">Паспорт РФ — действителен до</p>
+      <input class="auth-input" id="edit-passport-rf" type="date" value="${_esc(p.passportRf||'')}">
+      <p class="ob-lbl">Загранпаспорт — действителен до</p>
+      <input class="auth-input" id="edit-passport-intl" type="date" value="${_esc(p.passportIntl||'')}">`;
   }
 
-  // Пикер аватара — раньше вся сетка эмодзи всегда торчала на весь экран
-  // внутри самой формы; теперь как в современных профилях (Telegram/iOS):
-  // большой кружок с текущим выбором + отдельный шит поверх, открывается
-  // по тапу.
+  // «Фото или инициалы» — эмодзи-аватары больше не выбираются (при показе
+  // старые эмодзи и так заменяются инициалами). Можно загрузить фото или
+  // убрать его — тогда показываются инициалы.
   function _sheetPickAvatar(current) {
-    const avBtns = AVATARS.map(a =>
-      `<button class="ob-av-btn${current===a?' sel':''}" data-action="edit-av-pick" data-av="${a}">${a}</button>`
-    ).join('');
+    const hasPhoto = current && /^https?:\/\//.test(current);
     return `
       <div class="ob-overlay" id="avatar-pick-overlay">
         <div class="ob-sheet" style="max-height:70vh">
           <div class="ob-grab"></div>
           <div style="display:flex;align-items:center;justify-content:space-between;padding:0 16px 12px;flex-shrink:0">
-            <span style="font-size:17px;font-weight:700;color:var(--label)">Выбери аватар</span>
+            <span style="font-size:18px;font-weight:700;color:var(--label)">Фото или инициалы</span>
             <button class="modal-close" data-action="edit-avatar-close" style="font-size:18px">×</button>
           </div>
           <div class="ob-scroll">
             <button class="ob-avatar-upload-btn" data-action="edit-avatar-upload">
               <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
-              Загрузить своё фото
+              ${hasPhoto ? 'Загрузить другое фото' : 'Загрузить своё фото'}
             </button>
             <input type="file" id="avatar-file-input" accept="image/*" style="display:none">
             <div class="ob-avatar-upload-status" id="avatar-upload-status"></div>
-            <div class="ob-avatar-grid">${avBtns}</div>
+            ${current ? `<button class="mb-btn mb-btn--outline" data-action="edit-avatar-clear">${hasPhoto ? 'Убрать фото — показывать инициалы' : 'Показывать инициалы'}</button>` : ''}
           </div>
         </div>
       </div>`;
@@ -276,7 +277,7 @@ var MembersModule = (() => {
       if (_draftProfile !== sessionDraft) return; // сессия сменилась, пока грузили — молча выходим
       _draftProfile.avatar = url;
       const circle = document.getElementById('edit-avatar-circle');
-      if (circle) circle.innerHTML = UIUtils.avatarHtml(url);
+      if (circle) circle.innerHTML = MembersRender.avatarInner(_draftProfile);
       document.getElementById('avatar-pick-overlay')?.remove();
     } catch (err) {
       console.error('MembersModule._uploadAvatarPhoto:', err);
@@ -296,7 +297,7 @@ var MembersModule = (() => {
     // редактирования (не только с последней открытой вкладки).
     const prevTab = _editTab;
     _editTab = tab;
-    document.querySelectorAll('#edit-overlay .p-stab').forEach(b =>
+    document.querySelectorAll('#edit-overlay .mb-seg-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.tab === tab));
     _collectCurrentEditData(_draftProfile, prevTab);
     const body = document.getElementById('edit-body');
@@ -308,9 +309,8 @@ var MembersModule = (() => {
   function _collectCurrentEditData(profile, tab) {
     if ((tab || _editTab) === 'personal') {
       // Аватар в _draftProfile.avatar уже актуален — пишется сразу при
-      // выборе в _sheetPickAvatar (см. action "edit-av-pick"), т.к. сама
-      // сетка теперь живёт в отдельном шите и закрывается сразу после
-      // клика, читать её из DOM здесь уже нечего.
+      // выборе в _sheetPickAvatar (загрузка фото / "edit-avatar-clear") —
+      // читать из DOM здесь нечего.
       const name = document.getElementById('edit-name')?.value.trim();
       if (name) profile.displayName = name;
       profile.nickname = document.getElementById('edit-nickname')?.value.trim() ?? profile.nickname;
@@ -329,6 +329,8 @@ var MembersModule = (() => {
       profile.conditions = document.getElementById('edit-conditions')?.value.trim() || profile.conditions;
       profile.meds       = document.getElementById('edit-meds')?.value.trim()       || profile.meds;
       profile.insurance  = document.getElementById('edit-insurance')?.value.trim()  || profile.insurance;
+      profile.passportRf   = document.getElementById('edit-passport-rf')?.value   || profile.passportRf;
+      profile.passportIntl = document.getElementById('edit-passport-intl')?.value || profile.passportIntl;
       const selSwim = document.querySelector('#edit-overlay .ob-pill-btn.sel[data-swim]');
       if (selSwim) profile.swim = selSwim.dataset.swim;
       const selTick = document.querySelector('#edit-overlay .ob-pill-btn.sel[data-tick]');
@@ -363,7 +365,7 @@ var MembersModule = (() => {
     const changes = {
       displayName: profile.displayName,
       nickname:    profile.nickname  || '',
-      avatar:      profile.avatar,
+      avatar:      profile.avatar || '',
       birthday:    profile.birthday  || '',
       phone:       profile.phone     || '',
       wa:          profile.wa        || '',
@@ -378,6 +380,8 @@ var MembersModule = (() => {
       insurance:   profile.insurance || '',
       swim:        profile.swim      || '',
       tickVaccine: profile.tickVaccine || '',
+      passportRf:   profile.passportRf   || '',
+      passportIntl: profile.passportIntl || '',
     };
 
     await MembersFirebase.updateProfile(uid, changes);
@@ -393,7 +397,7 @@ var MembersModule = (() => {
     _draftProfile = null;
     document.getElementById('edit-overlay')?.remove();
     document.getElementById('profile-overlay')?.remove();
-    MembersRender.showProfile(uid, window.APP?.profile?.uid);
+    MembersRender.showProfile(uid, window.APP?.profile?.uid, { keepNav: true });
   }
 
   function _bindEditMasks() {
@@ -508,7 +512,7 @@ var MembersModule = (() => {
       // пытались достать несуществующий #profile-overlay (это класс, не id)
       // и обновление молча не срабатывало: контакт сохранялся в Firestore,
       // но на экране появлялся только после повторного захода в профиль.
-      MembersRender.showProfile(profile.uid, profile.uid);
+      MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
     });
   }
 
@@ -592,7 +596,7 @@ var MembersModule = (() => {
 
       if (action === 'member-open') {
         const uid = t.dataset.uid;
-        if (uid) MembersRender.showProfile(uid, window.APP?.profile?.uid);
+        if (uid) MembersRender.showProfile(uid, window.APP?.profile?.uid, { fromList: true });
       }
 
       if (action === 'profile-tab') {
@@ -601,6 +605,21 @@ var MembersModule = (() => {
 
       if (action === 'member-invite') {
         MembersRender.showInvite();
+      }
+
+      // «Моё в приложении»: Снаряга — полноценный раздел (как пункт меню);
+      // Аптечка — раздел Аптечки в личном режиме на uid этого человека;
+      // чужая снаряга — на просмотр прямо в профиле.
+      if (action === 'open-my-gear') {
+        if (typeof onNavigate === 'function') onNavigate('gear');
+      }
+
+      if (action === 'open-medkit') {
+        if (t.dataset.uid) MembersRender.openMedkit(t.dataset.uid);
+      }
+
+      if (action === 'profile-gear-view') {
+        MembersRender.switchTab('gear');
       }
 
       if (action === 'profile-trip-open') {
@@ -623,8 +642,8 @@ var MembersModule = (() => {
         if (!ok) return;
         await UIUtils.withBusyButton(t, async () => {
           await MembersFirebase.deleteProfile(uid);
-          document.getElementById('profile-overlay')?.remove();
         });
+        init(document.getElementById('p-members'));
       }
 
       if (action === 'profile-edit') {
@@ -666,10 +685,10 @@ var MembersModule = (() => {
         document.getElementById('avatar-pick-overlay')?.remove();
       }
 
-      if (action === 'edit-av-pick') {
-        if (_draftProfile) _draftProfile.avatar = t.dataset.av;
+      if (action === 'edit-avatar-clear') {
+        if (_draftProfile) _draftProfile.avatar = '';
         const circle = document.getElementById('edit-avatar-circle');
-        if (circle) circle.innerHTML = UIUtils.avatarHtml(t.dataset.av);
+        if (circle) circle.innerHTML = MembersRender.avatarInner(_draftProfile);
         document.getElementById('avatar-pick-overlay')?.remove();
       }
 
@@ -697,6 +716,9 @@ var MembersModule = (() => {
       }
 
       if (action === 'emerg-edit') {
+        // Тап по кнопке звонка / значку мессенджера внутри строки — это
+        // ссылка, а не правка контакта.
+        if (e.target.closest('a[href]')) return;
         _showEmergSheet(Number(t.dataset.idx));
       }
 
@@ -716,11 +738,7 @@ var MembersModule = (() => {
         const emerg = (profile.emergency||[]).filter((_,i) => i!==idx);
         await MembersFirebase.updateProfile(profile.uid, {emergency:emerg});
         profile.emergency = emerg;
-        MembersRender.showProfile(profile.uid, profile.uid);
-      }
-
-      if (action === 'gear-add' || action === 'gear-del') {
-        return;
+        MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
       }
 
       if (action === 'tg-link') {
@@ -734,7 +752,7 @@ var MembersModule = (() => {
             telegramLinkCode: code,
             telegramLinkCodeAt: new Date().toISOString(),
           });
-          MembersRender.showProfile(profile.uid, profile.uid);
+          MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
         } catch (err) {
           alert('Не получилось сгенерировать код. Попробуй ещё раз.');
         }
@@ -748,7 +766,7 @@ var MembersModule = (() => {
             telegramLinkCode: null,
             telegramLinkCodeAt: null,
           });
-          MembersRender.showProfile(profile.uid, profile.uid);
+          MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
         } catch (err) {
           alert('Не получилось отменить привязку. Попробуй ещё раз.');
         }
@@ -765,7 +783,7 @@ var MembersModule = (() => {
             telegramLinkCode: null,
             telegramLinkCodeAt: null,
           });
-          MembersRender.showProfile(profile.uid, profile.uid);
+          MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
         } catch (err) {
           alert('Не получилось отвязать Telegram. Попробуй ещё раз.');
         }

@@ -28,7 +28,7 @@
 .cal-nav { display: flex; gap: 4px; }
 .cal-nav-btn {
   background: var(--bg3); border: none;
-  border-radius: 8px; color: var(--accent);
+  border-radius: var(--radius-xs); color: var(--accent);
   width: 28px; height: 28px;
   font-size: 16px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
@@ -54,15 +54,14 @@
   transition: background var(--duration-fast);
 }
 .cal-day.other .cn { color: var(--label4); opacity: .35; }
-.cal-day.today .cn { background: var(--accent); color: #fff; font-weight: 700; }
-.cal-day.trip-small .cn { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.cal-day.today .cn { background: var(--label); color: var(--bg); font-weight: 700; }
+.cal-day.trip-small .cn { background: var(--river-bg); color: var(--river); font-weight: 600; }
 .cal-day.trip-exp .cn {
-  background: var(--accent); color: #fff; font-weight: 700;
-  box-shadow: 0 0 0 1.5px var(--accent-bg);
+  background: rgba(var(--green-rgb), .18); color: var(--green); font-weight: 700;
 }
 .cal-day.trip-soon .cn {
-  background: rgba(255,159,10,.15); color: var(--orange); font-weight: 700;
-  box-shadow: 0 0 0 1px var(--orange);
+  background: var(--accent-bg); color: var(--accent); font-weight: 700;
+  box-shadow: 0 0 0 1px var(--accent);
 }
 .cal-trip-dot {
   width: 4px; height: 4px; border-radius: 50%;
@@ -97,9 +96,9 @@
 }
 .cal-year-month:active { background: var(--bg4); }
 .cal-year-month.current { box-shadow: 0 0 0 1.5px var(--accent) inset; color: var(--label); }
-.cal-year-month.my-exp   { background: var(--accent); color: #fff; }
-.cal-year-month.my-small { background: var(--accent-bg); color: var(--accent); }
-.cal-year-month.my-soon  { background: rgba(255,159,10,.15); color: var(--orange); box-shadow: 0 0 0 1px var(--orange) inset; }
+.cal-year-month.my-exp   { background: rgba(var(--green-rgb), .18); color: var(--green); }
+.cal-year-month.my-small { background: var(--river-bg); color: var(--river); }
+.cal-year-month.my-soon  { background: var(--accent-bg); color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
 
 /* ===== UPCOMING BANNER ===== */
 .upcoming-banner {
@@ -145,7 +144,7 @@
 }
 .readiness-fill {
   height: 100%; border-radius: 3px;
-  background: linear-gradient(90deg, var(--accent), var(--green));
+  background: linear-gradient(90deg, var(--river), var(--green));
   transition: width var(--duration-slow) var(--ease);
 }
 .readiness-list { display: flex; flex-direction: column; gap: 6px; }
@@ -162,7 +161,7 @@
 }
 .readiness-check.done {
   background: var(--green); border-color: var(--green);
-  color: #fff;
+  color: var(--on-green);
 }
 .readiness-label        { color: var(--label2); }
 .readiness-label.crossed { color: var(--label3); text-decoration: line-through; }
@@ -216,14 +215,14 @@
 .exp-card-top {
   padding: 14px 16px 12px;
   border-bottom: 0.5px solid var(--sep2);
-  background: linear-gradient(135deg, rgba(10,132,255,0.06), transparent);
+  background: linear-gradient(135deg, rgba(var(--river-rgb),0.06), transparent);
 }
 .exp-row1 { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
 .exp-type { font-size: 11px; font-weight: 600; letter-spacing: .06em; color: var(--accent); text-transform: uppercase; margin-bottom: 3px; }
 .exp-name { font-size: 21px; font-weight: 800; letter-spacing: -.4px; line-height: 1.1; }
 .exp-meta { display: flex; gap: 12px; font-size: 12px; color: var(--label3); margin-bottom: 10px; flex-wrap: wrap; }
 .exp-parts { display: flex; gap: 6px; flex-wrap: wrap; }
-.part-tag  { background: var(--bg3); border-radius: 20px; padding: 4px 10px; font-size: 12px; font-weight: 500; }
+.part-tag  { background: var(--bg3); border-radius: var(--radius-lg); padding: 4px 10px; font-size: 12px; font-weight: 500; }
 
 .exp-card-bot {
   padding: 11px 16px;
@@ -233,7 +232,7 @@
 .score-num     { font-size: 24px; font-weight: 800; color: var(--green); letter-spacing: -1px; line-height: 1; }
 .score-denom   { font-size: 13px; color: var(--label3); }
 .score-track   { flex: 1; height: 4px; background: var(--sep2); border-radius: 2px; overflow: hidden; }
-.score-fill    { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--accent), var(--green)); }
+.score-fill    { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--river), var(--green)); }
 .card-goto     {
   width: 28px; height: 28px; border-radius: 50%;
   background: var(--bg3); display: flex; align-items: center;
@@ -250,7 +249,7 @@
 }
 .fish-card:active { transform: scale(.985); }
 .fish-icon {
-  width: 38px; height: 38px; border-radius: 10px;
+  width: 38px; height: 38px; border-radius: var(--radius-sm);
   background: var(--bg3);
   display: flex; align-items: center; justify-content: center;
   font-size: 18px; flex-shrink: 0;
@@ -264,12 +263,12 @@
 
 /* Badge */
 .badge {
-  border-radius: 20px; padding: 4px 10px;
+  border-radius: var(--radius-lg); padding: 4px 10px;
   font-size: 11px; font-weight: 700;
   white-space: nowrap; flex-shrink: 0; margin-left: 8px; margin-top: 4px;
 }
-.badge-soon   { background: rgba(255,159,10,.15); color: var(--orange); border: .5px solid rgba(255,159,10,.35); }
-.badge-active { background: rgba(48,209,88,.15);  color: var(--green);  border: .5px solid rgba(48,209,88,.35); }
+.badge-soon   { background: rgba(var(--accent-rgb),.15); color: var(--orange); border: .5px solid rgba(var(--accent-rgb),.35); }
+.badge-active { background: rgba(var(--green-rgb),.15);  color: var(--green);  border: .5px solid rgba(var(--green-rgb),.35); }
 .badge-done   { background: var(--bg3); color: var(--label3); border: .5px solid var(--sep); }
 .exp-days-left { font-size: 11px; color: var(--label3); margin-right: 2px; }
 
@@ -291,3 +290,188 @@
     gap: 12px;
   }
 }
+
+/* ===== РЕДИЗАЙН: ближайшая поездка первой (макет «Главная») =====
+   Название на всю ширину (раньше делило строку с отсчётом и ломалось),
+   отсчёт — плашкой в строке с подписью. Вся шапка карточки — одна кнопка. */
+.home-col-upcoming { padding-top: 12px; }
+.up-head {
+  display: flex; flex-direction: column; gap: 6px;
+  width: 100%; padding: 18px 18px 14px;
+  background: none; border: none; text-align: left;
+  font-family: inherit; color: var(--label); cursor: pointer;
+}
+.up-head:active { opacity: .8; }
+/* Класс .upcoming-arrow-btn оставлен ради обработчика клика (он ловит
+   именно его), но размеры старой круглой стрелки 28×28 здесь не нужны. */
+.up-head.upcoming-arrow-btn {
+  width: 100%; height: auto; border-radius: 0; background: none;
+  font-size: inherit; color: var(--label); justify-content: flex-start; align-items: stretch;
+}
+/* <button> по умолчанию центрирует содержимое — растягиваем строки. */
+.up-head > span { width: 100%; text-align: left; }
+.up-eyebrow-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.up-eyebrow {
+  font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--accent);
+}
+.up-count {
+  display: inline-flex; align-items: baseline; gap: 5px; flex-shrink: 0;
+  padding: 6px 12px; border-radius: var(--radius-sm);
+  background: var(--accent-bg); color: var(--orange);
+  font-size: 13px; font-weight: 600;
+}
+.up-count b { font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1; color: var(--accent); }
+.up-count--now { color: var(--green); background: rgba(var(--green-rgb), .14); }
+.up-title {
+  font-family: var(--font-display); font-size: 34px; font-weight: 700;
+  line-height: 1.08; letter-spacing: -0.01em; text-wrap: balance;
+}
+.up-title--long { font-size: 28px; }
+.up-meta { font-size: 15px; color: var(--label3); }
+
+.readiness-block { padding: 4px 18px 18px; }
+.readiness-title { font-size: 14px; font-weight: 500; color: var(--label3); }
+.readiness-pct   { font-size: 14px; font-weight: 700; color: var(--label); }
+.readiness-track { height: 6px; border-radius: 999px; background: var(--bg4); }
+.readiness-fill  { border-radius: 999px; }
+.readiness-list  { gap: 8px; }
+.readiness-row   {
+  gap: 12px; font-size: 16px; font-weight: 600;
+  padding: 10px 12px; border-radius: var(--radius-md); background: var(--bg3);
+}
+.readiness-check { width: 24px; height: 24px; border-width: 2px; font-size: 13px; }
+.readiness-label { color: var(--label); }
+/* Сделанное — свёрнуто в одну строку; раскрытые пункты без плашки. */
+.readiness-done > summary {
+  list-style: none; cursor: pointer;
+  display: flex; align-items: center; gap: 8px;
+  min-height: 40px; padding: 0 4px;
+  font-size: 14px; font-weight: 500; color: var(--label3);
+}
+.readiness-done > summary::-webkit-details-marker { display: none; }
+.readiness-done > summary .ti { color: var(--green); }
+.readiness-done .readiness-row { background: none; font-size: 14px; font-weight: 500; padding: 6px 4px; }
+
+/* Календарь: по умолчанию две недели; легенда и стрелки — в развёрнутом. */
+.cal-wrap.compact .cal-nav,
+.cal-wrap.compact .cal-legend { display: none; }
+.cal-expand {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; min-height: 44px;
+  background: none; border: none; border-top: 0.5px solid var(--sep2);
+  color: var(--label3); font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.cal-expand:active { background: var(--bg3); }
+
+/* Дни соседнего месяца, попадающие в поездку, — с её отметкой, только
+   чуть приглушённые (раньше Ханты «обрывались» 30 сентября). */
+.cal-day.other.trip-soon .cn, .cal-day.other.trip-exp .cn, .cal-day.other.trip-small .cn { opacity: .75; }
+
+/* ===== Календарь: поездка — сплошная полоса (макет «Главная») =====
+   Раньше каждый день поездки был отдельным кружком. Теперь фон несёт
+   сама ячейка, без зазоров между колонками; скругление — на первом и
+   последнем дне поездки и на краях недели. Сегодня — контрастный кружок
+   поверх полосы. */
+.cal-grid { column-gap: 0; row-gap: 4px; padding: 4px 8px 8px; }
+.cal-day {
+  height: 40px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+}
+.cal-day .cn { width: 34px; height: 34px; font-size: 15px; font-weight: 500; }
+.cal-day.band .cn { background: none !important; box-shadow: none !important; color: inherit !important; font-weight: 600; }
+.cal-day.band.trip-exp   { background: rgba(var(--green-rgb), .16); color: var(--green); }
+.cal-day.band.trip-small { background: var(--river-bg); color: var(--river); }
+.cal-day.band.trip-soon  { background: var(--accent-bg); color: var(--accent); }
+.cal-day.band-start { border-top-left-radius: 20px; border-bottom-left-radius: 20px; }
+.cal-day.band-end   { border-top-right-radius: 20px; border-bottom-right-radius: 20px; }
+.cal-day.band.other { opacity: .7; }
+.cal-day.band.other .cn { opacity: 1; }
+.cal-day.today .cn,
+.cal-day.band.today .cn { background: var(--label) !important; color: var(--bg) !important; font-weight: 700; }
+.cal-leg-band { width: 16px; height: 10px; border-radius: 999px; }
+.cal-leg { font-size: 13px; gap: 6px; }
+
+/* ===== v2: Главная (макеты «Главная — до поездки / в поездке») ===== */
+.cal-head { display: flex; align-items: center; gap: 8px; }
+.cal-head .cal-month-name { flex: 1; }
+.cal-year-link {
+  background: none; border: none; padding: 6px 4px; cursor: pointer;
+  font-family: inherit; font-size: 15px; font-weight: 600; color: var(--accent);
+}
+.cal-wrap:not(.compact) .cal-year-link { display: none; }
+.cal-wrap.compact .cal-legend { display: flex; }
+.cal-legend { gap: 14px; padding: 4px 14px 2px; }
+.cal-leg { font-size: 13px; color: var(--label3); }
+.cal-leg-band { width: 16px; height: 10px; border-radius: 999px; }
+.cal-leg-exp  { background: var(--accent); }
+.cal-leg-fish { background: var(--river); }
+/* Цвет полосы = тип поездки; прошедшее — приглушено */
+.cal-day.band.trip-exp   { background: var(--accent-bg); color: var(--accent); }
+.cal-day.band.trip-small { background: var(--river-bg); color: var(--river); }
+.cal-day.band.past { opacity: .5; }
+.cal-year-month.my-exp   { background: var(--accent-bg); color: var(--accent); }
+.cal-year-month.my-small { background: var(--river-bg); color: var(--river); }
+.cal-year-month.past { opacity: .55; }
+
+.up-eyebrow--now { color: var(--green); }
+.upcoming-banner--active .readiness-block { padding-top: 0; }
+
+.home-quick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.home-quick-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  min-height: 84px; border: none; border-radius: var(--radius-lg);
+  background: var(--bg2); box-shadow: var(--card-shadow); color: var(--label);
+  font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.home-quick-btn:active { transform: scale(.97); }
+.hq-ico {
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 22px;
+  background: var(--bg3); color: var(--label3);
+}
+.hq-ico .ico svg { width: 22px; height: 22px; }
+.hq-river  { background: var(--river-bg); color: var(--river); }
+.hq-accent { background: var(--accent-bg); color: var(--accent); }
+
+.home-card-list {
+  margin: 0 16px 16px; border-radius: var(--radius-lg); overflow: hidden;
+  background: var(--bg2); box-shadow: var(--card-shadow);
+}
+.home-col-upcoming .home-card-list { margin: 0 0 16px; }
+.home-meal, .home-recent {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  min-height: 64px; padding: 10px 14px 10px 16px;
+  border: none; border-bottom: 1px solid var(--sep2); background: none;
+  color: var(--label); font-family: inherit; text-align: left; cursor: pointer;
+}
+.home-meal:last-child, .home-recent:last-child { border-bottom: none; }
+.home-meal-name {
+  width: 72px; flex-shrink: 0; font-size: 13px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--label4);
+}
+.home-meal-body, .home-recent-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.home-meal-dish, .home-recent-name { font-size: 16px; font-weight: 600; }
+.home-meal-cook, .home-recent-sub { font-size: 13px; color: var(--label3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-meal .ti { color: var(--label4); }
+.home-recent-ico {
+  width: 42px; height: 42px; flex-shrink: 0; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center; font-size: 22px;
+}
+.home-recent-ico .ico svg { width: 22px; height: 22px; }
+.home-recent-rate { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--green); }
+.home-recent-rate small { font-family: var(--font-body); font-size: 12px; color: var(--label4); }
+.home-recent-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.home-section-row { display: flex; align-items: baseline; justify-content: space-between; padding-right: 16px; }
+.home-section-link {
+  background: none; border: none; cursor: pointer; padding: 4px 0;
+  font-family: inherit; font-size: 15px; font-weight: 600; color: var(--accent);
+}
+.home-catch {
+  display: flex; flex-wrap: wrap; gap: 6px; width: calc(100% - 32px); margin: 0 16px 16px;
+  padding: 16px; border: none; border-radius: var(--radius-lg);
+  background: var(--bg2); box-shadow: var(--card-shadow); cursor: pointer; font-family: inherit;
+}
+.home-catch-chip { padding: 6px 12px; border-radius: var(--radius-sm); background: var(--bg3); font-size: 14px; color: var(--label3); }
+.home-catch-chip b { color: var(--label); }

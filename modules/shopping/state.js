@@ -166,6 +166,23 @@ const ShoppingState = (() => {
     return cat;
   }
 
+  // Снять разом все отметки "куплено"/"везём" — по просьбе Дмитрия: после
+  // тестового натыкивания чекбоксов их иначе приходится снимать по одному.
+  function clearBought(tripId) {
+    getCategories(tripId).forEach(c => c.items.forEach(i => { i.bought = false; }));
+    getDayOneItems(tripId).forEach(i => { i.ready = false; });
+    _save();
+  }
+
+  // То же самое, но только для одной категории — на случай, когда сбрасывать
+  // хочется не весь список, а например только что перепроверенную секцию.
+  function clearBoughtInCategory(tripId, catId) {
+    const cat = getCategories(tripId).find(c => c.id === catId);
+    if (!cat) return;
+    cat.items.forEach(i => { i.bought = false; });
+    _save();
+  }
+
   function getStats(tripId) {
     const cats = getCategories(tripId);
     let total = 0, bought = 0;
@@ -175,6 +192,6 @@ const ShoppingState = (() => {
 
   return {
     load, getCategories, setFromFirebase, toggleBought, updateQty, addItem, removeItem, addCategory, findOrCreateCategory, getStats, persist,
-    getDayOneItems, addDayOneItem, removeDayOneItem, toggleDayOneReady,
+    getDayOneItems, addDayOneItem, removeDayOneItem, toggleDayOneReady, clearBought, clearBoughtInCategory,
   };
 })();

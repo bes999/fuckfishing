@@ -10,48 +10,120 @@ const TripCoverIndex = (() => {
   let _guideHandler = null;
   let _notesUnsub = null;
 
-  // Добавить гостя без аккаунта — { name, uid: null } в participants
-  // (см. TripsData.addParticipant), в хэдкаунт и списки участников, но
-  // не в memberIds и не может залогиниться.
-  function _showAddGuestSheet() {
-    document.getElementById('guest-add-overlay')?.remove();
+  // Лист в стиле v2 (макеты V2Invite/V2GuideTabs/V2TravelSheet): ручка,
+  // заголовок Unbounded + подпись, круглая «×» справа, необязательный
+  // футер с главной кнопкой. Анимация выезда — старые .tqp-overlay/.tqp-sheet.
+  // Закрытие по фону и по «×» вешается здесь же; своё поведение листа
+  // вызывающий вешает вторым обработчиком на возвращённый overlay.
+  function _openSheet(id, title, sub, bodyHtml, opts) {
+    opts = opts || {};
+    document.getElementById(id)?.remove();
     const overlay = document.createElement('div');
-    overlay.className = 'profile-overlay';
-    overlay.id = 'guest-add-overlay';
+    overlay.className = 'tqp-overlay tc-sheet-overlay';
+    overlay.id = id;
     overlay.innerHTML = `
-      <div class="profile-sheet">
-        <div class="profile-grab"></div>
-        <div class="profile-scroll">
-          <div class="modal-title" style="margin-bottom:8px">Добавить гостя</div>
-          <p style="font-size:14px;color:var(--label3);margin-bottom:14px">
-            Для тех, кто не будет пользоваться приложением — просто имя, без регистрации. Попадёт в участников и счётчики. Можно сразу несколько через запятую.
-          </p>
-          <input type="text" class="invite-email-input" id="guest-name-input" placeholder="Имя гостя или несколько через запятую" autocomplete="off">
-          <div class="sheet-actions-row">
-            <button class="picker-cancel" data-action="guest-add-close">Отмена</button>
-            <button class="action-btn" data-action="guest-add-save">Добавить</button>
+      <div class="tqp-sheet tc-sheet" role="dialog" aria-label="${_esc(title)}">
+        <div class="tqp-handle"></div>
+        <div class="tc-sheet-head">
+          <div class="tc-sheet-titles">
+            <div class="tc-sheet-title">${_esc(title)}</div>
+            ${sub ? `<div class="tc-sheet-sub">${_esc(sub)}</div>` : ''}
           </div>
+          <button type="button" class="tc-sheet-close" data-action="tc-sheet-close" aria-label="Закрыть">${UIUtils.ico('x')}</button>
         </div>
+        <div class="tc-sheet-body">${bodyHtml}</div>
+        ${opts.footer ? `<div class="tc-sheet-foot">${opts.footer}</div>` : ''}
       </div>`;
     document.body.appendChild(overlay);
-    overlay.querySelector('#guest-name-input')?.focus();
+    requestAnimationFrame(() => overlay.classList.add('open'));
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-action="tc-sheet-close"]')) overlay.remove();
+    });
+    return overlay;
+  }
+
+  function _plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return one;
+    if ([2, 3, 4].includes(m10) && ![12, 13, 14].includes(m100)) return few;
+    return many;
+  }
+
+  // Звать людей может организатор, остальные — если он не закрыл это
+  // флагом trip.inviteRestricted (тот же гейт, что был у кнопки в шапке).
+  function _canInvite(trip) {
+    return !trip.inviteRestricted || TripsData.canManage(trip);
+  }
+
+  // Один лист «Пригласить в «…»» (макет V2Invite) вместо прежних двух
+  // шагов «Добавить участника → по ссылке / гость». Функции те же:
+  // ссылка ?joinTrip= (как MembersRender.showInvite) + QR, аллоулист email
+  // (MembersFirebase.addInvite), гости без аккаунта — { name, uid: null }
+  // в participants через TripsData.addGuestNames (не в memberIds, войти не
+  // могут). onGuestsAdded — чем перерисовать экран после добавления гостей.
+  function _showInviteSheet(trip, onGuestsAdded) {
+    const base = window.location.href.split('?')[0].split('#')[0];
+    const url = `${base}?joinTrip=${encodeURIComponent(trip.id)}`;
+    const body = `
+      <p class="tc-sheet-lead">Отправь ссылку — человек войдёт через Google или email и сразу попадёт в эту поездку.</p>
+      <div class="tc-inv-link">
+        <span class="tc-inv-url">${_esc(url)}</span>
+        <button type="button" class="tc-inv-copy" data-action="tc-inv-copy">Скопировать</button>
+      </div>
+      <details class="tc-inv-qr">
+        <summary>Показать QR-код</summary>
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(url)}" alt="QR-код приглашения" width="160" height="160" loading="lazy">
+      </details>
+      <div class="tc-field-title">Email человека</div>
+      <div class="tc-field-hint">чтобы разрешить ему регистрацию</div>
+      <input type="email" class="tc-input" id="tc-inv-email" placeholder="friend@example.com" autocomplete="off">
+      <button type="button" class="tc-btn-secondary" data-action="tc-inv-allow">Разрешить регистрацию</button>
+      <div class="tc-inv-status" id="tc-inv-status"></div>
+      <div class="tc-inv-guest">
+        <div class="tc-field-title">Или гость без приложения</div>
+        <div class="tc-field-hint">Просто имя, без регистрации — попадёт в участников и счётчики</div>
+        <div class="tc-inline-add">
+          <input type="text" class="tc-input" id="tc-inv-guest" placeholder="Имя гостя или несколько через запятую" autocomplete="off">
+          <button type="button" class="tc-btn-add" data-action="tc-inv-guest-add">Добавить</button>
+        </div>
+      </div>`;
+    const overlay = _openSheet('tc-invite-overlay', `Пригласить в «${trip.name || 'поездку'}»`, '', body);
+
     overlay.addEventListener('click', async e => {
-      if (e.target === overlay) { overlay.remove(); return; }
       const a = e.target.closest('[data-action]')?.dataset.action;
-      if (a === 'guest-add-close') { overlay.remove(); return; }
-      if (a === 'guest-add-save') {
-        const input = overlay.querySelector('#guest-name-input');
+      if (a === 'tc-inv-copy') {
+        navigator.clipboard?.writeText(url).catch(() => {});
+        const btn = overlay.querySelector('[data-action="tc-inv-copy"]');
+        if (btn) { btn.textContent = 'Скопировано'; btn.classList.add('copied'); }
+        return;
+      }
+      if (a === 'tc-inv-allow') {
+        const input  = overlay.querySelector('#tc-inv-email');
+        const status = overlay.querySelector('#tc-inv-status');
+        const email  = input?.value.trim();
+        if (!email) { input?.focus(); return; }
+        if (typeof MembersFirebase === 'undefined') return;
+        MembersFirebase.addInvite(email).then(() => {
+          if (status) status.innerHTML = `${UIUtils.ico('check')} ${_esc(email)} теперь может зарегистрироваться`;
+          if (input) input.value = '';
+        }).catch(() => {
+          if (status) status.textContent = 'Не получилось — попробуй ещё раз';
+        });
+        return;
+      }
+      if (a === 'tc-inv-guest-add') {
+        const input = overlay.querySelector('#tc-inv-guest');
         const names = UIUtils.splitNames(input?.value);
         if (!names.length) { input?.focus(); return; }
         try {
-          await TripsData.addGuestNames(_tripId, names);
+          await TripsData.addGuestNames(trip.id, names);
         } catch (err) {
           console.error('addParticipant:', err);
           alert('Не удалось добавить гостя. Проверь соединение и попробуй ещё раз.');
           return;
         }
         overlay.remove();
-        show(_tripId, { silent: true }); // рефреш обложки, не новый переход — истории не трогаем
+        if (onGuestsAdded) onGuestsAdded();
       }
     });
   }
@@ -64,7 +136,7 @@ const TripCoverIndex = (() => {
   // Набор/порядок настраиваемые (⚙ в полоске табов) и хранятся per-поездку
   // в trip.guideTabs — по умолчанию (поле не задано) видно всё.
   const _ALL_TAB_DEFS = {
-    rivers:   { label: 'Реки' },
+    rivers:   { label: 'Места' }, // id прежний, в UI — «Места»
     menu:     { label: 'Меню' },
     bar:      { label: 'Бар' },
     catches:  { label: 'Улов' },
@@ -247,6 +319,7 @@ const TripCoverIndex = (() => {
   // (см. _tripCoords) и остаётся, пока не переставят заново.
   function _useMyLocation(tripId, btn) {
     if (!navigator.geolocation) { alert('Геолокация не поддерживается этим браузером'); return; }
+    const origHtml = btn ? btn.innerHTML : '';
     if (btn) { btn.textContent = 'Определяю…'; btn.disabled = true; }
     navigator.geolocation.getCurrentPosition(
       async pos => {
@@ -264,7 +337,7 @@ const TripCoverIndex = (() => {
         _maybeRefreshWeather(trip, true);
       },
       err => {
-        if (btn) { btn.textContent = '📍 Моё местоположение'; btn.disabled = false; }
+        if (btn) { btn.innerHTML = origHtml; btn.disabled = false; }
         alert('Не удалось определить местоположение: ' + (err.message || 'проверь разрешение геолокации в браузере'));
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -289,8 +362,8 @@ const TripCoverIndex = (() => {
 
   function _dayWeatherBadge(entry) {
     if (!entry || entry.tMax == null || entry.tMin == null) return '';
-    const precip = entry.precip ? ` · 🌧${Math.round(entry.precip * 10) / 10}мм` : '';
-    return `🌡${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°${precip}`;
+    const precip = entry.precip ? ` · ${UIUtils.ico('cloud-rain')}${Math.round(entry.precip * 10) / 10}мм` : '';
+    return `${UIUtils.ico('temperature')}${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°${precip}`;
   }
 
   // Подсказка по клёву на основе народных примет (не научный прогноз!):
@@ -322,42 +395,71 @@ const TripCoverIndex = (() => {
     return { mood, text: parts.join('; ') };
   }
 
-  // Подробная карточка "Погода на сегодня" вверху Гида — та же дневная
-  // выборка (trip.weatherDaily), что и мини-бейджи в "Маршрут по дням",
-  // просто отфильтрованная на день с реальной сегодняшней датой и
-  // развёрнутая в полный набор показателей вместо одной строки.
-  function _todayWeatherBlock(trip) {
-    if (!trip.weatherDaily || !trip.weatherDaily.length) return '';
-    const todayISO = new Date().toISOString().slice(0, 10);
-    const idx = trip.weatherDaily.findIndex(w => w.date === todayISO);
-    const entry = idx >= 0 ? trip.weatherDaily[idx] : null;
-    if (!entry || entry.tMax == null) return '';
-    const prevEntry = idx > 0 ? trip.weatherDaily[idx - 1] : null;
-    const hint = _fishingHint(entry, prevEntry);
+  // Стрипаем эмодзи из строки (ряды расписания/заголовки дней AI-импорта).
+  function _stripEmoji(s) {
+    return String(s).replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{231A}-\u{231B}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{25AA}-\u{25AB}\u{25B6}\u{25C0}\u{25FB}-\u{25FE}\u{2614}-\u{2615}\u{2648}-\u{2653}\u{267F}\u{2693}\u{26A1}\u{26AA}-\u{26AB}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26CE}\u{26D4}\u{26EA}\u{26F2}-\u{26F3}\u{26F5}\u{26FA}\u{26FD}\u{2702}\u{2705}\u{2708}-\u{270D}\u{270F}\u{2712}\u{2714}\u{2716}\u{271D}\u{2721}\u{2728}\u{2733}-\u{2734}\u{2744}\u{2747}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2763}-\u{2764}\u{2795}-\u{2797}\u{27A1}\u{27B0}\u{27BF}]/gu, '').replace(/\s+/g, ' ').trim();
+  }
 
-    const d = new Date(todayISO);
-    const dateLabel = d.toLocaleDateString('ru', { day: 'numeric', month: 'long' });
+  // Строка расписания про саму рыбалку — голубым с рыбкой (макет «Гид — Инфо»).
+  const _FISH_SLOT_RE = /рыбал|ловл|зор[яиьею]|клёв|клев|спиннинг|заброс|выход на воду/i;
+
+  function _slotRow(time, text) {
+    const clean = _stripEmoji(text);
+    const fish = _FISH_SLOT_RE.test(clean);
+    return `<div class="tc-slot ${fish ? 'tc-slot--fish' : ''}">
+      <span class="tc-slot-time">${_esc(time)}</span>
+      <span class="tc-slot-text">${_esc(clean)}</span>
+      ${fish ? UIUtils.ico('fishing') : ''}
+    </div>`;
+  }
+
+  // Индекс дня маршрута на сегодня (дни маршрута — последовательно от
+  // trip.startDate, как и матчинг погоды ниже), -1 если сегодня вне маршрута.
+  function _todayRouteIdx(trip) {
+    const route = trip.importData?.route || [];
+    if (!route.length || !trip.startDate) return -1;
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const idx = Math.round((new Date(todayISO + 'T00:00:00') - new Date(trip.startDate + 'T00:00:00')) / 86400000);
+    return idx >= 0 && idx < route.length ? idx : -1;
+  }
+
+  // Карточка «Сегодня» вверху Инфо (макет «Гид — Инфо»): погода на
+  // сегодняшнюю дату из trip.weatherDaily (та же выборка, что мини-бейджи
+  // в «Маршруте») + расписание сегодняшнего дня маршрута, если он есть.
+  // Патчится целиком в #g-today-weather (_patchGuideWeather/_useMyLocation).
+  function _todayWeatherBlock(trip) {
+    const todayISO = new Date().toISOString().slice(0, 10);
+    const daily = trip.weatherDaily || [];
+    const idx = daily.findIndex(w => w.date === todayISO);
+    const entry = idx >= 0 ? daily[idx] : null;
+    const hasWx = !!(entry && entry.tMax != null);
+    const dayIdx = _todayRouteIdx(trip);
+    const routeDay = dayIdx >= 0 ? trip.importData.route[dayIdx] : null;
+    if (!hasWx && !routeDay) return '';
+
+    const prevEntry = idx > 0 ? daily[idx - 1] : null;
+    const hint = hasWx ? _fishingHint(entry, prevEntry) : null;
+    const dateLabel = new Date(todayISO).toLocaleDateString('ru', { day: 'numeric', month: 'long' });
+    const title = dateLabel + (routeDay ? ' · ' + _stripEmoji(routeDay.t || '') : '');
 
     return `
-      <div class="g-wx-card">
-        <div class="g-wx-hd">
-          <span class="g-wx-badge">Погода сегодня</span>
-          <span class="g-wx-date">${_esc(dateLabel)}</span>
-          <button class="g-wx-geo" data-action="geo-weather" title="Обновить по моей геопозиции">📍</button>
+      <section class="tc-card tc-today">
+        <div class="tc-today-hd">
+          <span class="tc-eyebrow tc-eyebrow--accent">${routeDay ? `Сегодня · день ${dayIdx + 1}` : 'Погода сегодня'}</span>
+          ${hasWx ? `<span class="tc-today-temp">${UIUtils.ico('temperature')} ${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°</span>` : ''}
+          <button type="button" class="tc-icon-btn" data-action="geo-weather" aria-label="Обновить по моей геопозиции">${UIUtils.ico('map-pin')}</button>
         </div>
-        <div class="g-wx-temp">${Math.round(entry.tMin)}…${Math.round(entry.tMax)}°</div>
-        <div class="g-wx-grid">
-          <div class="g-wx-item"><div class="g-wx-ic">🌧</div><div class="g-wx-val">${entry.precip ? (Math.round(entry.precip*10)/10 + ' мм') : '0 мм'}</div><div class="g-wx-lbl">осадки</div></div>
-          <div class="g-wx-item"><div class="g-wx-ic">💨</div><div class="g-wx-val">${entry.wind != null ? Math.round(entry.wind) : '—'}</div><div class="g-wx-lbl">м/с</div></div>
-          <div class="g-wx-item"><div class="g-wx-ic">🧭</div><div class="g-wx-val">${entry.pressure != null ? Math.round(entry.pressure) : '—'}</div><div class="g-wx-lbl">гПа</div></div>
-        </div>
-        ${(entry.sunrise || entry.sunset) ? `
-        <div class="g-wx-sun">
-          <div class="g-wx-sun-item"><span class="g-wx-ic">🌅</span><span class="g-wx-val">${entry.sunrise || '—'}</span><span class="g-wx-lbl">восход</span></div>
-          <div class="g-wx-sun-item"><span class="g-wx-ic">🌇</span><span class="g-wx-val">${entry.sunset || '—'}</span><span class="g-wx-lbl">закат</span></div>
+        <h2 class="tc-today-title">${_esc(title)}</h2>
+        ${hasWx ? `
+        <div class="tc-tiles">
+          <div class="tc-mini"><span class="tc-mini-lbl">осадки</span><span class="tc-mini-val">${entry.precip ? (Math.round(entry.precip * 10) / 10 + ' мм') : '0 мм'}</span></div>
+          <div class="tc-mini"><span class="tc-mini-lbl">ветер</span><span class="tc-mini-val">${entry.wind != null ? Math.round(entry.wind) + ' м/с' : '—'}</span></div>
+          <div class="tc-mini"><span class="tc-mini-lbl">давление</span><span class="tc-mini-val">${entry.pressure != null ? Math.round(entry.pressure) + ' гПа' : '—'}</span></div>
+          ${(entry.sunrise || entry.sunset) ? `<div class="tc-mini tc-mini--wide"><span class="tc-mini-lbl">Солнце</span><span class="tc-mini-val">${_esc(entry.sunrise || '—')} → ${_esc(entry.sunset || '—')}</span></div>` : ''}
         </div>` : ''}
-        ${hint ? `<div class="g-wx-hint g-wx-hint-${hint.mood}">🎣 ${_esc(hint.text)}</div>` : ''}
-      </div>`;
+        ${hint ? `<div class="tc-wx-hint tc-wx-hint--${hint.mood}">${UIUtils.ico('fishing')} ${_esc(hint.text)}</div>` : ''}
+        ${routeDay && (routeDay.rows || []).length ? `<div class="tc-slots">${routeDay.rows.map(r => _slotRow(r[0], r[1])).join('')}</div>` : ''}
+      </section>`;
   }
 
   function _addDaysStr(dateStr, n) {
@@ -366,50 +468,40 @@ const TripCoverIndex = (() => {
     return d.toISOString().slice(0, 10);
   }
 
+  // Карточка погоды на обложке (макет V2CoverBefore): 4 показателя + ссылка
+  // «По дням» на экран погоды (_showWeatherScreen) + 📍 «моё местоположение».
   function _weatherSection(t) {
     const w = t.weather;
     if (!w) {
       if (_tripCoords(t)) return '<div id="cover-weather-block"></div>';
       return `
-        <div class="cover-section" id="cover-weather-block">
-          <div class="cover-section-head"><div class="cover-section-title">Погода</div></div>
-          <div style="padding:14px 16px 16px;text-align:center">
-            <div style="font-size:13px;color:var(--label3);margin-bottom:10px">Координаты не определены</div>
-            <button class="cover-edit-btn" data-action="geo-weather" style="background:rgba(10,132,255,.1);border-radius:10px;padding:8px 14px">📍 Моё местоположение</button>
-          </div>
-        </div>`;
+        <section class="tc-card" id="cover-weather-block">
+          <div class="tc-card-head"><h2 class="tc-card-title">Погода</h2></div>
+          <div class="tc-hint">Координаты не определены</div>
+          <button type="button" class="tc-btn-secondary" data-action="geo-weather">${UIUtils.ico('map-pin')} Моё местоположение</button>
+        </section>`;
     }
     const title = w.source === 'forecast' ? 'Прогноз погоды' : 'Погода в поездке';
+    const single = t.startDate === t.endDate;
+    const hasDetail = (t.weatherDaily && t.weatherDaily.length) || (t.weatherHourly && t.weatherHourly.length);
+    const cell = (icon, cls, val, lbl) => `
+      <div class="tc-wx-cell"><span class="tc-wx-ic ${cls}">${UIUtils.ico(icon)}</span><span class="tc-wx-val">${val}</span><span class="tc-wx-lbl">${lbl}</span></div>`;
     return `
-      <div class="cover-section" id="cover-weather-block">
-        <div class="cover-section-head">
-          <div class="cover-section-title">${title}</div>
-          <button class="cover-edit-btn" data-action="geo-weather" title="Обновить по моей геопозиции">📍</button>
+      <section class="tc-card" id="cover-weather-block">
+        <div class="tc-card-head">
+          <h2 class="tc-card-title">${title}</h2>
+          <div class="tc-head-actions">
+            ${hasDetail ? `<button type="button" class="tc-link" data-action="tc-weather-open">${single && t.weatherHourly?.length ? 'По часам' : 'По дням'}</button>` : ''}
+            <button type="button" class="tc-icon-btn" data-action="geo-weather" aria-label="Обновить по моей геопозиции">${UIUtils.ico('map-pin')}</button>
+          </div>
         </div>
-        <div class="cover-conds">
-          <div class="cover-cond">
-            <div class="cover-cond-icon">🌡</div>
-            <div class="cover-cond-val">${w.tMin}…${w.tMax}°</div>
-            <div class="cover-cond-label">темп.</div>
-          </div>
-          <div class="cover-cond">
-            <div class="cover-cond-icon">🌧</div>
-            <div class="cover-cond-val">${w.precip} мм</div>
-            <div class="cover-cond-label">осадки</div>
-          </div>
-          <div class="cover-cond">
-            <div class="cover-cond-icon">🧭</div>
-            <div class="cover-cond-val">${w.pressure}</div>
-            <div class="cover-cond-label">гПа</div>
-          </div>
-          ${w.wind != null ? `
-          <div class="cover-cond">
-            <div class="cover-cond-icon">💨</div>
-            <div class="cover-cond-val">${w.wind}</div>
-            <div class="cover-cond-label">м/с</div>
-          </div>` : ''}
+        <div class="tc-wx-grid ${w.wind != null ? '' : 'tc-wx-grid--3'}">
+          ${cell('temperature', 'tc-c-accent', `${w.tMin}…${w.tMax}°`, 'темп.')}
+          ${cell('cloud-rain', 'tc-c-river', `${w.precip} мм`, 'осадки')}
+          ${cell('gauge', '', `${w.pressure}`, 'гПа')}
+          ${w.wind != null ? cell('wind', '', `${w.wind} м/с`, 'ветер') : ''}
         </div>
-      </div>`;
+      </section>`;
   }
 
   function _renderCover(trip) {
@@ -423,6 +515,7 @@ const TripCoverIndex = (() => {
 
     requestAnimationFrame(() => el.classList.add('visible'));
     _bind(el, trip);
+    _patchGearSub(trip);
   }
 
   function hide() {
@@ -432,103 +525,78 @@ const TripCoverIndex = (() => {
     setTimeout(() => el.remove(), 350);
   }
 
+  // Обложка (макеты V2CoverBefore / V2CoverAfter): в шапке только «назад» и
+  // «изменить» (организатору); статус — плашкой в герое; «позвать» — в ряду
+  // участников; снаряга — строкой-карточкой; внизу «Открыть поездку».
   function _render(t) {
-    const emoji  = t.type === 'expedition' ? (t.status === 'done' ? '🌲' : '🏔') : _seasonEmoji(t.startDate);
-    const dates  = _dateRange(t.startDate, t.endDate);
-    const location = (t.rivers || []).map(r => r.region).filter((v,i,a) => a.indexOf(v) === i).join(', ');
-
+    const isOwner = TripsData.canManage(t);
     return `
-      <div class="cover-topbar">
-        <button class="cover-back" id="coverBack">
-          <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
-        </button>
-        <div class="cover-top-info">
-          <div class="cover-top-title">${_esc(t.name)}</div>
-          <div class="cover-top-sub">${dates}</div>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
-          ${(!t.inviteRestricted || window.APP?.user?.uid === t.ownerId) ? `
-          <button class="cover-icon-btn" id="coverAddPeople" title="Добавить участника">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
-          </button>` : ''}
-          <button class="cover-icon-btn" id="coverGear" title="Снаряга">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/><rect x="4" y="6" width="16" height="15" rx="2"/><path d="M4 11h16"/><path d="M9 16h.01M15 16h.01"/></svg>
-          </button>
-          ${window.APP?.user?.uid === t.ownerId ? `
-          <button class="cover-icon-btn" id="coverEdit" title="Редактировать">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-          </button>` : ''}
-        </div>
+      <div class="tc-top">
+        <button type="button" class="tc-top-btn" id="coverBack" aria-label="Назад">${UIUtils.ico('chevron-left')}</button>
+        ${isOwner ? `<button type="button" class="tc-top-btn" id="coverEdit" aria-label="Изменить поездку">${UIUtils.ico('pencil')}</button>` : ''}
       </div>
 
       <div class="cover-scroll">
-        ${_hero(t, emoji, dates, location)}
-        ${t.status === 'upcoming' || t.status === 'active' ? _countdown(t) : ''}
-        ${t.status === 'upcoming' && t.readiness ? _readiness(t) : ''}
-        ${_weatherSection(t)}
-        ${t.status === 'done' ? _doneContent(t) : ''}
-        ${t.status === 'upcoming' ? _targetFish(t) : ''}
-        <div style="height:16px"></div>
+        ${_hero(t)}
+        <div class="tc-stack">
+          ${t.status === 'upcoming' && t.readiness ? _readiness(t) : ''}
+          ${t.status !== 'done' ? _gearCard(t) : ''}
+          ${t.status === 'done' ? _doneContent(t) : ''}
+          ${_weatherSection(t)}
+          ${t.status === 'upcoming' ? _targetFish(t) : ''}
+        </div>
       </div>
 
       <div class="cover-footer">
-        <button class="cover-btn-enter" id="coverEnter">
-          ${t.status === 'done' ? 'Открыть поездку' : 'Войти в поездку'}
-        </button>
+        <button class="cover-btn-enter" id="coverEnter">Открыть поездку</button>
       </div>`;
   }
 
-  function _hero(t, emoji, dates, location) {
-    const parts = (t.participants || []).map(p => !p.uid
-      ? `<div class="cover-part-chip cover-part-chip--guest">${_esc(p.name)} <span class="cover-part-guest-tag">гость</span></div>`
-      : `<div class="cover-part-chip">${_esc(p.name)}</div>`).join('');
+  function _hero(t) {
+    const dates = _dateRange(t.startDate, t.endDate);
+    const location = (t.rivers || []).map(r => r.region).filter((v, i, a) => v && a.indexOf(v) === i).join(', ');
+    // Организатор = создатель поездки (trip.ownerId), помечаем рядом с именем.
+    const parts = (t.participants || []).map(p => {
+      const guest = !p.uid;
+      const org = !!p.uid && p.uid === t.ownerId;
+      return `<span class="tc-person ${guest ? 'tc-person--guest' : ''}">${_esc(p.name)}${org ? '<span class="tc-person-tag tc-person-tag--org">организатор</span>' : ''}${guest ? '<span class="tc-person-tag">гость</span>' : ''}</span>`;
+    }).join('');
+    const invite = _canInvite(t)
+      ? `<button type="button" class="tc-person tc-person--add" data-action="tc-invite">+ позвать</button>` : '';
+    const meta = (icon, text) => `<div class="cover-meta-row">${UIUtils.ico(icon)}<span>${text}</span></div>`;
 
     return `
       <div class="cover-hero">
-        <span class="cover-emoji">${emoji}</span>
-        <div class="cover-name">${_esc(t.name)}</div>
-        <div class="cover-meta">
-          <div class="cover-meta-row">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
-              <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-            </svg>
-            ${dates}
-          </div>
-          ${location ? `
-          <div class="cover-meta-row">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            ${_esc(location)}
-          </div>` : ''}
-          ${t.rivers && t.rivers.length ? `
-          <div class="cover-meta-row">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M3 7c3-2 6-2 9 0s6 2 9 0M3 12c3-2 6-2 9 0s6 2 9 0M3 17c3-2 6-2 9 0s6 2 9 0"/>
-            </svg>
-            ${_esc(t.rivers.map(r => r.name).join(', '))}
-          </div>` : ''}
+        <div class="cover-eyebrow-row">
+          <span class="cover-eyebrow">${t.type === 'expedition' ? 'Экспедиция' : 'Рыбалка'}</span>
+          ${_countdownChip(t)}
         </div>
-        ${parts ? `<div class="cover-parts">${parts}</div>` : ''}
+        <div class="cover-name ${_nameSizeClass(t.name)}">${_esc(t.name)}</div>
+        <div class="cover-meta">
+          ${meta('calendar', dates)}
+          ${location ? meta('map-pin', _esc(location)) : ''}
+          ${t.rivers && t.rivers.length ? meta('ripple', _esc(t.rivers.map(r => r.name).join(', '))) : ''}
+        </div>
+        ${parts || invite ? `<div class="cover-parts">${parts}${invite}</div>` : ''}
       </div>`;
   }
 
-  function _countdown(t) {
+  // Статус плашкой в строке с типом поездки: «через N дней» / «идёт» /
+  // «завершена» (отдельного бейджа в шапке больше нет).
+  function _countdownChip(t) {
+    if (t.status === 'active') return '<span class="cover-cd-chip cover-cd-chip--now">идёт</span>';
+    if (t.status === 'done') return `<span class="cover-cd-chip cover-cd-chip--done">${UIUtils.ico('check')} завершена</span>`;
+    if (t.status !== 'upcoming') return '';
     const days = Math.ceil((new Date(t.startDate) - new Date()) / 86400000);
     if (days <= 0) return '';
-    return `
-      <div class="cover-countdown">
-        <div>
-          <div class="cover-cd-num">${days}</div>
-          <div class="cover-cd-days">дней</div>
-        </div>
-        <div class="cover-cd-info">
-          <div class="cover-cd-name">До начала экспедиции</div>
-          <div class="cover-cd-sub">${_esc((t.rivers||[]).map(r=>r.name).join(', '))}</div>
-        </div>
-      </div>`;
+    return `<span class="cover-cd-chip">через ${days} ${_plural(days, 'день', 'дня', 'дней')}</span>`;
+  }
+
+  // Размер заголовка по длине названия (см. «Тест названий» в макетах):
+  // до 10 символов — крупно, до 16 — на ступень меньше, дальше — ещё.
+  function _nameSizeClass(name) {
+    const n = (name || '').length;
+    return n <= 10 ? '' : n <= 16 ? 'cover-name--m' : 'cover-name--s';
   }
 
   function _readiness(t) {
@@ -543,29 +611,36 @@ const TripCoverIndex = (() => {
     const pct   = total ? Math.round(done / total * 100) : 0;
 
     return `
-      <div class="cover-section" id="coverReadinessSection">
-        <div class="cover-section-head">
-          <div class="cover-section-title">Готовность</div>
-          <div style="font-size:15px;font-weight:800;color:var(--accent)" id="coverReadPct">${pct}%</div>
+      <section class="tc-card" id="coverReadinessSection">
+        <div class="tc-card-head">
+          <h2 class="tc-card-title">Готовность</h2>
+          <span class="cover-read-count" id="coverReadPct">${done} из ${total}</span>
         </div>
-        <div class="cover-readiness">
-          <div class="cover-progress-track">
-            <div class="cover-progress-fill" id="coverReadFill" style="width:${pct}%"></div>
-          </div>
-          <div class="cover-read-list" id="coverReadList">
-            ${items.map(item => `
-              <div class="cover-read-row" data-item-id="${_esc(item.id)}">
-                <div class="cover-read-check ${item.done ? 'done' : ''}"
-                     data-cover-readiness="${_esc(item.id)}" data-trip-id="${t.id}"
-                     style="cursor:pointer">
-                  ${item.done ? '✓' : ''}
-                </div>
-                <span class="cover-read-label" style="${item.done ? 'color:var(--label3);text-decoration:line-through' : ''}">${_esc(item.label)}</span>
-                <span class="cover-read-del" data-cover-readiness-del="${_esc(item.id)}" data-trip-id="${t.id}" aria-label="Удалить пункт">×</span>
-              </div>`).join('')}
-          </div>
-          <div class="cover-read-add" data-cover-readiness-add="${t.id}">+ добавить пункт</div>
+        <div class="tc-bar"><div class="tc-bar-fill" id="coverReadFill" style="width:${pct}%"></div></div>
+        <div class="cover-read-list" id="coverReadList">
+          ${items.filter(it => !it.done).map(it => _coverReadRow(it, t.id)).join('')}
+          ${done ? `<details class="cover-read-done" ${done === total ? 'open' : ''}>
+            <summary>${UIUtils.ico('check')} Готово · ${done} ${UIUtils.ico('chevron-down', 'tc-sum-chev')}</summary>
+            <div class="cover-read-list">${items.filter(it => it.done).map(it => _coverReadRow(it, t.id)).join('')}</div>
+          </details>` : ''}
         </div>
+        <div class="tc-read-foot">
+          <button type="button" class="tc-text-btn tc-text-btn--accent" data-cover-readiness-add="${t.id}">+ Добавить пункт</button>
+          ${done ? `<button type="button" class="tc-text-btn" data-cover-readiness-reset="${t.id}">Сбросить отметки</button>` : ''}
+        </div>
+        ${total ? '<div class="tc-hint">Смахни пункт влево, чтобы удалить</div>' : ''}
+      </section>`;
+  }
+
+  function _coverReadRow(item, tripId) {
+    return `
+      <div class="cover-read-row" data-item-id="${_esc(item.id)}">
+        <button type="button" class="tc-read-btn" role="checkbox" aria-checked="${item.done ? 'true' : 'false'}"
+                data-cover-readiness="${_esc(item.id)}" data-trip-id="${tripId}">
+          <span class="tc-check ${item.done ? 'done' : ''}">${item.done ? UIUtils.ico('check') : ''}</span>
+          <span class="cover-read-label ${item.done ? 'crossed' : ''}">${_esc(item.label)}</span>
+        </button>
+        <span class="cover-read-del" role="button" data-cover-readiness-del="${_esc(item.id)}" data-trip-id="${tripId}" aria-label="Удалить пункт">×</span>
       </div>`;
   }
 
@@ -580,108 +655,143 @@ const TripCoverIndex = (() => {
     section.outerHTML = _readiness(t);
   }
 
-  // Новый пункт готовности — маленький шит вместо prompt() (тот же паттерн
-  // переименования участника, см. modules/trips/index.js:_showRenameSheet).
+  // Новый пункт готовности — маленький лист вместо prompt().
   function _showAddReadinessSheet(tripId) {
-    document.getElementById('add-readiness-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'profile-overlay';
-    overlay.id = 'add-readiness-overlay';
-    overlay.innerHTML = `
-      <div class="profile-sheet">
-        <div class="profile-grab"></div>
-        <div class="profile-scroll">
-          <div class="modal-title" style="margin-bottom:14px">Новый пункт готовности</div>
-          <input type="text" class="invite-email-input" id="add-readiness-input" placeholder="Заправка канистр, бронь домика...">
-          <div class="sheet-actions-row">
-            <button class="picker-cancel" data-action="add-readiness-close">Отмена</button>
-            <button class="action-btn" data-action="add-readiness-save">Добавить</button>
-          </div>
-        </div>
-      </div>`;
-    document.body.appendChild(overlay);
+    const trip = TripsData.getById(tripId);
+    const overlay = _openSheet('add-readiness-overlay', 'Новый пункт', trip?.name || '',
+      `<input type="text" class="tc-input" id="add-readiness-input" placeholder="Заправка канистр, бронь домика…" autocomplete="off">`,
+      { footer: '<button type="button" class="tc-btn-primary" data-action="add-readiness-save">Добавить</button>' });
     const input = overlay.querySelector('#add-readiness-input');
     input?.focus();
 
+    const save = () => {
+      const label = input?.value.trim();
+      if (!label) { input?.focus(); return; }
+      const t = TripsData.getById(tripId);
+      if (!Array.isArray(t?.readiness)) { overlay.remove(); return; }
+      t.readiness = [...t.readiness, { id: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2), label, done: false }];
+      TripsData.updateTrip(tripId, { readiness: t.readiness });
+      overlay.remove();
+      _rerenderReadiness(tripId);
+      if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+    };
+    input?.addEventListener('keydown', e => { if (e.key === 'Enter') save(); });
     overlay.addEventListener('click', e => {
-      if (e.target === overlay) { overlay.remove(); return; }
-      const a = e.target.closest('[data-action]')?.dataset.action;
-      if (a === 'add-readiness-close') { overlay.remove(); return; }
-      if (a === 'add-readiness-save') {
-        const label = input?.value.trim();
-        if (!label) { input?.focus(); return; }
-        const t = TripsData.getById(tripId);
-        if (!Array.isArray(t?.readiness)) { overlay.remove(); return; }
-        t.readiness = [...t.readiness, { id: 'r_' + Date.now() + '_' + Math.random().toString(36).slice(2), label, done: false }];
-        TripsData.updateTrip(tripId, { readiness: t.readiness });
-        overlay.remove();
-        _rerenderReadiness(tripId);
-        if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
-      }
+      if (e.target.closest('[data-action="add-readiness-save"]')) save();
     });
+  }
+
+  // ── Строки-ссылки (иконка-плитка, заголовок, подпись, шеврон) ──
+  function _linkRow(o) {
+    const tag = o.action ? 'button' : 'div';
+    return `<${tag} ${o.action ? 'type="button"' : ''} class="tc-link-row" ${o.action ? `data-action="${o.action}"` : ''} ${o.attrs || ''}>
+      <span class="tc-tile ${o.tone ? 'tc-tile--' + o.tone : ''}">${o.icon === 'fishing' ? UIUtils.ico('fishing') : UIUtils.ico(o.icon)}</span>
+      <span class="tc-link-main"><span class="tc-link-title">${o.title}</span>${o.sub ? `<span class="tc-link-sub" ${o.subAttrs || ''}>${o.sub}</span>` : ''}</span>
+      <span class="tc-link-right">${o.right || ''}${o.action ? UIUtils.ico(o.chev || 'chevron-right') : ''}</span>
+    </${tag}>`;
+  }
+
+  // Снаряга — свой список под эту поездку (раньше иконка в шапке обложки /
+  // слово «Снаряга» в полоске табов у Рыбалки). Подпись «собрано X из Y»
+  // дотягивается асинхронно — см. _patchGearSub.
+  function _gearRow(t) {
+    return _linkRow({
+      action: 'info-gear', icon: 'backpack', tone: t.status === 'done' ? '' : 'accent',
+      title: t.status === 'done' ? 'Снаряга' : 'Снаряга на поездку',
+      sub: t.status === 'done' ? 'что брали в поездку' : 'свой список на эту поездку',
+      subAttrs: `data-gear-sub="${_esc(t.id)}"`,
+    });
+  }
+
+  function _gearCard(t) {
+    return `<section class="tc-card tc-card--list">${_gearRow(t)}</section>`;
+  }
+
+  function _patchGearSub(t) {
+    const uid = window.APP?.user?.uid;
+    if (!uid || typeof GearData === 'undefined' || t.status === 'done') return;
+    GearData.ensureLoaded(uid).then(() => {
+      const snap = GearData.getTripSnapshot(uid, t.id);
+      const text = snap
+        ? `собрано ${Math.min((snap.checked || []).length, (snap.items || []).length)} из ${(snap.items || []).length}`
+        : 'список ещё не создан';
+      document.querySelectorAll(`[data-gear-sub="${t.id}"]`).forEach(el => { el.textContent = text; });
+    }).catch(() => {});
+  }
+
+  // «Как съездили?» — 10 кнопок вместо листа с числом (макет V2CoverAfter).
+  // Повторный тап по выбранной оценке — снять оценку (как пустое поле раньше).
+  function _ratingCard(t) {
+    const btns = Array.from({ length: 10 }, (_, i) => i + 1).map(v =>
+      `<button type="button" class="tc-rate-btn ${t.rating === v ? 'on' : ''}" data-action="tc-rate" data-val="${v}" aria-pressed="${t.rating === v}" aria-label="Оценка ${v}">${v}</button>`).join('');
+    return `
+      <section class="tc-card tc-rate-card">
+        <div class="tc-card-head">
+          <h2 class="tc-card-title">Как съездили?</h2>
+          ${t.rating != null ? `<span class="tc-rate-val">${t.rating}<span>/10</span></span>` : ''}
+        </div>
+        <div class="tc-card-sub">Оценка поездки по 10-балльной шкале</div>
+        <div class="tc-rate-grid">${btns}</div>
+      </section>`;
+  }
+
+  function _setRating(trip, v) {
+    const val = trip.rating === v ? null : v;
+    trip.rating = val;
+    TripsData.updateTrip(trip.id, { rating: val });
+    document.querySelectorAll('.tc-rate-card').forEach(el => { el.outerHTML = _ratingCard(trip); });
+  }
+
+  function _numRows(title, items) {
+    if (!items || !items.length) return '';
+    return `<div class="tc-caps">${_esc(title)}</div>
+      ${items.map(i => `<div class="tc-num-row"><span>${_esc(i.name)}</span><span class="tc-num">${i.count}</span></div>`).join('')}`;
   }
 
   function _doneContent(t) {
     let h = '';
+    const isDone = t.status === 'done';
 
-    // Rating
-    if (t.rating) {
-      const pct = Math.round(t.rating / 10 * 100);
-      h += `
-        <div class="cover-section">
-          <div class="cover-section-head">
-            <div class="cover-section-title">Рейтинг поездки</div>
-            <button class="cover-edit-btn" data-action="edit-rating">Изменить</button>
-          </div>
-          <div class="cover-rating-row">
-            <div>
-              <div class="cover-score-big">${t.rating}</div>
-            </div>
-            <div class="cover-score-den">/10</div>
-            <div class="cover-score-track">
-              <div class="cover-score-fill" style="width:${pct}%"></div>
-            </div>
-          </div>
-        </div>`;
-    }
+    if (isDone) h += _ratingCard(t);
 
     // Улов — живые данные (modules/catches/state.js), не старое статичное t.fish
     const stats = typeof CatchesState !== 'undefined' ? CatchesState.computeStats(t.id) : null;
     if (stats && stats.total) {
+      const rel = stats.released === stats.total ? ' · все отпущены'
+        : stats.kept === stats.total ? ' · все забрали'
+        : stats.released ? ` · отпущено ${stats.released}` : '';
       h += `
-        <div class="cover-section">
-          <div class="cover-stats-grid">
-            <div class="cover-stat">
-              <div class="cover-stat-num">${stats.total}</div>
-              <div class="cover-stat-label">рыб поймано</div>
-            </div>
-            <div class="cover-stat">
-              <div class="cover-stat-num">${stats.species}</div>
-              <div class="cover-stat-label">${stats.species === 1 ? 'вид' : 'вида'}</div>
-            </div>
+        <section class="tc-card">
+          <div class="tc-card-head">
+            <h2 class="tc-card-title">Улов</h2>
+            <button type="button" class="tc-link" data-action="tc-open-tab" data-tab="catches">Весь улов</button>
           </div>
-        </div>`;
-      h += _barSection('Видовой состав', stats.topFish, '🐟', 'шт');
-      h += _barSection('По участникам', stats.topMembers, '🎣', 'шт');
-      h += _barSection('По рекам', stats.topRivers, '📍', 'шт');
+          <div class="tc-big-row">
+            <span class="tc-big">${stats.total}</span>
+            <span class="tc-big-sub">${_plural(stats.total, 'рыба', 'рыбы', 'рыб')} · ${stats.species} ${_plural(stats.species, 'вид', 'вида', 'видов')}${rel}</span>
+          </div>
+          <div class="tc-num-list">
+            ${_numRows('По видам', stats.topFish)}
+            ${_numRows('Кто поймал', stats.topMembers)}
+            ${_numRows('Где', stats.topRivers)}
+          </div>
+        </section>`;
     }
 
-    // Расходы — живые данные (modules/expenses/state.js)
+    // Расходы — живые данные (modules/expenses/state.js): строка-ссылка во
+    // вкладку «Расходы» + раскрывашка с разбивкой по людям и переводами
+    // (та же сводка, что была отдельной карточкой).
     const money = typeof ExpensesState !== 'undefined' ? ExpensesState.computeSummary(t.id) : null;
+    let rows = '';
     if (money && money.total) {
-      h += `
-        <div class="cover-section">
-          <div class="cover-section-head"><div class="cover-section-title">Расходы</div></div>
-          <div class="cover-stats-grid">
-            <div class="cover-stat">
-              <div class="cover-stat-num">${_rub(money.total)}</div>
-              <div class="cover-stat-label">всего</div>
-            </div>
-            <div class="cover-stat">
-              <div class="cover-stat-num">${_rub(money.avgShare)}</div>
-              <div class="cover-stat-label">на человека</div>
-            </div>
-          </div>
+      rows += _linkRow({
+        action: 'tc-open-tab', attrs: 'data-tab="expenses"', icon: 'wallet', tone: 'accent', title: 'Расходы',
+        sub: `${money.count} ${_plural(money.count, 'запись', 'записи', 'записей')} · на человека ${_rub(money.avgShare)}`,
+        right: `<span class="tc-link-sum">${_rub(money.total)}</span>`,
+      });
+      rows += `
+        <details class="tc-money">
+          <summary>Кто сколько заплатил${money.transfers.length ? ' · переводы' : ''} ${UIUtils.ico('chevron-down', 'tc-sum-chev')}</summary>
           ${money.rows.map(r => {
             const sign = r.netDiff >= 0 ? '+' : '−';
             const cls  = r.netDiff >= 0 ? 'pos' : 'neg';
@@ -697,19 +807,24 @@ const TripCoverIndex = (() => {
               ${money.transfers.map(tr => `
                 <div class="cover-money-transfer">${_esc(tr.from)} → ${_esc(tr.to)} · ${_rub(tr.amount)}</div>`).join('')}
             </div>` : ''}
-        </div>`;
+        </details>`;
     }
+    if (isDone) {
+      rows += _linkRow({ action: 'tc-open-notes', icon: 'notes', title: 'Заметки', sub: 'заметки группы' });
+      rows += _gearRow(t);
+    }
+    if (rows) h += `<section class="tc-card tc-card--list">${rows}</section>`;
 
-    // Comment
+    // Итоговый комментарий к поездке (trip.comment)
     if (t.comment) {
       h += `
-        <div class="cover-section">
-          <div class="cover-section-head">
-            <div class="cover-section-title">Заметки</div>
-            <button class="cover-edit-btn" data-action="edit-comment">Редактировать</button>
+        <section class="tc-card">
+          <div class="tc-card-head">
+            <h2 class="tc-card-title">Итоги поездки</h2>
+            <button type="button" class="tc-link" data-action="edit-comment">Изменить</button>
           </div>
-          <div class="cover-comment">${_esc(t.comment)}</div>
-        </div>`;
+          <div class="tc-comment">${_esc(t.comment)}</div>
+        </section>`;
     }
 
     return h;
@@ -868,10 +983,10 @@ const TripCoverIndex = (() => {
     const pressureChart = hasPressure ? _areaChartSvg([{ values: daily.map(d => d.pressure), color: 'var(--label2)' }]) : '';
 
     return `
-      <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C (макс/мин)</div>${tempChart}${axis}</div>
-      <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${precipChart}${axis}</div>
-      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, м/с</div>${windChart}${axis}</div>` : ''}
-      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${pressureChart}${axis}</div>` : ''}`;
+      <div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('temperature')} Температура, °C (макс/мин)</div>${tempChart}${axis}</div>
+      <div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('cloud-rain')} Осадки, мм</div>${precipChart}${axis}</div>
+      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('wind')} Ветер, м/с</div>${windChart}${axis}</div>` : ''}
+      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('gauge')} Давление, гПа</div>${pressureChart}${axis}</div>` : ''}`;
   }
 
   // Однодневная поездка — сутки уже сегодня/завтра, макс/мин за весь день
@@ -904,10 +1019,10 @@ const TripCoverIndex = (() => {
     const wrap = svg => svg ? `<div class="g-chart-scroll">${svg}</div>` : '';
 
     return `
-      <div class="g-chart-block"><div class="g-chart-label">🌡 Температура, °C</div>${wrap(tempChart)}</div>
-      <div class="g-chart-block"><div class="g-chart-label">🌧 Осадки, мм</div>${wrap(precipChart)}</div>
-      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">💨 Ветер, м/с</div>${wrap(windChart)}</div>` : ''}
-      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">🧭 Давление, гПа</div>${wrap(pressureChart)}</div>` : ''}`;
+      <div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('temperature')} Температура, °C</div>${wrap(tempChart)}</div>
+      <div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('cloud-rain')} Осадки, мм</div>${wrap(precipChart)}</div>
+      ${windChart ? `<div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('wind')} Ветер, м/с</div>${wrap(windChart)}</div>` : ''}
+      ${pressureChart ? `<div class="g-chart-block"><div class="g-chart-label">${UIUtils.ico('gauge')} Давление, гПа</div>${wrap(pressureChart)}</div>` : ''}`;
   }
 
   // Примета по клёву для таба "Инфо" — переиспользует _fishingHint (та же
@@ -941,104 +1056,206 @@ const TripCoverIndex = (() => {
     return null;
   }
 
-  // Подробная погода поездки — отдельный график на параметр, вместо одних
-  // только текущих бейджей. Однодневная поездка — по часам (см. выше),
-  // многодневная — по дням. Данные уже загружены (см. _maybeRefreshWeather
-  // / shared/weather.js), новый запрос отсюда не идёт.
-  // Схлопываемый аккордеон (тот же _acc, что и у Windy рядом) — 4 графика
-  // подряд разворачивают таб на приличную высоту, а нужны не всегда сразу
-  // при каждом заходе, так что по умолчанию свёрнут. Примета по клёву —
-  // над аккордеоном, всегда на виду, разворачивать графики ради неё не надо.
+  // Строка «Погода по дням и часам» в карточке «Справочное» Инфо — открывает
+  // полноэкранный экран погоды (_showWeatherScreen, макет V2Weather) вместо
+  // прежнего аккордеона с 4 графиками. Примета по клёву — подписью строки,
+  // всегда на виду. Данные уже загружены (_maybeRefreshWeather), отсюда
+  // запросов нет. Без данных — пустой плейсхолдер с тем же id, чтобы
+  // _maybeRefreshWeather мог подменить его, когда данные придут.
   function _weatherChartsSection(trip) {
     const isSingleDay = trip.startDate === trip.endDate;
     const hourly = trip.weatherHourly;
     const daily = trip.weatherDaily;
 
-    let title, body;
-    if (isSingleDay && hourly && hourly.length) {
-      title = '🌡 Погода по часам';
-      body = _weatherChartsHourly(hourly);
-    } else if (daily && daily.length) {
-      title = '🌡 Погода по дням';
-      body = _weatherChartsDaily(daily);
-    } else {
-      return '';
-    }
+    let title;
+    if (isSingleDay && hourly && hourly.length) title = 'Погода по часам';
+    else if (daily && daily.length) title = 'Погода по дням и часам';
+    else return '<div id="g-weather-charts"></div>';
 
     const hint = _pressureHintForTrip(trip);
-    const hintHtml = hint ? `<div class="g-wx-hint g-wx-hint-${hint.mood}">🎣 ${_esc(hint.text)}</div>` : '';
-
-    return `<div id="g-weather-charts" class="g-info-gap">${hintHtml}${_acc(title, body, false)}</div>`;
+    return `<div id="g-weather-charts">${_linkRow({
+      action: 'tc-weather-open', icon: 'gauge', tone: 'river', title,
+      sub: hint ? `<span class="tc-wx-hint--${hint.mood}">${_esc(hint.text)}</span>` : 'графики температуры, осадков, ветра, давления',
+    })}</div>`;
   }
 
-  // Таб "Инфо" для простой "Рыбалки" (без AI-импорта) — раньше это была
-  // голая заглушка "Маршрут не добавлен", а всё, что реально относилось к
-  // такой поездке (шапка/погода/готово-статистика/действия), жило на
-  // отдельной обложке-странице перед входом в Гид. Теперь обложка для
-  // рыбалок вообще не рендерится (см. show()) — всё это переехало сюда.
-  function _renderFishingInfo(trip) {
-    const emoji = _seasonEmoji(trip.startDate);
-    const dates = _dateRange(trip.startDate, trip.endDate);
-    const location = (trip.rivers || []).map(r => r.region).filter((v, i, a) => a.indexOf(v) === i).join(', ');
+  // ── Экран «Погода» (макет V2Weather): выбранный день крупно, список дней
+  // (тап — выбрать), ниже прежние графики по дням. Однодневная рыбалка —
+  // почасовые графики (почасовых данных у многодневных поездок нет, их не
+  // придумываем). Полноэкранный слой поверх обложки/Гида.
+  let _wxSel = 0;
 
-    // Рейтинг/статистика улова-расходов/комментарий — та же логика, что
-    // была на обложке (_doneContent уже сама решает, что показывать,
-    // по наличию данных); плюс "добавить" для того, чего ещё нет.
-    // Пригласить/Снаряга/Редактировать переехали в полоску табов (см.
-    // _renderTabStrip) — отдельным рядом кнопок под шапкой не понравилось.
-    const hasRating  = trip.rating != null;
+  function _wxDayLabel(dateStr, long) {
+    const d = new Date(dateStr + 'T00:00:00');
+    return long
+      ? d.toLocaleDateString('ru', { weekday: 'short', day: 'numeric', month: 'long' })
+      : d.toLocaleDateString('ru', { weekday: 'short' }) + ' ' + d.getDate();
+  }
+
+  function _weatherScreenBody(trip) {
+    const single = trip.startDate === trip.endDate;
+    const hourly = trip.weatherHourly || [];
+    const daily = trip.weatherDaily || [];
+    const mm = v => (v ? Math.round(v * 10) / 10 : 0) + ' мм';
+    let h = '';
+
+    if (single && hourly.length) {
+      const hint = _pressureHintForTrip(trip);
+      h += `
+        <section class="tc-card">
+          <div class="tc-card-head"><h2 class="tc-card-title">${_esc(_wxDayLabel(trip.startDate, true))}</h2><span class="tc-muted">по часам</span></div>
+          <div class="tc-charts">${_weatherChartsHourly(hourly)}</div>
+          ${hint ? `<div class="tc-wx-hint tc-wx-hint--${hint.mood}">${UIUtils.ico('fishing')} ${_esc(hint.text)}</div>` : ''}
+        </section>`;
+    }
+
+    if (daily.length) {
+      const i = Math.min(Math.max(_wxSel, 0), daily.length - 1);
+      const e = daily[i];
+      if (!(single && hourly.length)) {
+        const hint = _fishingHint(e, i > 0 ? daily[i - 1] : null);
+        h += `
+          <section class="tc-card">
+            <div class="tc-card-head"><h2 class="tc-card-title">${_esc(_wxDayLabel(e.date, true))}</h2><span class="tc-muted">за день</span></div>
+            <div class="tc-big-row"><span class="tc-big">${e.tMin != null ? Math.round(e.tMin) + '…' + Math.round(e.tMax) + '°' : '—'}</span></div>
+            <div class="tc-tiles">
+              <div class="tc-mini"><span class="tc-mini-lbl">давление</span><span class="tc-mini-val">${e.pressure != null ? Math.round(e.pressure) + ' гПа' : '—'}</span></div>
+              <div class="tc-mini"><span class="tc-mini-lbl">ветер</span><span class="tc-mini-val">${e.wind != null ? Math.round(e.wind) + ' м/с' : '—'}</span></div>
+              <div class="tc-mini"><span class="tc-mini-lbl">осадки</span><span class="tc-mini-val">${mm(e.precip)}</span></div>
+              ${(e.sunrise || e.sunset) ? `<div class="tc-mini tc-mini--wide"><span class="tc-mini-lbl">Солнце</span><span class="tc-mini-val">${_esc(e.sunrise || '—')} → ${_esc(e.sunset || '—')}</span></div>` : ''}
+            </div>
+            ${hint ? `<div class="tc-wx-hint tc-wx-hint--${hint.mood}">${UIUtils.ico('fishing')} ${_esc(hint.text)}</div>` : ''}
+          </section>`;
+      }
+      h += `
+        <section class="tc-card tc-card--list">
+          <div class="tc-wday tc-wday--head"><span>день</span><span>темп.</span><span>осадки</span><span>ветер</span></div>
+          ${daily.map((d, k) => `
+            <button type="button" class="tc-wday ${k === i ? 'on' : ''}" data-action="tc-wx-day" data-idx="${k}" aria-pressed="${k === i}">
+              <span class="tc-wday-d">${_esc(_wxDayLabel(d.date))}</span>
+              <span class="tc-wday-t">${d.tMin != null ? Math.round(d.tMin) + '…' + Math.round(d.tMax) + '°' : '—'}</span>
+              <span class="tc-c-river">${mm(d.precip)}</span>
+              <span class="tc-muted">${d.wind != null ? Math.round(d.wind) + ' м/с' : '—'}</span>
+            </button>`).join('')}
+        </section>`;
+      if (daily.length > 1) {
+        h += `
+          <section class="tc-card">
+            <div class="tc-card-head"><h2 class="tc-card-title">Графики по дням</h2></div>
+            <div class="tc-charts">${_weatherChartsDaily(daily)}</div>
+          </section>`;
+      }
+    }
+    return h || '<div class="tc-hint">Данных о погоде пока нет</div>';
+  }
+
+  function _showWeatherScreen(trip) {
+    document.getElementById('tc-wx-screen')?.remove();
+    const todayISO = new Date().toISOString().slice(0, 10);
+    _wxSel = Math.max(0, (trip.weatherDaily || []).findIndex(d => d.date === todayISO));
+    const place = (trip.rivers || [])[0]?.name || '';
+
+    const el = document.createElement('div');
+    el.id = 'tc-wx-screen';
+    el.className = 'tc-wx-screen';
+    el.innerHTML = `
+      <div class="tc-top tc-top--title">
+        <button type="button" class="tc-top-btn" data-action="tc-wx-close" aria-label="Назад">${UIUtils.ico('chevron-left')}</button>
+        <div class="tc-ghead-titles">
+          <div class="tc-ghead-title">Погода</div>
+          <div class="tc-ghead-sub">${_esc([trip.name, place].filter(Boolean).join(' · '))}</div>
+        </div>
+      </div>
+      <div class="tc-wx-body tc-stack">${_weatherScreenBody(trip)}</div>`;
+    document.body.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('visible'));
+
+    el.addEventListener('click', e => {
+      if (e.target.closest('[data-action="tc-wx-close"]')) {
+        el.classList.remove('visible');
+        setTimeout(() => el.remove(), 350);
+        return;
+      }
+      const day = e.target.closest('[data-action="tc-wx-day"]');
+      if (day) {
+        _wxSel = parseInt(day.dataset.idx, 10) || 0;
+        el.querySelector('.tc-wx-body').innerHTML = _weatherScreenBody(trip);
+      }
+    });
+  }
+
+  // Таб "Инфо" для простой "Рыбалки" (без AI-импорта) — обложки у рыбалок
+  // нет (см. show()), всё, что было на ней, живёт здесь: герой с участниками
+  // и «+ позвать», снаряга, погода/Windy, итоги (оценка/улов/расходы/заметка).
+  function _renderFishingInfo(trip) {
     const hasComment = !!trip.comment;
     const windy = _windyAccordion(trip);
+    const wx = _weatherChartsSection(trip);
 
     return `
-      ${_hero(trip, emoji, dates, location)}
-      ${_weatherChartsSection(trip)}
-      ${windy ? `<div class="g-info-gap">${windy}</div>` : ''}
-      ${_doneContent(trip)}
-      ${trip.status === 'done' && !hasRating ? `
-        <div class="cover-section"><button class="g-info-add-btn" data-action="info-add-rating">+ Оценить поездку</button></div>` : ''}
-      ${!hasComment ? `
-        <div class="cover-section"><button class="g-info-add-btn" data-action="info-add-comment">+ Добавить заметку</button></div>` : ''}
-      <div class="g-info-bottom-pad"></div>
+      ${_hero(trip)}
+      <div class="tc-stack">
+        <div id="g-today-weather">${_todayWeatherBlock(trip)}</div>
+        ${trip.status !== 'done' ? _gearCard(trip) : ''}
+        ${_doneContent(trip)}
+        ${(windy || _tripCoords(trip) || trip.weatherDaily) ? `<section class="tc-card tc-card--list">${wx}${windy}</section>` : ''}
+        ${!hasComment ? `<button type="button" class="tc-add-dashed" data-action="info-add-comment">+ Итоги поездки</button>` : ''}
+      </div>
     `;
   }
 
   function _targetFish(t) {
     // Берём целевую рыбу из importData (поле targetFish из meta)
     const fish = t.importData?.meta?.targetFish || t.targetFish || null;
-    if (!fish && (!t.rivers || !t.rivers.length)) return '';
-
     // Если есть реки из importData — показываем их краткий список
     const rivers = t.importData?.rivers || t.rivers || [];
     if (!rivers.length && !fish) return '';
 
     return `
-      <div class="cover-section">
-        <div class="cover-section-head">
-          <div class="cover-section-title">Маршрут</div>
-          ${t.importData ? '<div style="font-size:11px;color:var(--accent);font-weight:600">AI · импортировано</div>' : ''}
+      <section class="tc-card">
+        <div class="tc-card-head">
+          <h2 class="tc-card-title">Маршрут</h2>
+          ${t.importData ? '<span class="tc-muted">импортирован ИИ</span>' : ''}
         </div>
-        ${fish ? `
-          <div class="cover-target-row">
-            <div style="font-size:14px;font-weight:500">🎯 Целевая рыба</div>
-            <div style="font-size:13px;color:var(--label2);font-weight:600">${_esc(fish)}</div>
-          </div>` : ''}
         ${rivers.slice(0, 4).map(r => `
-          <div class="cover-target-row">
-            <div style="font-size:14px;font-weight:500">🎣 ${_esc(r.name)}</div>
-            <div style="font-size:12px;color:var(--label3)">${_esc(r.day || r.type || '')}</div>
+          <div class="tc-river">
+            <span class="tc-tile tc-tile--river">${UIUtils.ico('ripple')}</span>
+            <span class="tc-link-main"><span class="tc-link-title">${_esc(r.name)}</span>${(r.day || r.type || r.region) ? `<span class="tc-link-sub">${_esc(r.day || r.type || r.region)}</span>` : ''}</span>
           </div>`).join('')}
-        ${rivers.length > 4 ? `
-          <div style="font-size:12px;color:var(--label4);padding:6px 0">
-            + ещё ${rivers.length - 4} ${_pluralRiver(rivers.length - 4)}
-          </div>` : ''}
-      </div>`;
+        ${rivers.length > 4 ? `<div class="tc-hint">+ ещё ${rivers.length - 4} ${_pluralRiver(rivers.length - 4)}</div>` : ''}
+        ${fish ? `
+          <div class="tc-kv"><span class="tc-muted">Целевая рыба</span><span class="tc-kv-val">${_esc(fish)}</span></div>` : ''}
+      </section>`;
   }
 
   function _pluralRiver(n) {
-    if (n % 10 === 1 && n % 100 !== 11) return 'река';
-    if ([2,3,4].includes(n % 10) && ![12,13,14].includes(n % 100)) return 'реки';
-    return 'рек';
+    return _plural(n, 'река', 'реки', 'рек');
+  }
+
+  // Снаряга — свой список под эту поездку (общий для обложки и Инфо рыбалки).
+  async function _onGearClick(trip, fromCover) {
+    const uid = window.APP?.user?.uid;
+    if (!uid || typeof GearData === 'undefined') return;
+    await GearData.ensureLoaded(uid);
+    if (GearData.hasTripSnapshot(trip.id)) {
+      if (fromCover) hide();
+      _openGear(trip.id);
+    } else {
+      _showGearSourcePicker(trip);
+    }
+  }
+
+  // Перейти на вкладку Гида (ссылки «Весь улов», «Расходы», «Заметки» с
+  // обложки и из Инфо). С обложки — сначала войти в поездку.
+  function _openTripTab(tripId, tab, scrollToId) {
+    const trip = TripsData.getById(tripId);
+    if (!trip) return;
+    const inGuide = _tripId === tripId && document.getElementById('g-tabstrip') && !document.getElementById('trip-cover');
+    if (!inGuide) { hide(); enterTrip(tripId); }
+    if (tab !== 'info' || _activeGuideTab !== 'info') _mountGuideTab(trip, tab);
+    if (scrollToId) {
+      requestAnimationFrame(() => document.getElementById(scrollToId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
   }
 
   function _bind(el, trip) {
@@ -1048,67 +1265,15 @@ const TripCoverIndex = (() => {
     // (иначе history.state продолжит врать, что обложка ещё открыта).
     el.querySelector('#coverBack')?.addEventListener('click', () => history.back());
 
-    // Добавить участника — выбор между приглашением по ссылке (реальный
-    // аккаунт) и гостем без аккаунта (просто имя, через TripsData.addParticipant).
-    el.querySelector('#coverAddPeople')?.addEventListener('click', () => {
-      document.getElementById('addpeople-overlay')?.remove();
-      const overlay = document.createElement('div');
-      overlay.className = 'profile-overlay';
-      overlay.id = 'addpeople-overlay';
-      overlay.innerHTML = `
-        <div class="profile-sheet">
-          <div class="profile-grab"></div>
-          <div class="profile-scroll">
-            <div class="modal-title" style="margin-bottom:14px">Добавить участника</div>
-            <button class="addpeople-opt" data-action="addpeople-invite">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 7h3a5 5 0 015 5 5 5 0 01-5 5h-3m-6 0H6a5 5 0 01-5-5 5 5 0 015-5h3"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
-              <span><b>Пригласить по ссылке</b><br>Войдёт через Google или email, попадёт в эту поездку</span>
-            </button>
-            <button class="addpeople-opt" data-action="addpeople-guest">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg>
-              <span><b>Добавить гостя</b><br>Без аккаунта — просто имя, для тех, кто не пользуется приложением</span>
-            </button>
-            <button class="picker-cancel" data-action="addpeople-close">Отмена</button>
-          </div>
-        </div>`;
-      document.body.appendChild(overlay);
-      overlay.addEventListener('click', e => {
-        if (e.target === overlay) { overlay.remove(); return; }
-        const a = e.target.closest('[data-action]')?.dataset.action;
-        if (a === 'addpeople-close') { overlay.remove(); return; }
-        if (a === 'addpeople-invite') {
-          overlay.remove();
-          if (typeof MembersRender !== 'undefined') MembersRender.showInvite(_tripId, trip.name);
-          return;
-        }
-        if (a === 'addpeople-guest') {
-          overlay.remove();
-          _showAddGuestSheet();
-          return;
-        }
-      });
-    });
-
     // Редактировать поездку
     el.querySelector('#coverEdit')?.addEventListener('click', () => {
       hide();
       if (typeof TripsIndex !== 'undefined') TripsIndex.showEdit(_tripId);
     });
 
-    // Снаряга — свой список под эту поездку
-    el.querySelector('#coverGear')?.addEventListener('click', async () => {
-      const uid = window.APP?.user?.uid;
-      if (!uid || typeof GearData === 'undefined') return;
-      await GearData.ensureLoaded(uid);
-      if (GearData.hasTripSnapshot(_tripId)) {
-        hide();
-        _openGear(_tripId);
-      } else {
-        _showGearSourcePicker(trip);
-      }
-    });
-
-    // Готовность: чекбокс (переключить), × (удалить пункт), + добавить
+    // Удаление пункта готовности — свайпом влево, не крестиком у чекбокса.
+    UIUtils.swipeToDelete(el, '.cover-read-row', '.cover-read-del');
+    // Готовность: чекбокс (переключить), свайп-«Удалить», + добавить, сброс
     el.addEventListener('click', e => {
       const check = e.target.closest('[data-cover-readiness]');
       if (check) {
@@ -1119,21 +1284,8 @@ const TripCoverIndex = (() => {
         if (!item) return;
         item.done = !item.done;
         TripsData.updateTrip(tripId, { readiness: t.readiness });
-        // точечный патч — состав списка не меняется, полный ре-рендер не нужен
-        const done = check.classList.toggle('done');
-        check.textContent = done ? '✓' : '';
-        const label = check.nextElementSibling;
-        if (label) {
-          label.style.color = done ? 'var(--label3)' : '';
-          label.style.textDecoration = done ? 'line-through' : '';
-        }
-        const total = t.readiness.length;
-        const doneCount = t.readiness.filter(it => it.done).length;
-        const pct = total ? Math.round(doneCount / total * 100) : 0;
-        const pctEl  = document.getElementById('coverReadPct');
-        const fillEl = document.getElementById('coverReadFill');
-        if (pctEl)  pctEl.textContent  = pct + '%';
-        if (fillEl) fillEl.style.width = pct + '%';
+        // Пункт переезжает между «осталось» и свёрнутым «готово» — перерисовка секции.
+        _rerenderReadiness(tripId);
         if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
         return;
       }
@@ -1156,49 +1308,54 @@ const TripCoverIndex = (() => {
         _showAddReadinessSheet(addBtn.dataset.coverReadinessAdd);
         return;
       }
+
+      const resetBtn = e.target.closest('[data-cover-readiness-reset]');
+      if (resetBtn) {
+        const tripId = resetBtn.dataset.coverReadinessReset;
+        (async () => {
+          const ok = await UIUtils.confirmSheet('Снять все отметки готовности?', { okLabel: 'Сбросить', danger: false });
+          if (!ok) return;
+          const t = TripsData.getById(tripId);
+          if (!Array.isArray(t?.readiness)) return;
+          t.readiness = t.readiness.map(it => ({ ...it, done: false }));
+          TripsData.updateTrip(tripId, { readiness: t.readiness });
+          _rerenderReadiness(tripId);
+          if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
+        })();
+        return;
+      }
+
+      const a = e.target.closest('[data-action]');
+      if (!a) return;
+      const act = a.dataset.action;
+      // Моё местоположение — ставит координаты вручную и перетягивает погоду
+      if (act === 'geo-weather') { _useMyLocation(trip.id, a); return; }
+      if (act === 'tc-invite') { _showInviteSheet(trip, () => show(_tripId, { silent: true })); return; }
+      if (act === 'info-gear') { _onGearClick(trip, true); return; }
+      if (act === 'tc-rate') { _setRating(trip, parseInt(a.dataset.val, 10)); return; }
+      if (act === 'tc-weather-open') { _showWeatherScreen(trip); return; }
+      if (act === 'tc-open-tab') { _openTripTab(trip.id, a.dataset.tab); return; }
+      if (act === 'tc-open-notes') { _openTripTab(trip.id, 'info', 'g-notes-block'); return; }
+      if (act === 'edit-rating') { _showEditRating(trip); return; }
+      if (act === 'edit-comment') { _showEditComment(trip); return; }
     });
 
     el.querySelector('#coverEnter')?.addEventListener('click', () => {
       hide();
       enterTrip(_tripId);
     });
-
-    // Моё местоположение — ставит координаты вручную и перетягивает погоду
-    el.addEventListener('click', e => {
-      const btn = e.target.closest('[data-action="geo-weather"]');
-      if (!btn) return;
-      _useMyLocation(trip.id, btn);
-    });
-
-    el.querySelector('[data-action="edit-rating"]')?.addEventListener('click', () => _showEditRating(trip));
-    el.querySelector('[data-action="edit-comment"]')?.addEventListener('click', () => _showEditComment(trip));
   }
 
-  // Кнопки "Изменить"/"Редактировать" у рейтинга и заметок на обложке
-  // завершённой поездки были просто без обработчика — чиню тут же, раз уж
-  // рядом. Правки — прямо в объект trip (та же ссылка, что живёт в
-  // TripsState) + запись в Firestore, как и остальные точечные апдейты
-  // обложки (см. _useMyLocation), затем перерисовка всей обложки.
-  // onRefresh — что перерисовать после сохранения: по умолчанию обложка
-  // (вызов с завершённой обложки), но таб "Инфо" рыбалки зовёт с другим
-  // колбэком (там своей обложки нет, перерисовывать нужно сам таб).
+  // Правка рейтинга/итогового комментария поездки. Правки — прямо в объект
+  // trip (та же ссылка, что живёт в TripsState) + запись в Firestore, затем
+  // перерисовка. onRefresh — что перерисовать после сохранения: по
+  // умолчанию обложка, таб "Инфо" рыбалки зовёт со своим колбэком.
   function _showEditRating(trip, onRefresh) {
-    document.getElementById('tc-edit-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'tqp-overlay';
-    overlay.id = 'tc-edit-overlay';
-    overlay.innerHTML = `
-      <div class="tqp-sheet">
-        <div class="tqp-handle"></div>
-        <div class="tqp-title">Рейтинг поездки</div>
-        <input type="number" id="tcEditRating" class="tc-edit-input" min="0" max="10" step="1" value="${trip.rating ?? ''}" placeholder="0–10">
-        <button class="tqp-all" data-action="tc-edit-save">Сохранить</button>
-      </div>`;
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    const overlay = _openSheet('tc-edit-overlay', 'Оценка поездки', trip.name || '',
+      `<input type="number" id="tcEditRating" class="tc-input" min="0" max="10" step="1" value="${trip.rating ?? ''}" placeholder="0–10">`,
+      { footer: '<button type="button" class="tc-btn-primary" data-action="tc-edit-save">Сохранить</button>' });
 
     overlay.addEventListener('click', async e => {
-      if (e.target === overlay) { overlay.remove(); return; }
       if (!e.target.closest('[data-action="tc-edit-save"]')) return;
       let val = parseInt(document.getElementById('tcEditRating')?.value, 10);
       if (!Number.isFinite(val)) val = null;
@@ -1211,22 +1368,11 @@ const TripCoverIndex = (() => {
   }
 
   function _showEditComment(trip, onRefresh) {
-    document.getElementById('tc-edit-overlay')?.remove();
-    const overlay = document.createElement('div');
-    overlay.className = 'tqp-overlay';
-    overlay.id = 'tc-edit-overlay';
-    overlay.innerHTML = `
-      <div class="tqp-sheet">
-        <div class="tqp-handle"></div>
-        <div class="tqp-title">Заметки</div>
-        <textarea id="tcEditComment" class="tc-edit-textarea" placeholder="На что клевало, что взять в следующий раз...">${_esc(trip.comment || '')}</textarea>
-        <button class="tqp-all" data-action="tc-edit-save">Сохранить</button>
-      </div>`;
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    const overlay = _openSheet('tc-edit-overlay', 'Итоги поездки', trip.name || '',
+      `<textarea id="tcEditComment" class="tc-input tc-textarea" placeholder="На что клевало, что взять в следующий раз…">${_esc(trip.comment || '')}</textarea>`,
+      { footer: '<button type="button" class="tc-btn-primary" data-action="tc-edit-save">Сохранить</button>' });
 
     overlay.addEventListener('click', async e => {
-      if (e.target === overlay) { overlay.remove(); return; }
       if (!e.target.closest('[data-action="tc-edit-save"]')) return;
       const val = document.getElementById('tcEditComment')?.value.trim() || '';
       trip.comment = val;
@@ -1252,6 +1398,9 @@ const TripCoverIndex = (() => {
     if (typeof AppRouter !== 'undefined') AppRouter.show('guide');
 
     const trip = TripsData.getById(tripId);
+    // Гид может открыться в обход обложки (быстрые действия Главной,
+    // popstate) — запоминаем поездку и здесь, иначе switchGuideTab молчит.
+    _tripId = tripId;
 
     // ── Сохраняем текущую поездку глобально (используется Реки, Меню и др.) ──
     if (window.APP) {
@@ -1294,24 +1443,22 @@ const TripCoverIndex = (() => {
       // Действия таба "Инфо" у простой рыбалки — те же обработчики, что
       // раньше были на кнопках обложки (#coverInvite/#coverGear/#coverEdit),
       // теперь просто как кнопки внутри самого таба.
-      if (e.target.closest('[data-action="info-invite"]')) {
-        if (typeof MembersRender !== 'undefined') MembersRender.showInvite(trip.id, trip.name);
+      // «+ позвать» (в герое Инфо рыбалки) — общий лист приглашения/гостей.
+      if (e.target.closest('[data-action="info-invite"]') || e.target.closest('[data-action="tc-invite"]')) {
+        if (_canInvite(trip)) _showInviteSheet(trip, () => _mountGuideTab(trip, 'info'));
         return;
       }
+      const rateBtn = e.target.closest('[data-action="tc-rate"]');
+      if (rateBtn) { _setRating(trip, parseInt(rateBtn.dataset.val, 10)); return; }
+      if (e.target.closest('[data-action="tc-weather-open"]')) { _showWeatherScreen(trip); return; }
+      const tabLink = e.target.closest('[data-action="tc-open-tab"]');
+      if (tabLink) { _openTripTab(trip.id, tabLink.dataset.tab); return; }
+      if (e.target.closest('[data-action="tc-open-notes"]')) { _openTripTab(trip.id, 'info', 'g-notes-block'); return; }
       if (e.target.closest('[data-action="info-edit"]')) {
         if (typeof TripsIndex !== 'undefined') TripsIndex.showEdit(trip.id);
         return;
       }
-      if (e.target.closest('[data-action="info-gear"]')) {
-        const uid = window.APP?.user?.uid;
-        if (uid && typeof GearData !== 'undefined') {
-          GearData.ensureLoaded(uid).then(() => {
-            if (GearData.hasTripSnapshot(trip.id)) _openGear(trip.id);
-            else _showGearSourcePicker(trip);
-          });
-        }
-        return;
-      }
+      if (e.target.closest('[data-action="info-gear"]')) { _onGearClick(trip, false); return; }
       if (e.target.closest('[data-action="info-add-rating"]') || e.target.closest('[data-action="edit-rating"]')) {
         _showEditRating(trip, () => _mountGuideTab(trip, 'info'));
         return;
@@ -1331,30 +1478,30 @@ const TripCoverIndex = (() => {
       // Заметки поездки (таб "Инфо") — реалтайм-список, обновление DOM
       // приходит через _listenNotes()/onSnapshot, тут только пишем в
       // Firestore. См. modules/notes/*.
-      if (e.target.closest('[data-action="note-safety-toggle"]')) {
-        e.target.closest('[data-action="note-safety-toggle"]').classList.toggle('active');
+      const chip = e.target.closest('[data-action="note-safety-toggle"], [data-action="note-task-add-toggle"], [data-action="note-private-add-toggle"]');
+      if (chip) {
+        chip.setAttribute('aria-pressed', chip.classList.toggle('active'));
         return;
       }
       if (e.target.closest('[data-action="note-add"]')) {
         const input = document.getElementById('g-note-input');
         const text = input?.value.trim();
-        if (!text) return;
+        if (!text) { input?.focus(); return; }
         const safety = !!document.querySelector('[data-action="note-safety-toggle"]')?.classList.contains('active');
-        if (typeof NotesFirebase !== 'undefined') NotesFirebase.addNote(trip.id, { text, safety });
+        const isTask = !!document.querySelector('[data-action="note-task-add-toggle"]')?.classList.contains('active');
+        const isPrivate = !!document.querySelector('[data-action="note-private-add-toggle"]')?.classList.contains('active');
+        if (typeof NotesFirebase !== 'undefined') NotesFirebase.addNote(trip.id, { text, safety, isTask, private: isPrivate });
         if (input) input.value = '';
+        document.querySelectorAll('.tc-notes-compose .tc-chip.active').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-pressed', 'false'); });
         return;
       }
-      const pinBtn = e.target.closest('[data-action="note-pin"]');
-      if (pinBtn) {
-        const note = (typeof NotesState !== 'undefined' ? NotesState.getNotes(trip.id) : []).find(n => n._id === pinBtn.dataset.id);
-        if (note && typeof NotesFirebase !== 'undefined') NotesFirebase.setPinned(trip.id, pinBtn.dataset.id, !note.pinned);
-        return;
-      }
-      const delBtn = e.target.closest('[data-action="note-del"]');
-      if (delBtn) {
-        if (typeof NotesFirebase !== 'undefined') NotesFirebase.deleteNote(trip.id, delBtn.dataset.id);
-        return;
-      }
+      // «…» у заметки — лист действий (закрепить/задача/безопасность/личная/удалить).
+      const moreBtn = e.target.closest('[data-action="tc-note-more"]');
+      if (moreBtn) { _showNoteActions(trip.id, moreBtn.dataset.id); return; }
+      const expand = e.target.closest('[data-action="tc-note-expand"]');
+      if (expand) { expand.classList.toggle('expanded'); return; }
+      const noteBtn = e.target.closest('[data-action="note-done-toggle"], [data-action="note-pin"], [data-action="note-task-toggle"], [data-action="note-private-toggle"], [data-action="note-del"]');
+      if (noteBtn) { _noteAction(trip.id, noteBtn.dataset.action, noteBtn.dataset.id); return; }
 
       const hd = e.target.closest('[data-target]');
       if (!hd) return;
@@ -1373,162 +1520,62 @@ const TripCoverIndex = (() => {
     _mountGuideTab(trip, 'info');
   }
 
+  // Полоска вкладок (макет «Гид — Инфо»): текст с подчёркиванием активной,
+  // горизонтальный скролл. ⚙ «Вкладки Гида» — последним элементом полоски.
+  // Действия рыбалки, что раньше жили тут кружками (Снаряга / Пригласить /
+  // Редактировать), переехали: снаряга — строкой в Инфо, «+ позвать» — в
+  // ряд участников героя Инфо, карандаш — в шапку Гида.
   function _renderTabStrip(trip) {
     const ids = _personalGuideTabIds(trip);
     const pills = ids.map(id => {
       const label = id === 'info' ? 'Инфо' : _ALL_TAB_DEFS[id].label;
-      return `<div class="g-tab ${id === _activeGuideTab ? 'active' : ''}" data-gtab="${id}">${_esc(label)}</div>`;
+      const on = id === _activeGuideTab;
+      return `<button type="button" role="tab" aria-selected="${on}" class="g-tab ${on ? 'active' : ''}" data-gtab="${id}">${_esc(label)}</button>`;
     }).join('');
-
-    // У простой "Рыбалки" нет обложки со своими иконками (Пригласить/
-    // Снаряга/Редактировать) — раньше эти три жили отдельным рядом кнопок
-    // под шапкой в Инфо, не понравилось. Переехали сюда же, компактными
-    // кружками рядом с ⚙, тем же классом .g-tab-settings. Иконки — из
-    // подключённого в приложении шрифта Tabler (не эмодзи: цветные эмодзи
-    // вроде ✏️ выбиваются на фоне монохромной остальной полоски, а ➕ на
-    // тёмном фоне почти не видно). Снаряга — словом, не иконкой-рюкзаком.
-    let icons = `<button class="g-tab-settings" data-action="open-print" title="Печать">
-                <svg viewBox="0 0 24 24"><path d="M17 17h2a2 2 0 0 0 2 -2v-4a2 2 0 0 0 -2 -2h-14a2 2 0 0 0 -2 2v4a2 2 0 0 0 2 2h2"/><rect x="7" y="13" width="10" height="8" rx="1"/><path d="M7 9v-4a1 1 0 0 1 1 -1h5l3 3v2"/></svg>
-              </button>`
-              + `<button class="g-tab-settings" data-action="guide-tabs-settings" title="Настроить вкладки">⚙</button>`;
-    if (trip.type === 'fishing') {
-      const isOwner = window.APP?.user?.uid === trip.ownerId;
-      icons = `<button class="g-tab-settings g-tab-word" data-action="info-gear" title="Снаряга">Снаряга</button>`
-            + icons
-            + ((!trip.inviteRestricted || isOwner) ? `<button class="g-tab-settings" data-action="info-invite" title="Пригласить"><i class="ti ti-plus"></i></button>` : '')
-            + (isOwner ? `<button class="g-tab-settings" data-action="info-edit" title="Редактировать"><i class="ti ti-pencil"></i></button>` : '');
-    }
-    return `<div class="g-tabstrip" id="g-tabstrip">${pills}${icons}</div>`;
+    const settings = `<button type="button" class="g-tab-settings" data-action="guide-tabs-settings" aria-label="Настроить вкладки">${UIUtils.ico('adjustments-horizontal')}</button>`;
+    return `<div class="g-tabstrip" id="g-tabstrip" role="tablist">${pills}${settings}</div>`;
   }
 
-  // Липкий заголовок + полоска табов рисуются один раз на весь вход в
-  // поездку — переключение табов дальше меняет только #g-tab-panel, не
-  // трогая это (иначе терялась бы прокрутка/состояние соседних вкладок).
+  // Подпись под названием в шапке Гида: даты · статус · подзаголовок импорта.
+  function _guideSub(trip) {
+    const s = trip.startDate ? new Date(trip.startDate + 'T00:00:00') : null;
+    const e = trip.endDate ? new Date(trip.endDate + 'T00:00:00') : null;
+    let dates = '';
+    if (s && e) {
+      const mon = d => MONTHS_GEN[d.getMonth()].slice(0, 3);
+      dates = trip.startDate === trip.endDate ? `${s.getDate()} ${MONTHS_GEN[s.getMonth()]}`
+        : s.getMonth() === e.getMonth() ? `${s.getDate()}–${e.getDate()} ${MONTHS_GEN[s.getMonth()]}`
+        : `${s.getDate()} ${mon(s)} – ${e.getDate()} ${mon(e)}`;
+    }
+    let status = '';
+    if (trip.status === 'done') status = 'завершена';
+    else if (trip.status === 'active') status = 'идёт';
+    else if (trip.status === 'upcoming' && s) {
+      const days = Math.ceil((s - new Date()) / 86400000);
+      if (days > 0) status = `через ${days} ${_plural(days, 'день', 'дня', 'дней')}`;
+    }
+    return [dates, status, trip.importData?.meta?.subtitle || ''].filter(Boolean).join(' · ');
+  }
+
+  // Шапка Гида (gheader в макетах) + полоска табов рисуются один раз на
+  // весь вход в поездку — переключение табов меняет только #g-tab-panel
+  // (иначе терялась бы прокрутка/состояние соседних вкладок). Стили — в
+  // modules/tripcover/styles.css (раньше были инлайном здесь).
   function _renderGuideShell(trip) {
-    const meta = trip.importData?.meta || {};
+    const isOwner = TripsData.canManage(trip);
     return `
-      <style>
-        .g-tabstrip{display:flex;gap:6px;padding:10px 12px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;background:var(--topbar-bg);position:sticky;top:0;z-index:9}
-        .g-tabstrip::-webkit-scrollbar{display:none}
-        .g-tab{flex:0 0 auto;padding:7px 14px;border-radius:16px;font-size:13px;font-weight:600;color:rgba(255,255,255,.65);background:rgba(255,255,255,.08);cursor:pointer;white-space:nowrap;-webkit-tap-highlight-color:transparent;transition:transform 120ms var(--ease)}
-        .g-tab.active{background:#fff;color:var(--topbar-bg)}
-        .g-tab:active{transform:scale(0.96)}
-        #g-tab-panel{transition:opacity 120ms var(--ease)}
-        /* Другие модули, монтируемые в #g-tab-panel (Улов/Расходы/...),
-           уже сами кладут нижний отступ под таб-бар в своих .xx-scroll —
-           таб "Инфо" рисуется прямо в панель без обёртки и своего отступа
-           не имел, поэтому последний блок (рейтинг/заметка) прятался под
-           нижним меню. */
-        .g-info-bottom-pad{height:calc(83px + env(safe-area-inset-bottom))}
-        .g-tab-settings{flex:0 0 auto;margin-left:2px;width:30px;height:30px;border-radius:50%;border:none;background:rgba(255,255,255,.08);color:rgba(255,255,255,.65);font-size:14px;cursor:pointer;-webkit-tap-highlight-color:transparent;display:inline-flex;align-items:center;justify-content:center}
-        .g-tab-settings:active{background:rgba(255,255,255,.16)}
-        .g-tab-settings svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-        .g-tab-word{width:auto;border-radius:15px;padding:0 12px;font-size:13px;font-weight:600;font-family:inherit;white-space:nowrap}
-        #g-tab-panel .mn-topbar, #g-tab-panel .sh-topbar,
-        #g-tab-panel .exp-topbar, #g-tab-panel .ct-topbar,
-        #g-tab-panel .bar-topbar, #g-tab-panel .sf-topbar,
-        #g-tab-panel .rec-topbar { display:none }
-        /* .sh-stats/.bar-tabs/.rec-tabs залипают на top:80px, рассчитывая на
-           высоту своего топбара — тот скрыт строкой выше. top:0 столкнул бы
-           их с уже залипающей полоской табов (#g-tabstrip тоже sticky top:0),
-           поэтому здесь им проще просто не залипать и скроллиться с контентом. */
-        #g-tab-panel .sh-stats, #g-tab-panel .bar-tabs, #g-tab-panel .rec-tabs { position:static }
-        .gts-row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:0.5px solid var(--sep2)}
-        .gts-row:last-child{border-bottom:none}
-        .gts-check{width:20px;height:20px;border-radius:50%;flex-shrink:0;border:1.5px solid var(--label4);display:flex;align-items:center;justify-content:center;cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background var(--duration-fast),border-color var(--duration-fast)}
-        .gts-check.checked{background:var(--green);border-color:var(--green)}
-        .gts-check.checked::after{content:'';width:5px;height:9px;border:1.5px solid #fff;border-top:none;border-left:none;transform:rotate(40deg) translate(-0.5px,-1px);display:block}
-        .gts-label{flex:1;font-size:15px;color:var(--label)}
-        .gts-arrows{display:flex;gap:4px;flex-shrink:0}
-        .gts-arrow{width:30px;height:30px;border-radius:8px;border:none;background:var(--bg3);color:var(--label2);font-size:14px;cursor:pointer}
-        .gts-arrow:disabled{opacity:.3;cursor:default}
-        .gts-save{width:100%;background:var(--accent);border:none;border-radius:var(--radius-md);padding:13px;font-size:15px;font-weight:700;color:#fff;cursor:pointer;margin-top:12px}
-        .g-acc{background:var(--bg2);border-radius:var(--radius-md);margin:0 12px 10px;overflow:hidden}
-        .g-acc-hd{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;cursor:pointer;-webkit-tap-highlight-color:transparent}
-        .g-acc-hd:active{background:var(--bg3)}
-        .g-acc-title{font-size:15px;font-weight:700;color:var(--label)}
-        .g-acc-chev{font-size:18px;color:var(--label4);transition:transform 0.22s;line-height:1;flex-shrink:0}
-        .g-acc-chev.open{transform:rotate(180deg)}
-        .g-acc-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows 250ms var(--ease)}
-        .g-acc-body.show{grid-template-rows:1fr}
-        .g-acc-body-inner{overflow:hidden;border-top:0.5px solid var(--sep2)}
-        .g-flight{display:flex;justify-content:space-between;align-items:center;padding:10px 15px;border-bottom:0.5px solid var(--sep2)}
-        .g-flight:last-child{border-bottom:none}
-        .g-flight-l{}
-        .g-flight-route{font-size:14px;font-weight:600;color:var(--label)}
-        .g-flight-num{font-size:12px;color:var(--label3);margin-top:2px}
-        .g-flight-r{text-align:right}
-        .g-flight-dep{font-size:13px;color:var(--accent);font-weight:500}
-        .g-flight-arr{font-size:11px;color:var(--label3);margin-top:2px}
-        .g-tide{display:grid;grid-template-columns:100px 1fr;gap:2px 10px;padding:9px 15px;border-bottom:0.5px solid var(--sep2);align-items:start}
-        .g-tide:last-child{border-bottom:none}
-        .g-tide-date{font-size:13px;font-weight:600;color:var(--label)}
-        .g-tide-sun{font-size:11px;color:var(--label3);margin-top:1px}
-        .g-tide-info{font-size:12px;color:var(--accent);line-height:1.5}
-        .g-day-hd{display:flex;align-items:center;gap:10px;padding:11px 15px;cursor:pointer;border-top:0.5px solid var(--sep2);-webkit-tap-highlight-color:transparent}
-        .g-day-hd:first-child{border-top:none}
-        .g-day-hd:active{background:var(--bg3)}
-        .g-day-title{font-size:13px;font-weight:700;color:var(--label);flex:1}
-        .g-day-wx{font-size:11px;color:var(--label3);white-space:nowrap;flex-shrink:0}
-        .g-day-body{display:grid;grid-template-rows:0fr;transition:grid-template-rows 250ms var(--ease)}
-        .g-day-body.show{grid-template-rows:1fr}
-        .g-row{display:flex;gap:12px;padding:8px 15px;border-bottom:0.5px solid var(--sep2)}
-        .g-row:last-child{border-bottom:none}
-        .g-row-time{font-size:11px;color:var(--label3);min-width:80px;flex-shrink:0;padding-top:2px;font-weight:500}
-        .g-row-act{font-size:13px;color:var(--label);line-height:1.45}
-        .g-wx-card{margin:0 12px 10px;padding:14px;background:linear-gradient(135deg,rgba(10,132,255,.10),rgba(10,132,255,.02));border:0.5px solid rgba(10,132,255,.25);border-radius:var(--radius-md);transition:opacity 200ms var(--ease)}
-        @starting-style{ .g-wx-card{opacity:0} }
-        .g-wx-hd{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}
-        .g-wx-badge{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--accent)}
-        .g-wx-date{font-size:12px;color:var(--label3)}
-        .g-wx-temp{font-size:30px;font-weight:800;color:var(--label);letter-spacing:-.5px;margin-bottom:10px}
-        .g-wx-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
-        .g-wx-item{text-align:center}
-        .g-wx-ic{font-size:16px;margin-bottom:2px}
-        .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
-        .g-wx-lbl{font-size:10px;color:var(--label3);margin-top:1px}
-        .g-wx-geo{margin-left:auto;background:rgba(10,132,255,.12);border:none;border-radius:8px;width:26px;height:26px;font-size:13px;line-height:1;cursor:pointer;flex-shrink:0}
-        .g-wx-geo:active{opacity:.7}
-        .g-wx-geo:disabled{opacity:.5}
-        .g-wx-sun{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;padding-top:10px;border-top:.5px solid rgba(10,132,255,.15)}
-        .g-wx-sun-item{display:flex;align-items:center;justify-content:center;gap:6px}
-        .g-wx-sun-item .g-wx-ic{margin-bottom:0;font-size:14px}
-        .g-wx-sun-item .g-wx-val{font-size:12px;font-weight:600;color:var(--label)}
-        .g-wx-sun-item .g-wx-lbl{font-size:10px;color:var(--label3)}
-        .g-wx-hint{margin-top:8px;font-size:11px;line-height:1.4;color:var(--label3)}
-        .g-wx-hint-good{color:#34c759}
-        .g-wx-hint-bad{color:#ff9f0a}
-        /* Вне .g-wx-card (прямо над аккордеоном погоды в Инфо) — своя
-           боковая привязка вместо margin-top:8px, чтобы совпадать по
-           краям с карточками рядом, и покрупнее, раз это не мелкая
-           приписка внизу карточки, а самостоятельная строка. */
-        #g-weather-charts > .g-wx-hint{margin:0 16px 8px;font-size:13px}
-        .g-windy-wrap{height:320px}
-        .g-windy-frame{width:100%;height:100%;border:none;display:block}
-        .g-empty{text-align:center;padding:56px 24px}
-        .g-empty__icon{font-size:48px;margin-bottom:14px}
-        .g-empty__title{font-size:17px;font-weight:700;color:var(--label);margin-bottom:8px}
-        .g-empty__sub{font-size:14px;color:var(--label3);line-height:1.5}
-        #g-tab-panel > .g-info-gap > .g-acc{margin-left:16px;margin-right:16px}
-        .g-info-add-btn{width:100%;background:none;border:1.5px dashed var(--sep);border-radius:var(--radius-md);padding:12px;font-size:14px;font-weight:600;color:var(--accent);font-family:inherit;cursor:pointer}
-        .g-chart-block{padding:12px 15px;border-top:0.5px solid var(--sep2)}
-        .g-chart-block:first-of-type{border-top:none}
-        .g-chart-label{font-size:12px;color:var(--label3);margin-bottom:6px;font-weight:600}
-        .g-chart-axis{display:flex;justify-content:space-between;font-size:10px;color:var(--label4);margin-top:2px}
-        .g-chart-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none}
-        .g-chart-scroll::-webkit-scrollbar{display:none}
-        .g-chart-scroll svg{display:block}
-        .g-info-gap{margin-top:14px}
-      </style>
-      <div style="background:var(--topbar-bg);color:#fff;padding:14px 16px 10px;position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:10px">
+      <div class="tc-ghead">
         ${trip.type === 'expedition' ? `
-        <button class="g-tab-settings" data-action="guide-back-to-cover" aria-label="Назад к обложке поездки" style="flex-shrink:0">
-          <i class="ti ti-chevron-left" aria-hidden="true"></i>
-        </button>` : ''}
-        <div style="flex:1;min-width:0">
-          <div style="font-size:18px;font-weight:800;letter-spacing:-0.4px">${_esc(trip.name)}</div>
-          <div style="font-size:12px;opacity:0.72;margin-top:3px">${_esc(meta.subtitle || '')}</div>
+        <button type="button" class="g-head-btn" data-action="guide-back-to-cover" aria-label="К обложке поездки">${UIUtils.ico('chevron-left')}</button>` : ''}
+        <div class="tc-ghead-titles">
+          <div class="tc-ghead-title">${_esc(trip.name)}</div>
+          <div class="tc-ghead-sub">${_esc(_guideSub(trip))}</div>
         </div>
+        ${trip.type === 'fishing' && isOwner ? `
+        <button type="button" class="g-head-btn" data-action="info-edit" aria-label="Изменить поездку">${UIUtils.ico('pencil')}</button>` : ''}
+        <button type="button" class="g-head-btn g-theme" aria-label="Переключить тему"
+                onclick="AppHeader.toggleTheme()">${UIUtils.ico('sun', 'g-theme-sun')}${UIUtils.ico('moon', 'g-theme-moon')}</button>
+        <button type="button" class="g-head-btn" data-action="open-print" aria-label="Печать">${UIUtils.ico('printer')}</button>
       </div>
       ${_renderTabStrip(trip)}
       <div id="g-tab-panel"></div>`;
@@ -1565,6 +1612,11 @@ const TripCoverIndex = (() => {
     };
   }
 
+  // Заголовок секции Инфо (20px) + необязательная мелкая подсказка под ним.
+  function _secTitle(title, right, hint) {
+    return `<div class="tc-sec"><h2 class="tc-sec-title">${title}</h2>${right || ''}</div>${hint ? `<div class="tc-sec-hint">${hint}</div>` : ''}`;
+  }
+
   function _travelSection(trip) {
     const travel = trip.travel || {};
     // Только те, кого отметили "свои даты" при создании поездки (см.
@@ -1577,20 +1629,20 @@ const TripCoverIndex = (() => {
       const legs = (travel[p.name]?.legs) || [];
       const { upcoming, past } = _travelSplitLegs(legs);
       return `
-        <div class="g-travel-row" data-action="travel-edit" data-name="${_esc(p.name)}">
-          <div class="g-travel-row-name">${_esc(p.name)}</div>
-          ${upcoming.length
-            ? upcoming.map(l => `<div class="g-travel-row-line">${_travelLegLine(l)}</div>`).join('')
-            : `<div class="g-travel-row-empty">${past.length ? 'Все этапы прошли' : 'Не указано'} — нажми, чтобы заполнить</div>`}
-          ${past.length ? `<div class="g-travel-row-past-hint">+ ${past.length} прошедших</div>` : ''}
-        </div>`;
+        <button type="button" class="tc-link-row g-travel-row" data-action="travel-edit" data-name="${_esc(p.name)}">
+          <span class="tc-link-main">
+            <span class="tc-link-title">${_esc(p.name)}</span>
+            ${upcoming.length
+              ? upcoming.map(l => `<span class="tc-link-sub">${_travelLegLine(l)}</span>`).join('')
+              : `<span class="tc-link-sub tc-muted">${past.length ? 'все этапы прошли' : 'не указано'} — нажми, чтобы заполнить</span>`}
+            ${past.length ? `<span class="tc-link-sub tc-muted">+ ${past.length} ${_plural(past.length, 'прошедший', 'прошедших', 'прошедших')}</span>` : ''}
+          </span>
+          <span class="tc-link-right">${UIUtils.ico('chevron-right')}</span>
+        </button>`;
     }).join('');
 
-    return `
-      <div class="cover-section g-travel">
-        <div class="cover-section-head"><div class="cover-section-title">Как добираются</div></div>
-        <div class="g-travel-list">${rows}</div>
-      </div>`;
+    return _secTitle('Как добираются', '', 'Рейсы, поезда, пересадки — у каждого свои. Заполнить может любой участник.')
+      + `<section class="tc-card tc-card--list">${rows}</section>`;
   }
 
   function _saveTravelLegs(tripId, name, legs) {
@@ -1614,47 +1666,40 @@ const TripCoverIndex = (() => {
     const legs = (trip?.travel?.[name]?.legs) || [];
     const { upcoming, past } = _travelSplitLegs(legs);
 
+    // Удаление этапа — свайпом влево (UIUtils.swipeToDelete), не крестиком.
     const legRow = l => `
-      <div class="g-travel-leg-row">
-        <div class="g-travel-leg-text">${_travelLegLine(l) || '<span class="g-travel-row-empty">Без даты</span>'}</div>
-        <button class="sh-del" data-action="travel-leg-del" data-id="${_esc(l.id)}" aria-label="Удалить">×</button>
+      <div class="tc-swipe-row tc-leg">
+        <div class="tc-leg-text">${_travelLegLine(l) || '<span class="tc-muted">Без даты</span>'}</div>
+        <button type="button" class="tc-swipe-del" data-action="travel-leg-del" data-id="${_esc(l.id)}" aria-label="Удалить этап">Удалить</button>
       </div>`;
 
     return `
       <div class="g-travel-legs" id="g-travel-legs">
-        ${upcoming.length ? upcoming.map(legRow).join('') : '<div class="g-notes-empty">Этапов пока нет</div>'}
+        ${upcoming.length ? `<div class="tc-legs">${upcoming.map(legRow).join('')}</div>` : '<div class="tc-hint">Этапов пока нет</div>'}
         ${past.length ? `
-          <div class="g-travel-past-toggle" data-action="travel-past-toggle">
-            Прошедшее (${past.length}) <i class="ti ti-chevron-${_travelPastOpen ? 'up' : 'down'}"></i>
-          </div>
-          ${_travelPastOpen ? past.map(legRow).join('') : ''}
+          <button type="button" class="tc-text-btn" data-action="travel-past-toggle">
+            Прошедшие (${past.length}) ${UIUtils.ico(_travelPastOpen ? 'chevron-up' : 'chevron-down')}
+          </button>
+          ${_travelPastOpen ? `<div class="tc-legs">${past.map(legRow).join('')}</div>` : ''}
         ` : ''}
       </div>
-      <div class="g-travel-field-label" style="margin-top:12px">Добавить этап</div>
-      <div class="g-travel-row-2">
-        <input type="date" class="g-travel-input" id="gt-leg-date">
-        <input type="time" class="g-travel-input" id="gt-leg-time">
+      <div class="tc-field-title">Добавить этап</div>
+      <div class="tc-grid2">
+        <input type="date" class="tc-input" id="gt-leg-date" aria-label="Дата">
+        <input type="time" class="tc-input" id="gt-leg-time" aria-label="Время">
       </div>
-      <input type="text" class="g-travel-input" id="gt-leg-loc" placeholder="Место (аэропорт, город...)">
-      <input type="text" class="g-travel-input" id="gt-leg-note" placeholder="Заметка — «прилёт», «дальше на яхте»...">
-      <button class="tqp-all" data-action="travel-leg-add" data-name="${_esc(name)}">+ Добавить этап</button>`;
+      <input type="text" class="tc-input" id="gt-leg-loc" placeholder="Место — аэропорт, город…">
+      <input type="text" class="tc-input" id="gt-leg-note" placeholder="Заметка — «прилёт», «дальше на яхте»…">
+      <button type="button" class="tc-add-dashed" data-action="travel-leg-add" data-name="${_esc(name)}">+ Добавить этап</button>
+      <div class="tc-hint">Прошедшие этапы свернутся сами. Удалить этап — смахнуть влево.</div>`;
   }
 
   function _showTravelEdit(tripId, name) {
-    document.getElementById('g-travel-overlay')?.remove();
     _travelPastOpen = false;
-
-    const overlay = document.createElement('div');
-    overlay.className = 'tqp-overlay';
-    overlay.id = 'g-travel-overlay';
-    overlay.innerHTML = `
-      <div class="tqp-sheet">
-        <div class="tqp-handle"></div>
-        <div class="tqp-title">Как добирается — ${_esc(name)}</div>
-        <div id="g-travel-edit-body">${_travelEditBody(tripId, name)}</div>
-      </div>`;
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    const trip = TripsData.getById(tripId);
+    const overlay = _openSheet('g-travel-overlay', 'Как добирается', [name, trip?.name].filter(Boolean).join(' · '),
+      `<div id="g-travel-edit-body">${_travelEditBody(tripId, name)}</div>`);
+    UIUtils.swipeToDelete(overlay, '.tc-swipe-row', '.tc-swipe-del');
 
     const rerenderBody = () => {
       const body = overlay.querySelector('#g-travel-edit-body');
@@ -1662,8 +1707,6 @@ const TripCoverIndex = (() => {
     };
 
     overlay.addEventListener('click', e => {
-      if (e.target === overlay) { overlay.remove(); return; }
-
       if (e.target.closest('[data-action="travel-past-toggle"]')) {
         _travelPastOpen = !_travelPastOpen;
         rerenderBody();
@@ -1696,17 +1739,72 @@ const TripCoverIndex = (() => {
     });
   }
 
+  // ── Паспорта (секция Инфо у экспедиций, макет V2GuideTravel) ──────────────
+  // Только чтение: сроки паспорта РФ/загран берутся из профиля участника
+  // (members/{uid}.passportRf/passportIntl, правятся в своём профиле) —
+  // чтобы не узнать о просрочке в аэропорту. Гости без аккаунта не
+  // показываются (профиля нет). Подсветка — как в профиле
+  // (modules/members/render.js _passportDateCls): просрочен — красным,
+  // меньше 90 дней — оранжевым. Профили дотягиваются асинхронно.
+  const _passportCache = {};
+  const _PASSPORT_WARN_DAYS = 90;
+
+  function _passportPart(label, date) {
+    if (!date) return '';
+    const today = new Date().toISOString().slice(0, 10);
+    const warnBy = new Date(today);
+    warnBy.setDate(warnBy.getDate() + _PASSPORT_WARN_DAYS);
+    const cls = date < today ? 'tc-c-red' : date <= warnBy.toISOString().slice(0, 10) ? 'tc-c-orange' : '';
+    const d = new Date(date + 'T00:00:00');
+    const txt = isNaN(d) ? _esc(date) : d.toLocaleDateString('ru');
+    return `<span class="${cls}">${label} до ${txt}${cls === 'tc-c-red' ? ' — просрочен' : ''}</span>`;
+  }
+
+  function _passportsSection(trip) {
+    if (trip.type !== 'expedition' || trip.status === 'done') return '';
+    const people = (trip.participants || []).filter(p => p.uid);
+    if (!people.length) return '';
+    const rows = people.map(p => {
+      const prof = _passportCache[p.uid];
+      let val;
+      if (prof === undefined) val = '<span class="tc-muted">…</span>';
+      else {
+        const parts = [_passportPart('РФ', prof.passportRf), _passportPart('загран', prof.passportIntl)].filter(Boolean);
+        val = parts.length ? parts.join(' · ') : '<span class="tc-muted">не указано</span>';
+      }
+      return `<div class="tc-link-row tc-link-row--static"><span class="tc-link-main"><span class="tc-link-title">${_esc(p.name)}</span><span class="tc-link-sub">${val}</span></span></div>`;
+    }).join('');
+    return _secTitle('Паспорта', '', 'Срок действия — чтобы не узнать о просрочке в аэропорту. Указывается в своём профиле.')
+      + `<section class="tc-card tc-card--list">${rows}</section>`;
+  }
+
+  function _loadPassports(trip) {
+    if (trip.type !== 'expedition' || trip.status === 'done' || typeof MembersFirebase === 'undefined') return;
+    const missing = (trip.participants || []).filter(p => p.uid && _passportCache[p.uid] === undefined).map(p => p.uid);
+    if (!missing.length) return;
+    Promise.all(missing.map(uid => MembersFirebase.getProfile(uid).then(pr => {
+      _passportCache[uid] = pr ? { passportRf: pr.passportRf || '', passportIntl: pr.passportIntl || '' } : {};
+    }).catch(() => { _passportCache[uid] = {}; }))).then(() => {
+      const el = document.getElementById('g-passports-section');
+      if (el && _tripId === trip.id) el.innerHTML = _passportsSection(trip);
+    });
+  }
+
   // ── Заметки поездки (секция внутри таба "Инфо") ──────────────────────────
   // Не отдельная вкладка Гида — Дмитрий прав, что для простой доски заметок
   // это перебор (плюс пришлось бы добавлять в настройки видимости вкладок).
   // Живёт в NotesState/NotesFirebase (modules/notes/*), тот же паттерн
   // realtime-подписки с несколькими подписчиками, что у CatchesFirebase.
+  // Поле ввода рисуется один раз (_notesComposer) — снапшот перерисовывает
+  // только заголовок со счётчиком и список, набранный текст не теряется.
 
   function _listenNotes(tripId) {
     if (_notesUnsub) { _notesUnsub(); _notesUnsub = null; }
     if (typeof NotesFirebase === 'undefined') return;
     _notesUnsub = NotesFirebase.listen(tripId, arr => {
       NotesState.setNotes(tripId, arr);
+      const head = document.getElementById('g-notes-head');
+      if (head) head.innerHTML = _notesHead(tripId);
       const section = document.getElementById('g-notes-section');
       if (section) section.innerHTML = _notesSection(tripId);
     });
@@ -1715,37 +1813,105 @@ const TripCoverIndex = (() => {
   function _canDeleteNote(tripId, note) {
     const myUid = window.APP?.user?.uid;
     if (myUid && note.createdBy === myUid) return true;
-    return TripsData.getById(tripId)?.ownerId === myUid;
+    return TripsData.canManage(TripsData.getById(tripId));
+  }
+
+  // Приватность может переключать только автор — в отличие от удаления,
+  // тут организатору поездки исключение не делаем: это не модерация,
+  // а личный переключатель автора. См. firestore.rules (тот же принцип
+  // закреплён и на сервере, не только тут).
+  function _isNoteAuthor(note) {
+    const myUid = window.APP?.user?.uid;
+    return !!myUid && note.createdBy === myUid;
+  }
+
+  function _noteDate(iso, long) {
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return `${d.getDate()} ${long ? MONTHS_GEN[d.getMonth()] : MONTHS_GEN[d.getMonth()].slice(0, 3)}`;
+  }
+
+  // Все действия с заметкой — одна точка (кнопки в списке и лист «…»).
+  function _noteAction(tripId, action, noteId) {
+    const note = (typeof NotesState !== 'undefined' ? NotesState.getNotes(tripId) : []).find(n => n._id === noteId);
+    if (!note || typeof NotesFirebase === 'undefined') return;
+    if (action === 'note-pin') NotesFirebase.setPinned(tripId, noteId, !note.pinned);
+    else if (action === 'note-task-toggle') NotesFirebase.setTask(tripId, noteId, !note.isTask);
+    else if (action === 'note-done-toggle') NotesFirebase.setDone(tripId, noteId, !note.done);
+    else if (action === 'note-private-toggle') NotesFirebase.setPrivate(tripId, noteId, !note.private);
+    else if (action === 'note-safety-set') NotesFirebase.setSafety(tripId, noteId, !note.safety);
+    else if (action === 'note-del') NotesFirebase.deleteNote(tripId, noteId);
+  }
+
+  // Лист действий заметки (макет V2NoteActions).
+  function _showNoteActions(tripId, noteId) {
+    const note = (typeof NotesState !== 'undefined' ? NotesState.getNotes(tripId) : []).find(n => n._id === noteId);
+    if (!note) return;
+    const act = (action, label, sub, cls) => `
+      <button type="button" class="tc-act ${cls || ''}" data-note-act="${action}">
+        <span>${label}</span>${sub ? `<span class="tc-act-sub">${sub}</span>` : ''}
+      </button>`;
+    const body = `<div class="tc-acts">
+      ${act('note-pin', note.pinned ? 'Открепить' : 'Закрепить наверху')}
+      ${act('note-task-toggle', note.isTask ? 'Убрать из задач' : 'Сделать задачей', note.isTask ? '' : 'появится кружок «сделано»')}
+      ${act('note-safety-set', note.safety ? 'Снять пометку «Безопасность»' : 'Пометить «Безопасность»')}
+      ${_isNoteAuthor(note) ? act('note-private-toggle', note.private ? 'Сделать видной всем' : 'Видна только мне') : ''}
+      ${_canDeleteNote(tripId, note) ? act('note-del', 'Удалить', '', 'tc-act--danger') : ''}
+    </div>`;
+    const overlay = _openSheet('tc-note-actions', 'Заметка', [note.authorName, _noteDate(note.createdAt, true)].filter(Boolean).join(' · '), body);
+    overlay.addEventListener('click', async e => {
+      const a = e.target.closest('[data-note-act]')?.dataset.noteAct;
+      if (!a) return;
+      overlay.remove();
+      if (a === 'note-del') {
+        const ok = await UIUtils.confirmSheet('Удалить заметку? Вернуть её будет нельзя.', { okLabel: 'Удалить' });
+        if (!ok) return;
+      }
+      _noteAction(tripId, a, noteId);
+    });
+  }
+
+  function _notesHead(tripId) {
+    const n = (typeof NotesState !== 'undefined' ? NotesState.getNotes(tripId) : []).length;
+    return _secTitle('Заметки группы', n ? `<span class="tc-muted">${n}</span>` : '');
+  }
+
+  function _notesComposer() {
+    return `
+      <section class="tc-card tc-notes-compose">
+        <textarea class="tc-input tc-textarea" id="g-note-input" aria-label="Новая заметка" placeholder="Новая заметка…"></textarea>
+        <div class="tc-chips">
+          <button type="button" class="tc-chip" data-action="note-safety-toggle" aria-pressed="false">Безопасность</button>
+          <button type="button" class="tc-chip" data-action="note-task-add-toggle" aria-pressed="false">Задача</button>
+          <button type="button" class="tc-chip" data-action="note-private-add-toggle" aria-pressed="false">Только мне</button>
+          <span class="tc-grow"></span>
+          <button type="button" class="tc-btn-pill" data-action="note-add">Добавить</button>
+        </div>
+      </section>`;
   }
 
   function _notesSection(tripId) {
     const notes = typeof NotesState !== 'undefined' ? NotesState.getNotes(tripId) : [];
+    if (!notes.length) return '<div class="tc-sec-hint">Заметок пока нет — напиши первую, её увидят все участники</div>';
     const rows = notes.map(n => `
-      <div class="g-note-row ${n.pinned ? 'pinned' : ''}">
-        <div class="g-note-row-top">
-          <span class="g-note-author">${_esc(n.authorName)}</span>
-          ${n.safety ? '<span class="g-note-tag">🚩 Безопасность</span>' : ''}
-          ${n.pinned ? '<span class="g-note-pin-icon" title="Закреплено">📌</span>' : ''}
-        </div>
-        <div class="g-note-text">${_esc(n.text)}</div>
-        <div class="g-note-row-actions">
-          <span data-action="note-pin" data-id="${n._id}">${n.pinned ? 'Открепить' : 'Закрепить'}</span>
-          ${_canDeleteNote(tripId, n) ? `<span data-action="note-del" data-id="${n._id}">Удалить</span>` : ''}
-        </div>
-      </div>`).join('');
-
-    return `
-      <div class="cover-section g-notes">
-        <div class="cover-section-head"><div class="cover-section-title">Заметки поездки</div></div>
-        <div class="g-notes-list">${rows || '<div class="g-notes-empty">Заметок пока нет — напишите первую ниже</div>'}</div>
-        <div class="g-notes-add">
-          <textarea class="g-note-input" id="g-note-input" placeholder="Заметка для группы..."></textarea>
-          <div class="g-notes-add-row">
-            <button type="button" class="g-note-safety-btn" data-action="note-safety-toggle">🚩 Безопасность</button>
-            <button type="button" class="g-note-submit" data-action="note-add">Добавить</button>
+      <div class="tc-note ${n.pinned ? 'pinned' : ''}">
+        ${n.isTask ? `
+          <button type="button" class="tc-note-check" role="checkbox" aria-checked="${n.done}" aria-label="Сделано"
+                  data-action="note-done-toggle" data-id="${n._id}">
+            <span class="tc-check ${n.done ? 'done' : ''}">${n.done ? UIUtils.ico('check') : ''}</span>
+          </button>` : ''}
+        <div class="tc-note-body">
+          <div class="tc-note-meta">
+            <span>${_esc(n.authorName)}${_noteDate(n.createdAt) ? ' · ' + _noteDate(n.createdAt) : ''}</span>
+            ${n.pinned ? `<span class="tc-c-accent" title="Закреплено">${UIUtils.ico('pin')}</span>` : ''}
+            ${n.private ? `<span title="Только мне">${UIUtils.ico('lock')}</span>` : ''}
+            ${n.safety ? '<span class="tc-note-tag">Безопасность</span>' : ''}
           </div>
+          <div class="tc-note-text ${n.isTask && n.done ? 'crossed' : ''}" data-action="tc-note-expand">${_esc(n.text)}</div>
         </div>
-      </div>`;
+        <button type="button" class="tc-note-more" data-action="tc-note-more" data-id="${n._id}" aria-label="Действия с заметкой">${UIUtils.ico('dots')}</button>
+      </div>`).join('');
+    return `<section class="tc-card tc-card--list">${rows}</section>`;
   }
 
   // Переключение таба — меняет только #g-tab-panel, заголовок и полоска
@@ -1753,7 +1919,10 @@ const TripCoverIndex = (() => {
   function _mountGuideTab(trip, tabId) {
     _activeGuideTab = tabId;
     document.querySelectorAll('#g-tabstrip .g-tab').forEach(el => {
-      el.classList.toggle('active', el.dataset.gtab === tabId);
+      const on = el.dataset.gtab === tabId;
+      el.classList.toggle('active', on);
+      el.setAttribute('aria-selected', on);
+      if (on) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
 
     const panel = document.getElementById('g-tab-panel');
@@ -1772,22 +1941,27 @@ const TripCoverIndex = (() => {
     if (tabId === 'info') {
       let bodyHtml;
       if (trip?.importData?.route?.length) {
-        bodyHtml = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderGuideInfo(trip);
+        bodyHtml = `<div class="tc-stack"><div id="g-today-weather">${_todayWeatherBlock(trip)}</div>${_renderGuideInfo(trip)}</div>`;
         _maybeRefreshWeather(trip);
       } else if (trip.type === 'fishing') {
-        bodyHtml = `<div id="g-today-weather">${_todayWeatherBlock(trip)}</div>` + _renderFishingInfo(trip);
+        bodyHtml = _renderFishingInfo(trip);
         _maybeRefreshWeather(trip);
       } else {
         bodyHtml = `
           <div class="g-empty">
-            <div class="g-empty__icon">🗺️</div>
+            <div class="g-empty__icon">${UIUtils.ico('map')}</div>
             <div class="g-empty__title">Маршрут ещё не добавлен</div>
             <div class="g-empty__sub">Загрузи JSON-файл от AI в настройках поездки — появятся дни, рейсы и погода по маршруту</div>
           </div>`;
       }
       panel.innerHTML = bodyHtml
-        + `<div id="g-travel-section">${_travelSection(trip)}</div>`
-        + `<div id="g-notes-section">${_notesSection(tripId)}</div>`;
+        + `<div class="tc-stack">`
+        + `<div id="g-travel-section" class="tc-group">${_travelSection(trip)}</div>`
+        + `<div id="g-passports-section" class="tc-group">${_passportsSection(trip)}</div>`
+        + `<div id="g-notes-block" class="tc-group"><div id="g-notes-head">${_notesHead(tripId)}</div>${_notesComposer()}<div id="g-notes-section">${_notesSection(tripId)}</div></div>`
+        + `</div><div class="g-info-bottom-pad"></div>`;
+      _loadPassports(trip);
+      if (trip.type === 'fishing' && trip.status !== 'done') _patchGearSub(trip);
       _listenNotes(tripId);
     } else if (tabId === 'rivers') {
       if (typeof RiversIndex !== 'undefined') RiversIndex.init(panel, window.APP?.currentTripData, tripId);
@@ -1804,8 +1978,9 @@ const TripCoverIndex = (() => {
     } else if (tabId === 'shopping') {
       if (typeof ShoppingIndex !== 'undefined') ShoppingIndex.show(panel, tripId);
     } else if (tabId === 'safety') {
-      // Справочная страница, не привязана к конкретной поездке — как Бар.
-      if (typeof SafetyIndex !== 'undefined') SafetyIndex.show(panel, () => {});
+      // Общая справка (правила по медведям, федеральные номера) — как Бар,
+      // но локальные контакты/лицензии — per-trip, см. modules/safety/render.js.
+      if (typeof SafetyIndex !== 'undefined') SafetyIndex.show(panel, () => {}, tripId);
     } else if (tabId === 'recipes') {
       if (typeof RecipesIndex !== 'undefined') RecipesIndex.show(panel);
     }
@@ -1813,80 +1988,124 @@ const TripCoverIndex = (() => {
     requestAnimationFrame(() => { panel.style.opacity = '1'; });
   }
 
-  // Настройка набора/порядка табов для этой поездки (⚙ в полоске табов) —
-  // чекбокс включает/выключает, стрелки переставляют. Инфо не показываем в
-  // списке — он всегда первый и обязательный. Сохраняем даже частично
-  // выключенный список ("Приобье" не нужен Бар) — не только галочки, но и
-  // порядок, раз уж по нему всё равно двигаем стрелками.
+  // Лист «Вкладки Гида» (макет V2GuideTabs) — переключатель «Для всех /
+  // Только у меня» в одном листе:
+  // • «Для всех» — общий набор/порядок вкладок поездки (trip.guideTabs,
+  //   видят все участники): кружок включает/выключает, стрелки переставляют.
+  //   Сохраняем даже частично выключенный список ("Приобье" не нужен Бар).
+  // • «Только у меня» — личное скрытие поверх общего набора
+  //   (members/{uid}.hiddenGuideTabs, действует на всех поездках) — та же
+  //   настройка, что «Мои вкладки Гида» в профиле (modules/members), здесь
+  //   просто ещё один вход в неё.
+  // Инфо всегда первой и обязательной — показана строкой «всегда».
   function _showGuideTabsSettings(trip) {
-    document.getElementById('gts-overlay')?.remove();
-
     const visible = _guideTabIds(trip).filter(id => id !== 'info');
     const hiddenIds = _DEFAULT_TAB_ORDER.filter(id => !visible.includes(id));
-    let order = [...visible, ...hiddenIds];
+    const order = [...visible, ...hiddenIds];
     const checked = new Set(visible);
+    const initialHidden = _personallyHiddenTabIds().filter(id => _ALL_TAB_DEFS[id]);
+    const personalHidden = new Set(initialHidden);
+    const canPersonal = !!window.APP?.profile?.uid;
+    let mode = 'all';
+
+    const HINTS = {
+      all: 'Какие разделы есть в этой поездке — видят все участники. Порядок — стрелками.',
+      mine: 'Скрытые здесь вкладки не покажутся лично у тебя — ни в Гиде, ни в меню — на всех поездках. Остальные участники их видят.',
+    };
+    const check = on => `<span class="tc-check ${on ? 'done' : ''}">${on ? UIUtils.ico('check') : ''}</span>`;
+    const infoRow = `<div class="tc-tabrow"><span class="tc-tabrow-toggle">${check(true)}<span class="tc-tabrow-label">Инфо</span></span><span class="tc-muted">всегда</span></div>`;
 
     function renderRows() {
-      return order.map((id, i) => `
-        <div class="gts-row">
-          <div class="gts-check ${checked.has(id) ? 'checked' : ''}" data-gts-check="${id}"></div>
-          <span class="gts-label">${_esc(_ALL_TAB_DEFS[id].label)}</span>
-          <div class="gts-arrows">
-            <button class="gts-arrow" data-gts-up="${id}" ${i === 0 ? 'disabled' : ''}>↑</button>
-            <button class="gts-arrow" data-gts-down="${id}" ${i === order.length - 1 ? 'disabled' : ''}>↓</button>
-          </div>
+      if (mode === 'all') {
+        return infoRow + order.map((id, i) => `
+          <div class="tc-tabrow">
+            <button type="button" class="tc-tabrow-toggle" role="checkbox" aria-checked="${checked.has(id)}" data-gts-check="${id}">
+              ${check(checked.has(id))}<span class="tc-tabrow-label">${_esc(_ALL_TAB_DEFS[id].label)}</span>
+            </button>
+            <button type="button" class="gts-arrow" data-gts-up="${id}" aria-label="Выше" ${i === 0 ? 'disabled' : ''}>${UIUtils.ico('chevron-up')}</button>
+            <button type="button" class="gts-arrow" data-gts-down="${id}" aria-label="Ниже" ${i === order.length - 1 ? 'disabled' : ''}>${UIUtils.ico('chevron-down')}</button>
+          </div>`).join('');
+      }
+      return infoRow + order.map(id => `
+        <div class="tc-tabrow">
+          <button type="button" class="tc-tabrow-toggle" role="checkbox" aria-checked="${!personalHidden.has(id)}" data-pgt-check="${id}" ${canPersonal ? '' : 'disabled'}>
+            ${check(!personalHidden.has(id))}<span class="tc-tabrow-label">${_esc(_ALL_TAB_DEFS[id].label)}</span>
+          </button>
+          ${checked.has(id) ? '' : '<span class="tc-muted">выключена в поездке</span>'}
         </div>`).join('');
     }
 
-    const overlay = document.createElement('div');
-    overlay.className = 'tqp-overlay';
-    overlay.id = 'gts-overlay';
-    overlay.innerHTML = `
-      <div class="tqp-sheet">
-        <div class="tqp-handle"></div>
-        <div class="tqp-title">Вкладки Гида</div>
-        <div class="tqp-list" id="gts-list">${renderRows()}</div>
-        <button class="gts-save" data-action="gts-save">Сохранить</button>
-      </div>`;
-    document.body.appendChild(overlay);
-    requestAnimationFrame(() => overlay.classList.add('open'));
+    function renderBody() {
+      return `
+        <div class="tc-seg" role="tablist">
+          <button type="button" role="tab" class="tc-seg-btn ${mode === 'all' ? 'on' : ''}" aria-selected="${mode === 'all'}" data-gts-mode="all">Для всех</button>
+          <button type="button" role="tab" class="tc-seg-btn ${mode === 'mine' ? 'on' : ''}" aria-selected="${mode === 'mine'}" data-gts-mode="mine">Только у меня</button>
+        </div>
+        <div class="tc-hint">${HINTS[mode]}</div>
+        <div class="tc-tablist" id="gts-list">${renderRows()}</div>`;
+    }
 
-    const rerenderList = () => {
-      const listEl = document.getElementById('gts-list');
-      if (listEl) listEl.innerHTML = renderRows();
+    const overlay = _openSheet('gts-overlay', 'Вкладки Гида', trip.name || '',
+      `<div id="gts-body">${renderBody()}</div>`,
+      { footer: '<button type="button" class="tc-btn-primary gts-save" data-action="gts-save">Сохранить</button>' });
+
+    const rerender = () => {
+      const b = overlay.querySelector('#gts-body');
+      if (b) b.innerHTML = renderBody();
     };
 
     overlay.addEventListener('click', e => {
-      if (e.target === overlay) { overlay.remove(); return; }
+      const modeBtn = e.target.closest('[data-gts-mode]');
+      if (modeBtn) { mode = modeBtn.dataset.gtsMode; rerender(); return; }
       const upId = e.target.closest('[data-gts-up]')?.dataset.gtsUp;
       if (upId) {
         const i = order.indexOf(upId);
-        if (i > 0) { [order[i - 1], order[i]] = [order[i], order[i - 1]]; rerenderList(); }
+        if (i > 0) { [order[i - 1], order[i]] = [order[i], order[i - 1]]; rerender(); }
         return;
       }
       const downId = e.target.closest('[data-gts-down]')?.dataset.gtsDown;
       if (downId) {
         const i = order.indexOf(downId);
-        if (i < order.length - 1) { [order[i + 1], order[i]] = [order[i], order[i + 1]]; rerenderList(); }
+        if (i < order.length - 1) { [order[i + 1], order[i]] = [order[i], order[i + 1]]; rerender(); }
         return;
       }
       const checkEl = e.target.closest('[data-gts-check]');
       if (checkEl) {
         const id = checkEl.dataset.gtsCheck;
-        const willCheck = !checkEl.classList.contains('checked');
+        const willCheck = !checked.has(id);
         // Не даём снять последний чекбокс: пустой guideTabs:[] в Firestore
         // неотличим от "поле вообще не задано" (см. _guideTabIds выше) — то
         // есть при перерисовке всё равно показались бы ВСЕ табы, и настройка
         // "спрятать всё" молча откатилась бы сама собой.
-        if (!willCheck && checked.size === 1 && checked.has(id)) return;
+        if (!willCheck && checked.size === 1) return;
         if (willCheck) checked.add(id); else checked.delete(id);
-        checkEl.classList.toggle('checked', willCheck);
+        rerender();
+        return;
+      }
+      const pgtEl = e.target.closest('[data-pgt-check]');
+      if (pgtEl) {
+        const id = pgtEl.dataset.pgtCheck;
+        if (personalHidden.has(id)) personalHidden.delete(id); else personalHidden.add(id);
+        rerender();
         return;
       }
       if (e.target.closest('[data-action="gts-save"]')) {
+        // Общий набор — пишем, только если реально поменяли: иначе у
+        // поездки без guideTabs (= "все по умолчанию") зафиксировался бы
+        // текущий дефолт, и новые вкладки потом сами не появлялись бы.
         const finalOrder = order.filter(id => checked.has(id));
-        trip.guideTabs = finalOrder;
-        TripsData.updateTrip(trip.id, { guideTabs: finalOrder });
+        if (finalOrder.join(',') !== visible.join(',')) {
+          trip.guideTabs = finalOrder;
+          TripsData.updateTrip(trip.id, { guideTabs: finalOrder });
+        }
+        // Личное скрытие — members/{uid}.hiddenGuideTabs (как в профиле).
+        const hiddenArr = _DEFAULT_TAB_ORDER.filter(id => personalHidden.has(id));
+        const profile = window.APP?.profile;
+        if (canPersonal && hiddenArr.join(',') !== _DEFAULT_TAB_ORDER.filter(id => initialHidden.includes(id)).join(',')
+            && typeof MembersFirebase !== 'undefined') {
+          MembersFirebase.updateProfile(profile.uid, { hiddenGuideTabs: hiddenArr });
+          profile.hiddenGuideTabs = hiddenArr;
+        }
         overlay.remove();
         const stripEl = document.getElementById('g-tabstrip');
         if (stripEl) stripEl.outerHTML = _renderTabStrip(trip);
@@ -2017,14 +2236,6 @@ const TripCoverIndex = (() => {
     return `${s.getDate()} ${MONTHS_GEN[s.getMonth()]} – ${e.getDate()} ${MONTHS_GEN[e.getMonth()]} ${e.getFullYear()}`;
   }
 
-  function _seasonEmoji(dateStr) {
-    const m = parseInt(dateStr.slice(5,7));
-    if (m <= 2 || m === 12) return '❄️';
-    if (m <= 4) return '🌱';
-    if (m <= 8) return '☀️';
-    return '🍂';
-  }
-
   function _esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -2033,41 +2244,20 @@ const TripCoverIndex = (() => {
     return Math.round(val || 0).toLocaleString('ru-RU') + ' ₽';
   }
 
-  // Общая строка "имя + число" — переиспользуется для видового состава,
-  // разбивки по участникам и по рекам (modules/catches/state.js computeStats
-  // уже отдаёт эти три списка в одинаковой форме). Раньше тут были полоски
-  // сравнения — убрали по просьбе Дмитрия: визуально неотличимы от
-  // прогресс-баров чек-листов (закупка/снаряга), где длина = доля
-  // выполненного, а тут длина была просто "больше/меньше других строк" —
-  // путало. Просто ранжированный список тем же смыслом, без шкалы.
-  function _barSection(title, items, icon, unit) {
-    if (!items || !items.length) return '';
-    return `
-      <div class="cover-section">
-        <div class="cover-section-head"><div class="cover-section-title">${_esc(title)}</div></div>
-        ${items.map(i => `
-          <div class="cover-fish-row">
-            <div class="cover-fish-name">${icon} ${_esc(i.name)}</div>
-            <div class="cover-fish-count">${i.count} ${unit}</div>
-          </div>`).join('')}
-      </div>`;
-  }
 
-  // ─── Рендер страницы Гид из importData ───────────────────────────────────
-
-  // Содержимое таба "Инфо" — та же последовательность аккордеонов, что
-  // раньше была всем Гидом целиком; вызывается только когда у поездки уже
-  // есть импортированный маршрут (см. проверку в _mountGuideTab), поэтому
-  // явно на это не перепроверяет.
-  // Аккордеон-хелпер — общий для Инфо экспедиций и рыбалок.
-  function _acc(title, bodyHtml, open) {
+  // Раскрывашка-строка (карточка «Справочное», макет «Гид — Инфо»): плитка
+  // с иконкой, заголовок, подпись, шеврон вниз. Раскрытие — общий
+  // обработчик [data-target] в _guideHandler (он же подгружает iframe Windy).
+  function _acc(title, bodyHtml, open, opts) {
+    opts = opts || {};
     const id = 'gacc_' + Math.random().toString(36).slice(2);
     return `
       <div class="g-acc">
-        <div class="g-acc-hd" data-target="${id}">
-          <span class="g-acc-title">${title}</span>
-          <span class="g-acc-chev ${open ? 'open' : ''}">⌄</span>
-        </div>
+        <button type="button" class="tc-link-row g-acc-hd" data-target="${id}" aria-expanded="${!!open}">
+          <span class="tc-tile ${opts.tone ? 'tc-tile--' + opts.tone : ''}">${UIUtils.ico(opts.icon || 'info-circle')}</span>
+          <span class="tc-link-main"><span class="tc-link-title">${title}</span>${opts.sub ? `<span class="tc-link-sub">${opts.sub}</span>` : ''}</span>
+          <span class="tc-link-right"><span class="g-acc-chev ${open ? 'open' : ''}">${UIUtils.ico('chevron-down')}</span></span>
+        </button>
         <div class="g-acc-body ${open ? 'show' : ''}" id="${id}"><div class="g-acc-body-inner">${bodyHtml}</div></div>
       </div>`;
   }
@@ -2075,7 +2265,7 @@ const TripCoverIndex = (() => {
   // Карта ветра (Windy) — свой анимированный ветровой рендер не наш
   // масштаб (у Windy на это WebGL-команда и лицензии на метеомодели).
   // Вместо велосипеда — их же бесплатный embed-виджет на координаты
-  // поездки. Аккордеон закрыт по умолчанию и iframe без src, пока не
+  // поездки. Строка закрыта по умолчанию и iframe без src, пока не
   // откроют (data-src → src ставит _guideHandler при разворачивании) —
   // тяжёлая штука, незачем грузить сразу всем, кто открыл Гид. Общий для
   // Инфо экспедиций и рыбалок.
@@ -2083,53 +2273,17 @@ const TripCoverIndex = (() => {
     const windyCoords = _tripCoords(trip);
     if (!windyCoords) return '';
     const windySrc = `https://embed.windy.com/embed2.html?lat=${windyCoords.lat}&lon=${windyCoords.lon}&detailLat=${windyCoords.lat}&detailLon=${windyCoords.lon}&width=650&height=450&zoom=8&level=surface&overlay=wind&product=ecmwf&menu=&message=true&marker=true&calendar=now&pressure=&type=map&location=coordinates&detail=&metricWind=default&metricTemp=default&radarRange=-1`;
-    return _acc('🌬 Карта ветра (Windy)', `<div class="g-windy-wrap"><iframe class="g-windy-frame" data-src="${_esc(windySrc)}" loading="lazy" frameborder="0"></iframe></div>`, false);
+    return _acc('Карта ветра', `<div class="g-windy-wrap"><iframe class="g-windy-frame" data-src="${_esc(windySrc)}" loading="lazy" frameborder="0"></iframe></div>`, false,
+      { icon: 'wind', tone: 'river', sub: 'Windy' });
   }
 
+  // Содержимое таба "Инфо" у поездки с AI-импортом (макет «Гид — Инфо»):
+  // Маршрут (дни, раскрываются), Рейсы, Справочное (погода, Windy, солнце
+  // и приливы, план меню из импорта). Карточка «Сегодня» рисуется перед
+  // этим в _mountGuideTab (#g-today-weather).
   function _renderGuideInfo(trip) {
     const d = trip.importData || {};
-
-    // Стрипаем эмодзи из строки (для рядов расписания)
-    function _stripEmoji(s) {
-      return String(s).replace(/[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F900}-\u{1F9FF}\u{231A}-\u{231B}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{25AA}-\u{25AB}\u{25B6}\u{25C0}\u{25FB}-\u{25FE}\u{2614}-\u{2615}\u{2648}-\u{2653}\u{267F}\u{2693}\u{26A1}\u{26AA}-\u{26AB}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26CE}\u{26D4}\u{26EA}\u{26F2}-\u{26F3}\u{26F5}\u{26FA}\u{26FD}\u{2702}\u{2705}\u{2708}-\u{270D}\u{270F}\u{2712}\u{2714}\u{2716}\u{271D}\u{2721}\u{2728}\u{2733}-\u{2734}\u{2744}\u{2747}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2763}-\u{2764}\u{2795}-\u{2797}\u{27A1}\u{27B0}\u{27BF}]/gu, '').replace(/\s+/g, ' ').trim();
-    }
-
     let h = '';
-
-    h += _windyAccordion(trip);
-
-    // ── Авиабилеты ──────────────────────────────────────────────────────
-    if (d.flights && d.flights.length) {
-      let fb = '';
-      d.flights.forEach(f => {
-        fb += `<div class="g-flight">
-          <div class="g-flight-l">
-            <div class="g-flight-route">${_esc(f.route)}</div>
-            <div class="g-flight-num">${_esc(f.flight || '')}</div>
-          </div>
-          <div class="g-flight-r">
-            <div class="g-flight-dep">${_esc(f.dep)}</div>
-            ${f.arr ? `<div class="g-flight-arr">прилёт ${_esc(f.arr)}</div>` : ''}
-          </div>
-        </div>`;
-      });
-      h += _acc('✈️ Авиабилеты', fb, true);
-    }
-
-    // ── Рассвет · Закат · Приливы ───────────────────────────────────────
-    if (d.suntide && d.suntide.length) {
-      let sb = '';
-      d.suntide.forEach(s => {
-        sb += `<div class="g-tide">
-          <div>
-            <div class="g-tide-date">${_esc(s.date)}</div>
-            <div class="g-tide-sun">${_esc(s.sun)}</div>
-          </div>
-          <div class="g-tide-info">${_esc(s.tide)}</div>
-        </div>`;
-      });
-      h += _acc('🌅 Рассвет · Закат · Приливы', sb, true);
-    }
 
     // ── Маршрут по дням ─────────────────────────────────────────────────
     if (d.route && d.route.length) {
@@ -2138,55 +2292,89 @@ const TripCoverIndex = (() => {
       // этом допущении и матчим погоду по дате, ключ той же формы кладём в
       // data-gwx-date для _patchGuideWeather (данные почти всегда приходят
       // позже первого рендера — сетевой запрос).
-      let rb = '';
-      d.route.forEach((day, idx) => {
+      const todayIdx = _todayRouteIdx(trip);
+      const dayRow = (day, idx) => {
         const dayId = 'gday_' + idx;
-        const isFirst = idx === 0;
         const wxDate = trip.startDate ? _addDaysStr(trip.startDate, idx) : '';
         const wxEntry = wxDate && trip.weatherDaily ? trip.weatherDaily.find(w => w.date === wxDate) : null;
-        rb += `<div class="g-day-hd" data-target="${dayId}">
-          <span class="g-day-title">${_esc(day.t)}</span>
-          ${wxDate ? `<span class="g-day-wx" data-gwx-date="${wxDate}">${_dayWeatherBadge(wxEntry)}</span>` : ''}
-          <span class="g-acc-chev ${isFirst ? 'open' : ''}">⌄</span>
-        </div>
-        <div class="g-day-body ${isFirst ? 'show' : ''}" id="${dayId}"><div class="g-acc-body-inner">`;
-        (day.rows || []).forEach(row => {
-          rb += `<div class="g-row">
-            <span class="g-row-time">${_esc(row[0])}</span>
-            <span class="g-row-act">${_esc(_stripEmoji(row[1]))}</span>
+        const n = (day.rows || []).length;
+        return `
+          <div class="tc-day">
+            <button type="button" class="tc-link-row g-day-hd" data-target="${dayId}">
+              <span class="tc-day-num ${idx === todayIdx ? 'on' : ''}">${idx + 1}</span>
+              <span class="tc-link-main">
+                <span class="tc-link-title">${_esc(_stripEmoji(day.t || ''))}</span>
+                <span class="tc-link-sub">${idx === todayIdx ? 'сегодня · ' : ''}${n} ${_plural(n, 'пункт', 'пункта', 'пунктов')}${wxDate ? `<span class="tc-day-wx" data-gwx-date="${wxDate}">${_dayWeatherBadge(wxEntry)}</span>` : ''}</span>
+              </span>
+              <span class="tc-link-right"><span class="g-acc-chev">${UIUtils.ico('chevron-down')}</span></span>
+            </button>
+            <div class="g-day-body" id="${dayId}"><div class="g-acc-body-inner"><div class="tc-slots">${(day.rows || []).map(r => _slotRow(r[0], r[1])).join('')}</div></div></div>
           </div>`;
-        });
-        rb += `</div></div>`;
-      });
-      h += _acc('Маршрут по дням', rb, true);
+      };
+      const SHOW = 3;
+      const head = d.route.slice(0, SHOW).map((day, i) => dayRow(day, i)).join('');
+      const rest = d.route.slice(SHOW);
+      const restId = 'gdays_more';
+      h += _secTitle('Маршрут', `<span class="tc-muted">${d.route.length} ${_plural(d.route.length, 'день', 'дня', 'дней')}</span>`)
+        + `<section class="tc-card tc-card--list">${head}${rest.length ? `
+            <button type="button" class="tc-more" data-target="${restId}">Ещё ${rest.length} ${_plural(rest.length, 'день', 'дня', 'дней')}</button>
+            <div class="g-day-body" id="${restId}"><div class="g-acc-body-inner">${rest.map((day, i) => dayRow(day, i + SHOW)).join('')}</div></div>` : ''}
+          </section>`;
     }
 
-    // ── Меню по дням (из AI-импорта — только чтение; живое планирование
-    // с рецептами остаётся в отдельном разделе «Меню») ──────────────────
+    // ── Рейсы ────────────────────────────────────────────────────────────
+    if (d.flights && d.flights.length) {
+      h += _secTitle('Рейсы') + `<section class="tc-card tc-card--list">${d.flights.map(f => `
+        <div class="tc-flight">
+          <span class="tc-flight-code">${_esc(f.flight || '')}</span>
+          <span class="tc-link-main">
+            <span class="tc-link-title">${_esc(f.route)}</span>
+            <span class="tc-link-sub">${_esc(f.dep || '')}${f.arr ? ' → прилёт ' + _esc(f.arr) : ''}</span>
+          </span>
+        </div>`).join('')}</section>`;
+    }
+
+    // ── Справочное ───────────────────────────────────────────────────────
+    let ref = _weatherChartsSection(trip) + _windyAccordion(trip);
+
+    if (d.suntide && d.suntide.length) {
+      const sb = d.suntide.map(s => `
+        <div class="tc-tide">
+          <div><div class="tc-tide-date">${_esc(s.date)}</div><div class="tc-tide-sun">${_esc(s.sun)}</div></div>
+          <div class="tc-tide-info">${_esc(s.tide)}</div>
+        </div>`).join('');
+      ref += _acc('Солнце и приливы', sb, false,
+        { icon: 'sunrise', tone: 'accent', sub: `на все ${d.suntide.length} ${_plural(d.suntide.length, 'день', 'дня', 'дней')}` });
+    }
+
+    // План меню из AI-импорта — только чтение (данные: trip.importData.menu,
+    // приходят с JSON-импортом маршрута). Живое планирование с рецептами —
+    // во вкладке «Меню».
     if (d.menu && d.menu.length) {
-      let mb = '';
-      d.menu.forEach((day, idx) => {
+      const mb = d.menu.map((day, idx) => {
         const dayId = 'gmenu_' + idx;
-        mb += `<div class="g-day-hd" data-target="${dayId}">
-          <span class="g-day-title">${_esc(day.day)}${day.date ? ' — ' + _esc(day.date) : ''}${day.special ? ' ★' : ''}</span>
-          <span class="g-acc-chev">⌄</span>
-        </div>
-        <div class="g-day-body" id="${dayId}"><div class="g-acc-body-inner">`;
-        (day.meals || []).forEach(meal => {
-          mb += `<div class="g-row">
-            <span class="g-row-time">${_esc(meal.type)}</span>
-            <span class="g-row-act">${_esc(meal.text)}${meal.cocktail ? ' · 🍸 ' + _esc(meal.cocktail) : ''}</span>
-          </div>`;
-        });
-        mb += `</div></div>`;
-      });
-      h += _acc('🍽️ Меню', mb, false);
+        return `
+          <button type="button" class="tc-link-row tc-link-row--sub g-day-hd" data-target="${dayId}">
+            <span class="tc-link-main"><span class="tc-link-title">${_esc(day.day)}${day.date ? ' — ' + _esc(day.date) : ''}${day.special ? ' ' + UIUtils.ico('star') : ''}</span></span>
+            <span class="tc-link-right"><span class="g-acc-chev">${UIUtils.ico('chevron-down')}</span></span>
+          </button>
+          <div class="g-day-body" id="${dayId}"><div class="g-acc-body-inner"><div class="tc-slots">
+            ${(day.meals || []).map(meal => `
+              <div class="tc-slot"><span class="tc-slot-time">${_esc(meal.type)}</span>
+              <span class="tc-slot-text">${_esc(meal.text)}${meal.cocktail ? ' · ' + UIUtils.ico('glass-cocktail') + ' ' + _esc(meal.cocktail) : ''}</span></div>`).join('')}
+          </div></div></div>`;
+      }).join('');
+      ref += _acc('План меню из импорта', mb, false,
+        { icon: 'tools-kitchen-2', sub: `${d.menu.length} ${_plural(d.menu.length, 'день', 'дня', 'дней')} · только просмотр, живое меню — во вкладке «Меню»` });
     }
 
-    h += `<div style="height:20px"></div>`;
+    if (ref.replace('<div id="g-weather-charts"></div>', '').trim()) {
+      h += _secTitle('Справочное') + `<section class="tc-card tc-card--list">${ref}</section>`;
+    } else {
+      h += ref; // пустой плейсхолдер погоды — чтобы данные могли подставиться позже
+    }
     return h;
   }
-
 
 
   // Полный список настраиваемых вкладок (id+label) — источник правды один

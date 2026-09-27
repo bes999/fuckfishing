@@ -1,8 +1,10 @@
 /* ===== АТЛАС ===== */
 
 #p-atlas {
-  display: flex; flex-direction: column;
+  flex-direction: column;
 }
+/* display только у активной — иначе перебивает .page{display:none} */
+#p-atlas.active { display: flex; }
 
 .atl-topbar {
   background: var(--topbar-bg); color: #fff;
@@ -79,10 +81,10 @@
 .atl-river-goto { color: var(--label4); font-size: 18px; flex-shrink: 0; }
 
 .atl-badge {
-  font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+  font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: var(--radius-lg);
   flex-shrink: 0; white-space: nowrap;
 }
-.atl-badge--warn { background: rgba(255,149,0,.12); color: var(--orange); }
+.atl-badge--warn { background: rgba(var(--accent-rgb),.12); color: var(--orange); }
 
 /* ── Поездки в регион ── */
 .atl-triplist {
@@ -113,7 +115,7 @@
 .atl-plainrow { font-size: 13px; line-height: 1.5; color: var(--label2); }
 .atl-plainrow b { color: var(--label); }
 
-.atl-badge--ok { background: rgba(52,199,89,.12); color: var(--green); }
+.atl-badge--ok { background: rgba(var(--green-rgb),.12); color: var(--green); }
 .atl-river-hero-note {
   margin-top: 10px; font-size: 13px; line-height: 1.5; color: var(--label2);
 }
@@ -132,7 +134,7 @@
 .atl-river-hero-facts { font-size: 13px; color: var(--label3); }
 .atl-warning {
   margin-top: 10px; font-size: 12px; line-height: 1.5;
-  color: var(--orange); background: rgba(255,149,0,.1);
+  color: var(--orange); background: rgba(var(--accent-rgb),.1);
   border-radius: var(--radius-sm); padding: 8px 10px;
 }
 .atl-nav-btn {
