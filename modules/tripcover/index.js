@@ -628,7 +628,7 @@ const TripCoverIndex = (() => {
     if (t.status === 'active') return '<span class="cover-cd-chip cover-cd-chip--now">идёт</span>';
     if (t.status === 'done') return `<span class="cover-cd-chip cover-cd-chip--done">${UIUtils.ico('check')} завершена</span>`;
     if (t.status !== 'upcoming') return '';
-    const days = Math.ceil((new Date(t.startDate) - new Date()) / 86400000);
+    const days = TripsData.daysUntil(t.startDate);
     if (days <= 0) return '';
     return `<span class="cover-cd-chip">через ${days} ${_plural(days, 'день', 'дня', 'дней')}</span>`;
   }
@@ -739,15 +739,16 @@ const TripCoverIndex = (() => {
     return _linkRow({
       action: 'info-gear', icon: 'backpack', tone: t.status === 'done' ? '' : 'accent',
       title: t.status === 'done' ? 'Снаряга' : 'Снаряга на поездку',
-      sub: t.status === 'done' ? 'что брали в поездку' : 'свой список на эту поездку',
-      subAttrs: `data-gear-sub="${_esc(t.id)}"`,
+      // «собрано X из Y» и «· готовы N из M» — внутри той же строки карточки
+      // (раньше готовность висела отдельной строкой под карточкой).
+      sub: `<span data-gear-sub="${_esc(t.id)}">${t.status === 'done' ? 'что брали в поездку' : 'свой список на эту поездку'}</span><span id="g-gear-ready-sub"></span>`,
     });
   }
 
   // «Собраны N из M» — под карточкой снаряги, id общий (карточка либо на
   // обложке экспедиции, либо в Инфо рыбалки — никогда не обе разом).
   function _gearCard(t) {
-    return `<section class="tc-card tc-card--list">${_gearRow(t)}</section><div class="tc-sec-hint" id="g-gear-ready-sub"></div>`;
+    return `<section class="tc-card tc-card--list">${_gearRow(t)}</section>`;
   }
 
   function _patchGearSub(t) {
@@ -773,7 +774,7 @@ const TripCoverIndex = (() => {
       const ready = (doc.exists && doc.data().ready) || {};
       const n = participants.filter(p => ready[p.uid]).length;
       const el = document.getElementById('g-gear-ready-sub');
-      if (el) el.textContent = `Собраны ${n} из ${participants.length}`;
+      if (el) el.textContent = ` · готовы ${n} из ${participants.length}`;
     }).catch(() => {});
   }
 
@@ -1684,10 +1685,14 @@ const TripCoverIndex = (() => {
     if (trip.status === 'done') status = 'завершена';
     else if (trip.status === 'active') status = 'идёт';
     else if (trip.status === 'upcoming' && s) {
-      const days = Math.ceil((s - new Date()) / 86400000);
+      const days = TripsData.daysUntil(trip.startDate);
       if (days > 0) status = `через ${days} ${_plural(days, 'день', 'дня', 'дней')}`;
     }
-    return [dates, status, trip.importData?.meta?.subtitle || ''].filter(Boolean).join(' · ');
+    // Подзаголовок из AI-импорта часто сам начинается с дат («12–19 сентября ·
+    // Трофейная щука…») — отрезаем их, иначе в шапке даты шли дважды.
+    let sub = String(trip.importData?.meta?.subtitle || '').replace(/^[^·]*\d[^·]*·\s*/, '').trim();
+    if (!sub.includes('·') && /\d/.test(sub)) sub = ''; // весь подзаголовок — это и есть даты
+    return [dates, status, sub].filter(Boolean).join(' · ');
   }
 
   // Шапка Гида (gheader в макетах) + полоска табов рисуются один раз на
@@ -1793,7 +1798,8 @@ const TripCoverIndex = (() => {
     const l = t.lodging || {};
     const hasAny = l.address || l.link || l.checkin || l.checkout || l.note;
     if (!hasAny) {
-      return `<button type="button" class="tc-add-dashed" data-action="lodging-edit">+ Добавить жильё</button>`;
+      // С заголовком, как у соседних блоков — раньше пунктир висел «сам по себе».
+      return _secTitle('Жильё') + `<button type="button" class="tc-add-dashed" data-action="lodging-edit">+ Добавить жильё</button>`;
     }
     const schedule = [l.checkin ? `Заселение ${l.checkin}` : '', l.checkout ? `выезд ${l.checkout}` : '']
       .filter(Boolean).join(' · ');
@@ -1886,8 +1892,11 @@ const TripCoverIndex = (() => {
     const travelDone = !!((trip.travel?.[myName]?.legs) || []).length;
     const profile = window.APP?.profile || {};
     const medDone = !!(profile.bloodType || profile.allergies);
+    // «Даты приезда» — только тем, кто едет по своему расписанию (раздел
+    // «Как добираются» показывается только им же).
+    const me = (trip.participants || []).find(p => p.uid === uid);
     return [
-      { id: '_auto_travel', text: 'Указать даты приезда и отъезда', done: travelDone, auto: 'travel' },
+      ...(me?.travelSeparate ? [{ id: '_auto_travel', text: 'Указать даты приезда и отъезда', done: travelDone, auto: 'travel' }] : []),
       { id: '_auto_gear', text: 'Собрать снарягу и нажать «Я собран»', done: !!_todoGearReady, auto: 'gear' },
       { id: '_auto_med', text: 'Заполнить медданные', done: medDone, auto: 'med' },
     ];
@@ -2343,24 +2352,28 @@ const TripCoverIndex = (() => {
         bodyHtml = _renderFishingInfo(trip);
         _maybeRefreshWeather(trip);
       } else {
+        // Экспедиция без маршрута по дням: вместо большой пустой заглушки —
+        // то, что уже есть (погода), и короткая подсказка, где добавить маршрут.
         bodyHtml = `
-          <div class="g-empty">
-            <div class="g-empty__icon">${UIUtils.ico('map')}</div>
-            <div class="g-empty__title">Маршрут ещё не добавлен</div>
-            <div class="g-empty__sub">Загрузи JSON-файл от AI в настройках поездки — появятся дни, рейсы и погода по маршруту</div>
+          <div class="tc-stack">
+            <div id="cover-weather-block">${_weatherSection(trip)}</div>
+            <p class="tc-sec-hint g-route-hint">Маршрут по дням пока не добавлен — его можно вписать вручную или загрузить файлом от ИИ: карандаш на обложке поездки → шаг 2.</p>
           </div>`;
+        _maybeRefreshWeather(trip);
       }
       const welcomeHtml = _welcomeCard(trip);
       // «Мои дела» — под приветствием, если оно есть, иначе первой картой.
-      const todoHtml = window.APP?.user?.uid ? _todoCard(trip) : '';
+      // В прошедшей поездке «Мои дела» уже не нужны.
+      const todoHtml = (window.APP?.user?.uid && trip.status !== 'done') ? _todoCard(trip) : '';
       _activityLimit = 10;
       _todoCollapsed = _loadTodoCollapsed();
       panel.innerHTML = ((welcomeHtml || todoHtml) ? `<div class="tc-stack">${welcomeHtml}${todoHtml}</div>` : '')
         + bodyHtml
         + `<div class="tc-stack">`
+        // Порядок по смыслу: где живём → как добираемся → документы.
+        + `<div id="g-lodging-section" class="tc-group">${_lodgingCard(trip)}</div>`
         + `<div id="g-travel-section" class="tc-group">${_travelSection(trip)}</div>`
         + `<div id="g-passports-section" class="tc-group">${_passportsSection(trip)}</div>`
-        + `<div id="g-lodging-section" class="tc-group">${_lodgingCard(trip)}</div>`
         + `<div id="g-activity-block" class="tc-group"><div id="g-activity-head">${_activityHead()}</div><div id="g-activity-section">${_activitySection()}</div></div>`
         + `<div id="g-notes-block" class="tc-group"><div id="g-notes-head">${_notesHead(tripId)}</div>${_notesComposer()}<div id="g-notes-section">${_notesSection(tripId)}</div></div>`
         + `</div><div class="g-info-bottom-pad"></div>`;

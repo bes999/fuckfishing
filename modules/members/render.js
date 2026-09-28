@@ -390,7 +390,7 @@ const MembersRender = (() => {
     if (!past) {
       if (t.status === 'active') status = 'идёт';
       else {
-        const days = Math.ceil((new Date(t.startDate + 'T00:00:00') - new Date(new Date().toDateString())) / 86400000);
+        const days = TripsData.daysUntil(t.startDate);
         status = days <= 0 ? 'сегодня' : days === 1 ? 'завтра' : `через ${days} ${_plural(days, 'день', 'дня', 'дней')}`;
       }
     }

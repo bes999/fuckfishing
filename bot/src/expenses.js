@@ -76,12 +76,18 @@ export async function totalSum(tripId) {
 /**
  * Разбирает строку вида "1500 бензин" на сумму и описание.
  * Возвращает { amount, desc } либо null, если число не найдено.
+ *
+ * "\d+" (было раньше) обрывался на первом же пробеле — "1 500 бензин"
+ * читалось как сумма "1" и описание "500 бензин" (реальный баг, найден
+ * внешним ревью 2026-09-27). Первая альтернатива в регэкспе поддерживает
+ * пробел как разделитель тысяч (обычный и неразрывный) — "1 500", "12 345"
+ * — вторая осталась для чисел без пробелов ("1500").
  */
 export function parseAmountDesc(text) {
   const t = String(text || '').trim();
-  const m = t.match(/^(\d+(?:[.,]\d+)?)\s*(.*)$/s);
+  const m = t.match(/^(\d{1,3}(?:[  ]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)\s*(.*)$/s);
   if (!m) return null;
-  const amount = parseFloat(m[1].replace(',', '.'));
+  const amount = parseFloat(m[1].replace(/[  ]/g, '').replace(',', '.'));
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const desc = (m[2] || '').trim();
   return { amount, desc };

@@ -112,9 +112,25 @@ const RiversFirebase = (() => {
       if (rawPts) {
         const pts = JSON.parse(rawPts) || {};
         Object.keys(pts).forEach(riverId => {
-          (pts[riverId] || []).forEach(pt => {
+          (pts[riverId] || []).forEach((pt, i) => {
             const data = Object.assign({ riverId: riverId }, pt);
-            promises.push(addPoint(tripId, data));
+            delete data._id;
+            data.createdAt = data.createdAt || new Date().toISOString();
+            data.createdBy = window.APP?.user?.uid || null;
+            // Детерминированный id (не addPoint()/add() со случайным) —
+            // повтор миграции после ЧАСТИЧНОГО сбоя (одна точка сохранилась,
+            // другая нет — localStorage не чистится, пока не удались ВСЕ,
+            // см. Promise.all ниже) раньше создавал заново ОБЕ точки со
+            // свежими id, и уже сохранённая задваивалась. Реальный баг,
+            // найден внешним ревью 2026-09-27. set(merge:true) с id, стабиль-
+            // ным относительно (riverId, позиция в массиве) — повторная
+            // попытка просто перезаписывает ту же самую запись, а не
+            // создаёт новую.
+            const migId = 'migrated_' + riverId + '_' + i;
+            promises.push(
+              _ref(tripId).collection('river_points').doc(migId).set(data, { merge: true })
+                .catch(e => { console.warn('migrate point:', e); throw e; })
+            );
           });
         });
       }

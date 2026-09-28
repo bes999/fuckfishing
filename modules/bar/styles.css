@@ -357,3 +357,11 @@
 
 .bar-send-btn:active { opacity: 0.7; }
 .bar-send-btn .ti { font-size: 15px; }
+
+/* ── Сетка v2 (см. recipes/styles.css) ── */
+.bar-tabs-label { padding: 12px calc(var(--page-x) + 4px) 6px; }
+.bar-tabs { padding: 0 var(--page-x); }
+.bar-rows { padding: 12px var(--page-x) calc(96px + env(safe-area-inset-bottom)); }
+.bar-list-card { border: none; box-shadow: var(--card-shadow); }
+.bar-row { padding: 10px var(--row-x); gap: 12px; border-bottom: 1px solid var(--sep2); }
+.bar-det-body { padding-left: var(--page-x); padding-right: var(--page-x); }

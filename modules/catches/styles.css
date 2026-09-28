@@ -384,3 +384,7 @@
   min-height: 44px; border: none; background: none;
   color: var(--red); font-family: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
 }
+
+/* Сетка v2: внутренний отступ карточек — общий (было 16). */
+.ct-card { padding: var(--card-pad); }
+.ct-card--list { padding: 0; }

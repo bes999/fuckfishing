@@ -624,3 +624,15 @@
   padding: 13px; font-size: 15px; font-weight: 600;
   cursor: pointer;
 }
+
+/* ── Сетка v2 (shared/tokens.css): поле 16 (было 12 — список стоял
+   уже остальных экранов), карточка через общую тень, строки 16, поиск —
+   стандартное поле 48/радиус 16. ── */
+.rec-search-row { padding: 10px var(--page-x) 8px; }
+.rec-search { height: 48px; box-sizing: border-box; padding: 0 14px; border-radius: var(--radius-md); font-size: 16px; border: 1px solid var(--sep); }
+.rec-tags-row { padding: 6px var(--page-x) 8px; }
+.rec-tabs { padding: 0 var(--page-x); }
+.rec-rows { padding: 12px var(--page-x) calc(96px + env(safe-area-inset-bottom)); }
+.rec-list-card { border: none; box-shadow: var(--card-shadow); }
+.rec-row { padding: 10px var(--row-x); gap: 12px; border-bottom: 1px solid var(--sep2); }
+.rec-det-body { padding-left: var(--page-x); padding-right: var(--page-x); }

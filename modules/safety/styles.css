@@ -310,3 +310,6 @@
   margin-bottom: 8px;
   text-align: center;
 }
+
+/* Сетка v2: плашка-предупреждение — как у заметок-плашек в макете (16). */
+.sf-warn-banner { padding: 16px; }

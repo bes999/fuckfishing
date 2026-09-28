@@ -655,3 +655,16 @@
 
 /* «Перенести в Меню» под планом меню из импорта */
 .tc-menu-imp { display: flex; flex-direction: column; gap: 6px; padding: 12px 16px 14px; }
+
+/* ── Сетка v2 (shared/tokens.css) ── */
+.tc-stack { padding-left: var(--page-x); padding-right: var(--page-x); gap: var(--card-gap); }
+.tc-notes-compose { padding: var(--card-pad); gap: 12px; }
+
+/* «Мои дела»: строки прямо в карточке, без второй рамки внутри (было
+   «карточка в карточке»); поле — стандартное 48/16. */
+#g-todo-rows.tc-legs { border: none; border-radius: 0; margin: 0 calc(-1 * var(--card-pad)); border-top: 1px solid var(--sep2); border-bottom: 1px solid var(--sep2); }
+#g-todo-rows .g-todo-item { padding: 12px var(--card-pad); min-height: 52px; }
+#g-todo-input { height: 48px; box-sizing: border-box; border-radius: var(--radius-md); font-size: 16px; }
+/* «Добавить» в заметках — справа; если метки не влезли в строку, кнопка
+   переносится, но остаётся у правого края, а не повисает слева. */
+.tc-notes-compose .tc-btn-pill { margin-left: auto; }

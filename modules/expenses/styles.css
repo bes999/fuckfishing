@@ -531,3 +531,6 @@
 .exp-opt.on .exp-radio { border: 7px solid var(--accent); }
 
 .exp-fab[hidden] { display: none; }
+
+/* Сетка v2: внутренний отступ карточек — общий (было 20 против 18 у всех). */
+.exp-sum, .exp-mine { padding: var(--card-pad); }

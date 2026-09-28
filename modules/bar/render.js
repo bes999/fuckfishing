@@ -235,18 +235,34 @@ const BarRender = (() => {
       render(_el);
     });
 
+    // Оценка/заметка раньше применялись локально И слали запись в Firestore,
+    // не дожидаясь и не проверяя её результат (BarFirebase тоже глотал
+    // ошибку без re-throw) — при отказе базы звезда/заметка выглядели
+    // сохранёнными на экране, а после перезагрузки пропадали. Реальный
+    // баг, найден внешним ревью 2026-09-27. Теперь ждём запись и откатываем
+    // оптимистичную правку при отказе.
+    const _paintStars = rating => {
+      _el.querySelectorAll('.bar-star').forEach(s => {
+        s.classList.toggle('on', parseInt(s.dataset.star) <= rating);
+      });
+      const avg = BarState.getAvgRating(id);
+      const hint = _el.querySelector('#bar-det-rating-hint');
+      if (hint) hint.textContent = avg !== null ? `Средняя оценка: ${avg}` : 'Пока никто не оценил';
+    };
     _el.querySelectorAll('.bar-star').forEach(star => {
-      star.addEventListener('click', () => {
+      star.addEventListener('click', async () => {
         const rating = parseInt(star.dataset.star);
         const uid    = window.APP?.profile?.uid || 'anon';
+        const prevRating = BarState.getUserRating(id, uid);
         BarState.setRating(id, uid, rating);
-        BarFirebase.saveRating(id, uid, rating);
-        _el.querySelectorAll('.bar-star').forEach(s => {
-          s.classList.toggle('on', parseInt(s.dataset.star) <= rating);
-        });
-        const avg = BarState.getAvgRating(id);
-        const hint = _el.querySelector('#bar-det-rating-hint');
-        if (hint) hint.textContent = avg !== null ? `Средняя оценка: ${avg}` : 'Пока никто не оценил';
+        _paintStars(rating);
+        try {
+          await BarFirebase.saveRating(id, uid, rating);
+        } catch (e) {
+          BarState.setRating(id, uid, prevRating);
+          _paintStars(prevRating);
+          alert('Не удалось сохранить оценку. Проверь соединение и попробуй ещё раз.');
+        }
       });
     });
 
@@ -263,8 +279,13 @@ const BarRender = (() => {
         date:   new Date().toLocaleDateString('ru', { day: 'numeric', month: 'short' })
       };
       UIUtils.withBusyButton(sendBtn, async () => {
+        try {
+          await BarFirebase.addComment(id, comment);
+        } catch (e) {
+          alert('Не удалось отправить заметку. Проверь соединение и попробуй ещё раз.');
+          return;
+        }
         BarState.pushComment(id, comment);
-        BarFirebase.addComment(id, comment);
         input.value = '';
         _appendComment(comment);
       });

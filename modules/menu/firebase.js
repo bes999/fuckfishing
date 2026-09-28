@@ -242,9 +242,20 @@ const MenuFirebase = (() => {
   // отсутствия «отваливается» от человека под новым именем (снова
   // считается присутствующим). Реальный баг, найден внешним ревью
   // 2026-09-27. Транзакция — та же атомарность, что у syncDays выше.
+  // tx.set(...,{merge:true}) (было раньше) РЕКУРСИВНО мёржит вложенные
+  // поля — ключ, которого нет в новых данных (мы его локально удалили из
+  // объекта attendance[dayId]), сервер просто не трогает, а не удаляет.
+  // Старое имя оставалось висеть в attendance навсегда — если потом в
+  // поездку добавляли НОВОГО человека с тем же старым именем, он тут же
+  // "наследовал" чужие прошлые отметки отсутствия. Реальный баг (тот же
+  // класс, что уже чинили у saveSlotItem — merge не значит "заменить
+  // целиком"), найден внешним ревью 2026-09-27. tx.update() с точечными
+  // путями меняет/удаляет РОВНО указанный вложенный ключ, не трогая
+  // соседние.
   async function renameParticipant(tripId, oldName, newName) {
     if (!tripId || !oldName || !newName || oldName === newName) return;
     const ref = db.collection(COLLECTION).doc(tripId);
+    const FV = firebase.firestore.FieldValue;
     try {
       await db.runTransaction(async tx => {
         const snap = await tx.get(ref);
@@ -253,35 +264,22 @@ const MenuFirebase = (() => {
         const updates = {};
 
         const mealDuty = data.mealDuty || {};
-        let dutyChanged = false;
-        const newMealDuty = {};
         Object.keys(mealDuty).forEach(key => {
           const duty = mealDuty[key] || {};
-          const nd = Object.assign({}, duty);
-          if (duty.cook === oldName)    { nd.cook = newName;    dutyChanged = true; }
-          if (duty.cleanup === oldName) { nd.cleanup = newName; dutyChanged = true; }
-          newMealDuty[key] = nd;
+          if (duty.cook === oldName)    updates[`mealDuty.${key}.cook`] = newName;
+          if (duty.cleanup === oldName) updates[`mealDuty.${key}.cleanup`] = newName;
         });
-        if (dutyChanged) updates.mealDuty = newMealDuty;
 
         const attendance = data.attendance || {};
-        let attChanged = false;
-        const newAttendance = {};
         Object.keys(attendance).forEach(dayId => {
           const dayAtt = attendance[dayId] || {};
           if (Object.prototype.hasOwnProperty.call(dayAtt, oldName)) {
-            const copy = Object.assign({}, dayAtt);
-            copy[newName] = copy[oldName];
-            delete copy[oldName];
-            newAttendance[dayId] = copy;
-            attChanged = true;
-          } else {
-            newAttendance[dayId] = dayAtt;
+            updates[`attendance.${dayId}.${newName}`] = dayAtt[oldName];
+            updates[`attendance.${dayId}.${oldName}`] = FV.delete();
           }
         });
-        if (attChanged) updates.attendance = newAttendance;
 
-        if (Object.keys(updates).length) tx.set(ref, updates, { merge: true });
+        if (Object.keys(updates).length) tx.update(ref, updates);
       });
     } catch (e) { console.warn('MenuFirebase.renameParticipant:', e); }
   }

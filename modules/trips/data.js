@@ -10,125 +10,31 @@ const TripsData = (() => {
   const KEY = 'ff_trips';
   const MIGRATED_KEY = 'ff_trips_migrated_v1';
 
-  // Дефолтные данные — используются только как источник для одноразовой
-  // миграции, если в этом браузере ещё не было ни одного запуска с Firestore
-  // и localStorage тоже пуст (самый первый запуск приложения когда-либо).
-  const _defaults = {
-    trips: [
-      {
-        id: 'sakhalin2026',
-        type: 'expedition',
-        name: 'Сахалин 2026',
-        startDate: '2026-06-10',
-        endDate: '2026-06-17',
-        rivers: [
-          { name: 'р. Лангери', region: 'Сахалинская обл.' },
-          { name: 'р. Буюклинка', region: 'Сахалинская обл.' }
-        ],
-        participants: [{ name: 'Дмитрий', uid: null }, { name: 'Андрей', uid: null }, { name: 'Сергей', uid: null }],
-        status: 'upcoming',
-        rating: null,
-        fish: [],
-        comment: '',
-        conditions: {},
-        readiness: {
-          gear: false,
-          menu: false,
-          shopping: false,
-          medkit: false,
-          tickets: false,
-          route: false
-        },
-        createdAt: '2026-01-15'
-      },
-      {
-        id: 'oka_march2026',
-        type: 'fishing',
-        name: 'Ока, 15 марта',
-        startDate: '2026-03-15',
-        endDate: '2026-03-15',
-        rivers: [{ name: 'р. Ока', region: 'Московская обл.' }],
-        participants: [{ name: 'Дмитрий', uid: null }, { name: 'Андрей', uid: null }],
-        status: 'done',
-        rating: 7,
-        fish: [
-          { species: 'Судак', count: 3 },
-          { species: 'Щука', count: 1 }
-        ],
-        comment: '',
-        conditions: {},
-        readiness: null,
-        createdAt: '2026-03-15'
-      },
-      {
-        id: 'senezh_feb2026',
-        type: 'fishing',
-        name: 'Оз. Сенеж, зимняя',
-        startDate: '2026-02-08',
-        endDate: '2026-02-08',
-        rivers: [{ name: 'Оз. Сенеж', region: 'Московская обл.' }],
-        participants: [{ name: 'Дмитрий', uid: null }],
-        status: 'done',
-        rating: 6,
-        fish: [{ species: 'Окунь', count: 12 }],
-        comment: '',
-        conditions: {},
-        readiness: null,
-        createdAt: '2026-02-08'
-      },
-      {
-        id: 'karelia2025',
-        type: 'expedition',
-        name: 'Карелия 2025',
-        startDate: '2025-11-01',
-        endDate: '2025-11-14',
-        rivers: [{ name: 'р. Кемь', region: 'Карелия' }],
-        participants: [{ name: 'Дмитрий', uid: null }, { name: 'Андрей', uid: null }],
-        status: 'done',
-        rating: 8,
-        fish: [
-          { species: 'Щука', count: 8 },
-          { species: 'Окунь', count: 14 }
-        ],
-        comment: 'Щука хорошо брала на джиг утром по первым заморозкам.',
-        conditions: { temp: '+4°C', wind: 'СЗ 3 м/с', weather: 'дождь' },
-        readiness: null,
-        createdAt: '2025-10-01'
-      },
-      {
-        id: 'ugra_aug2025',
-        type: 'fishing',
-        name: 'Угра, сплав',
-        startDate: '2025-08-18',
-        endDate: '2025-08-19',
-        rivers: [{ name: 'р. Угра', region: 'Калужская обл.' }],
-        participants: [{ name: 'Дмитрий', uid: null }],
-        status: 'done',
-        rating: 9,
-        fish: [
-          { species: 'Голавль', count: 6 },
-          { species: 'Язь', count: 3 }
-        ],
-        comment: '',
-        conditions: {},
-        readiness: null,
-        createdAt: '2025-08-18'
-      }
-    ]
-  };
-
   // --- Одноразовая миграция localStorage → Firestore ---
   // Заливает в Firestore те локальные поездки, которых там ещё нет (по id).
   // Идемпотентна: повторный вызов при уже стоящем флаге ничего не делает.
+  //
+  // Раньше при пустом localStorage (новый браузер/устройство, приватное
+  // окно, очищенные данные сайта — а не обязательно "самый первый запуск
+  // вообще") сюда подставлялся встроенный набор ДЕМО-поездок (Сахалин 2026
+  // и т.п.) как источник миграции — и любую из них, если её в этот момент
+  // нет в Firestore, код создавал заново. Поездку, которую реально удалили
+  // (см. TripsData.deleteTrip), новый браузер/устройство воскрешал молча —
+  // Firestore уже давно единственный источник правды, а не запасной путь
+  // на "первый запуск когда-либо", которым эта миграция была нужна только
+  // в момент самого перехода с localStorage (см. project_trips_firestore_
+  // foundation в памяти, 2026-08-21). Реальный баг, найден внешним ревью
+  // 2026-09-27. Пустой localStorage теперь значит просто "мигрировать
+  // нечего", а не "подставить демо-данные".
   function migrateFromLocalStorage() {
     if (localStorage.getItem(MIGRATED_KEY)) return Promise.resolve();
 
     let local;
     try {
       const raw = localStorage.getItem(KEY);
-      local = raw ? JSON.parse(raw).trips : _defaults.trips;
+      local = raw ? JSON.parse(raw).trips : [];
     } catch (e) {
-      local = _defaults.trips;
+      local = [];
     }
     if (!Array.isArray(local)) local = [];
 
@@ -231,6 +137,19 @@ const TripsData = (() => {
     return trip?.type === 'expedition' ? 'mountain' : 'fishing';
   }
 
+  // Сколько дней до даты 'YYYY-MM-DD' по местному календарю (0 — сегодня).
+  // Раньше каждый экран считал сам через new Date('YYYY-MM-DD') — это
+  // полночь UTC, т.е. 03:00 по Москве, и ночью/утром выходило на день
+  // больше: обложка писала «через 4 дня», а шапка Гида «через 3».
+  function daysUntil(dateStr) {
+    if (!dateStr) return 0;
+    const [y, m, d] = String(dateStr).slice(0, 10).split('-').map(Number);
+    const target = new Date(y, m - 1, d);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((target - today) / 86400000);
+  }
+
   function canManage(trip) {
     const uid = window.APP?.user?.uid;
     if (!uid || !trip) return false;
@@ -297,38 +216,35 @@ const TripsData = (() => {
   }
 
   // --- Добавить сразу несколько гостей без аккаунта одним запросом (вставка
-  // через запятую/перенос строки — см. modules/tripcover/index.js). Гости
-  // никогда не несут uid, так что тут нет той гонки чтения-записи, которую
-  // решает последовательность в addParticipant — считаем дедуп по всему
-  // списку локально и пишем один раз. ---
+  // через запятую/перенос строки — см. modules/tripcover/index.js). Раньше
+  // писало participants целиком по ЛОКАЛЬНОЙ (возможно устаревшей) копии —
+  // недавно вступивший по ссылке человек, которого эта копия ещё не
+  // видела, при этом пропадал из списка участников (доступ оставался,
+  // uid в memberIds эта запись не трогает). Реальный баг, найден внешним
+  // ревью 2026-09-27. Реальная запись — транзакция на свежих серверных
+  // данных, см. TripsFirebase.addGuestNames (тот же приём, что и у
+  // addParticipant). ---
   function addGuestNames(tripId, names) {
-    const trip = getById(tripId);
-    if (!trip) return Promise.reject(new Error('trip not found'));
-
-    const participants = trip.participants || [];
-    const seen = new Set(participants.map(p => p.name.toLowerCase()));
-    const additions = [];
-    names.forEach(name => {
-      const trimmed = String(name || '').trim();
-      const key = trimmed.toLowerCase();
-      if (!key || seen.has(key)) return;
-      seen.add(key);
-      additions.push({ name: trimmed, uid: null });
-    });
-    if (!additions.length) return Promise.resolve(trip);
-
-    return TripsFirebase.updateTrip(tripId, { participants: [...participants, ...additions] });
+    if (!getById(tripId)) return Promise.reject(new Error('trip not found'));
+    return TripsFirebase.addGuestNames(tripId, names);
   }
 
   // --- Ссылка-приглашение: случайный токен на самой поездке, а не просто
   // id (id не секрет и никогда не меняется — им мог воспользоваться кто
   // угодно, зная/подобрав его, и отозвать было нечем). ensureInviteToken —
   // ленивая генерация при первом запросе ссылки (см. MembersRender.showInvite
-  // / TripcoverIndex._showInviteSheet). regenerateInviteToken — явный отзыв:
-  // все прежде разосланные ссылки сразу перестают работать; вызывается
-  // автоматически при исключении участника (см. modules/trips/index.js
-  // _save), чтобы вышедший не мог вернуться по старой ссылке. Реальная
-  // дыра, найдена внешним ревью 2026-09-27.
+  // / TripcoverIndex._showInviteSheet); раньше это было простое get-then-set
+  // по локальной копии — если два устройства ОДНОВРЕМЕННО впервые открывали
+  // лист приглашения, оба генерировали РАЗНЫЕ токены, и уже показанная на
+  // первом устройстве ссылка сразу становилась недействительной после
+  // второй записи. Реальный баг, найден внешним ревью 2026-09-27. Реальная
+  // запись — транзакция на свежих серверных данных, см.
+  // TripsFirebase.ensureInviteToken (тот же приём, что и addParticipant).
+  // regenerateInviteToken — явный отзыв (гонка тут не страшна, это
+  // намеренная перезапись): все прежде разосланные ссылки сразу перестают
+  // работать; вызывается автоматически при исключении участника (см.
+  // modules/trips/index.js _save), чтобы вышедший не мог вернуться по
+  // старой ссылке.
   function _genInviteToken() {
     return Math.random().toString(36).slice(2) + Date.now().toString(36);
   }
@@ -336,8 +252,7 @@ const TripsData = (() => {
     const trip = getById(tripId);
     if (!trip) return Promise.reject(new Error('trip not found'));
     if (trip.inviteToken) return Promise.resolve(trip.inviteToken);
-    const token = _genInviteToken();
-    return TripsFirebase.updateTrip(tripId, { inviteToken: token }).then(() => token);
+    return TripsFirebase.ensureInviteToken(tripId);
   }
   function regenerateInviteToken(tripId) {
     const token = _genInviteToken();
@@ -357,7 +272,7 @@ const TripsData = (() => {
   return {
     migrateFromLocalStorage, backfillOwnerId,
     getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames, dutyEligibleNames, plannedMeals,
-    addTrip, updateTrip, deleteTrip, canManage, tripIcon, TRIP_ICONS, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
+    addTrip, updateTrip, deleteTrip, canManage, daysUntil, tripIcon, TRIP_ICONS, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
     ensureInviteToken, regenerateInviteToken,
     statusLabel, statusClass,
   };

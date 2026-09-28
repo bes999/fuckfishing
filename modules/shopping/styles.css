@@ -513,3 +513,27 @@
   from { opacity: 0; transform: translateX(-50%) translateY(6px); }
   to   { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
+
+/* ── Сетка v2 (shared/tokens.css): поле страницы, карточки 24, отступы
+   строк 16 — раньше категории стояли на 12px от края, а поле «Что купить»
+   над ними на 16, и края «гуляли». ── */
+.sh-cats { padding: 6px var(--page-x) 32px; gap: 10px; }
+.sh-cat { border-radius: var(--radius-lg); border: none; box-shadow: var(--card-shadow); }
+.sh-cat__head { padding: 0 var(--row-x); min-height: 56px; gap: 12px; }
+.sh-cat__body { border-top: 1px solid var(--sep2); }
+.sh-item { padding: 10px var(--row-x); min-height: 52px; box-sizing: border-box; border-bottom: 1px solid var(--sep2); }
+.sh-add-item, .sh-cat-clear, .sh-cat-bought-toggle { padding: 12px var(--row-x); }
+.sh-cat-bought-toggle { border-top: 1px solid var(--sep2); }
+.sh-dayone { margin: 10px var(--page-x); }
+.sh-dayone__head { padding: var(--card-pad) var(--card-pad) 10px; }
+.sh-dayone__empty { padding: 0 var(--card-pad) 14px; }
+.sh-dayone .sh-item:first-of-type { border-top: 1px solid var(--sep2); }
+.sh-dayone__add { gap: 8px; padding: 4px var(--card-pad) var(--card-pad); }
+/* Поля — общий стандарт v2: 48px, радиус 16, шрифт 16 (меньше 16 — iOS
+   приближает страницу при фокусе). */
+.sh-dayone__input, .sh-dayone__qty {
+  height: 48px; padding: 0 14px; font-size: 16px;
+  border-radius: var(--radius-md); border: 1px solid var(--sep); background: var(--bg3);
+}
+.sh-dayone__qty { width: 88px; }
+.sh-dayone__addbtn { width: 48px; height: 48px; flex-shrink: 0; border-radius: var(--radius-md); }

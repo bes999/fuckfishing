@@ -149,6 +149,11 @@ var _unsubscribeMedkit = null;
 var _unsubscribeMedkitPersonal = null;
 
 function subscribeMedkit() {
+  // На случай, если сюда всё же попадут дважды подряд без промежуточного
+  // unsubscribeMedkit() (см. защиту в initFirebase() ниже) — не даём
+  // предыдущей подписке потеряться (переменная держит только ПОСЛЕДНЮЮ,
+  // более ранняя иначе утекает и продолжает слать обновления вечно).
+  unsubscribeMedkit();
   var ref = medkitRef();
   if (!ref) return;
   var col = medkitPersonalCol();
@@ -193,7 +198,16 @@ function initFirebase() {
   _medkitPersonalDocs = {};
   resetMedkitPayload();
   loadLocal();
+  // При быстром А→Б→В loadMedkitFromFirebase() для А уже не применяет
+  // устаревший ОТВЕТ (см. её же комментарий) — но раньше ПОДПИСКА всё
+  // равно создавалась после её резолва, уже на ТЕКУЩУЮ (Б или В) поездку,
+  // поверх подписки, которую для неё же создал её собственный initFirebase().
+  // Вторую подписку никто не отписывал (_unsubscribeMedkit хранит только
+  // последнюю) — она утекала и продолжала применять обновления к уже
+  // смененному экрану. Реальный баг, найден внешним ревью 2026-09-27.
+  var forTripId = medkitTripId;
   loadMedkitFromFirebase().then(function() {
+    if (medkitTripId !== forTripId) return;
     subscribeMedkit();
   });
 }

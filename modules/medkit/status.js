@@ -20,9 +20,14 @@ var exp = parts.length === 3
   }
 
   // --- Остаток ---
+  // parseFloat('1,5') === 1 (останавливается на запятой, не понимает её как
+  // десятичный разделитель) — при остатке "1,5" и дозе "0,5" оба поля
+  // допускали такой ввод, а left/dose тихо превращались в 1/0, dose>0
+  // проваливался, и проверка остатка просто выключалась без предупреждения.
+  // Реальный баг, найден внешним ревью 2026-09-27.
   if (itemState.left && itemState.dose) {
-    var left = parseFloat(itemState.left);
-    var dose = parseFloat(itemState.dose);
+    var left = parseFloat(String(itemState.left).replace(',', '.'));
+    var dose = parseFloat(String(itemState.dose).replace(',', '.'));
     if (!isNaN(left) && !isNaN(dose) && dose > 0) {
       var servings = left / dose;
       if (servings <= 0)      status.stock = 'empty';

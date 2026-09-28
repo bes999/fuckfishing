@@ -190,7 +190,7 @@ const TripsRender = (() => {
       return `<span class="tp-done" role="img" aria-label="Завершена">${UIUtils.ico('check')}</span>`;
     }
     if (t.status === 'active') return '<span class="tp-soon tp-soon--now">идёт</span>';
-    const daysLeft = Math.ceil((new Date(t.startDate) - new Date()) / 86400000);
+    const daysLeft = TripsData.daysUntil(t.startDate);
     return daysLeft > 0 ? `<span class="tp-soon">через ${daysLeft} дн.</span>` : '';
   }
 

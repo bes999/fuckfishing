@@ -99,9 +99,27 @@ const TripsFirebase = (() => {
       .catch(e => { console.warn('addTrip:', e); throw e; });
   }
 
+  // .set(...,{merge:true}) МОЛЧА СОЗДАЁТ документ, если его уже нет — а
+  // его может не быть, если владелец успел удалить поездку, а с другого
+  // устройства в этот момент летело узкое сохранение (оценка, погода,
+  // расписание дороги и т.п.): вместо отказа получался воскресший
+  // документ ТОЛЬКО с присланными полями, без name/dates/ownerId и
+  // остального. Реальный баг, найден внешним ревью 2026-09-27. Просто
+  // заменить на .update() было бы неверно: некоторые поля (например
+  // trip.travel — вложенная карта {имя: {legs}} на человека, см.
+  // modules/tripcover/index.js) пишутся как {travel: {[name]: {legs}}},
+  // рассчитывая на РЕКУРСИВНЫЙ мёрж set(...,{merge:true}) — update() без
+  // dot-пути ЦЕЛИКОМ заменяет вложенное поле, стирая travel остальных
+  // участников. Транзакция: та же merge-семантика, что и раньше, но
+  // сначала проверяем, что документ вообще существует — иначе отказ, а не
+  // воскрешение.
   function updateTrip(id, changes) {
-    return _col().doc(id).set(_toDoc(changes), { merge: true })
-      .catch(e => { console.warn('updateTrip:', e); throw e; });
+    const ref = _col().doc(id);
+    return firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('trip not found (deleted?)');
+      tx.set(ref, _toDoc(changes), { merge: true });
+    }).catch(e => { console.warn('updateTrip:', e); throw e; });
   }
 
   // Вступление в поездку читает-меняет-пишет массивы participants/memberIds
@@ -148,6 +166,62 @@ const TripsFirebase = (() => {
 
       tx.update(ref, { participants: newParticipants, memberIds: newMemberIds });
     }).catch(e => { console.warn('addParticipant:', e); throw e; });
+  }
+
+  // Гости без аккаунта (вставка нескольких имён через запятую) — та же
+  // гонка чтения-записи, что уже чинили выше для вступления по ссылке:
+  // раньше это писало participants целиком по ЛОКАЛЬНОЙ (возможно
+  // устаревшей) копии — если кто-то только что вступил по ссылке, а эта
+  // копия его ещё не видела, запись стирала его из participants (uid
+  // оставался в memberIds — доступ есть, а в списке участников человека
+  // нет). Реальный баг, найден внешним ревью 2026-09-27. Транзакция читает
+  // свежую серверную версию, тем же приёмом, что и addParticipant.
+  function addGuestNames(tripId, names) {
+    const ref = _col().doc(tripId);
+    return firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('trip not found');
+      const data = snap.data() || {};
+      const participants = Array.isArray(data.participants) ? data.participants : [];
+      const seen = new Set(participants.map(p => p.name.toLowerCase()));
+      const additions = [];
+      (names || []).forEach(name => {
+        const trimmed = String(name || '').trim();
+        const key = trimmed.toLowerCase();
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        additions.push({ name: trimmed, uid: null });
+      });
+      if (!additions.length) return;
+      tx.update(ref, { participants: [...participants, ...additions] });
+    }).catch(e => { console.warn('addGuestNames:', e); throw e; });
+  }
+
+  function _genInviteToken() {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+
+  // Ленивая генерация токена ссылки-приглашения (см. firestore.rules/
+  // modules/trips/index.js) — раньше читала-писала по локальной копии
+  // (get-then-set, не транзакция): если два устройства ОДНОВРЕМЕННО
+  // впервые открывали лист приглашения для одной поездки, оба видели
+  // trip.inviteToken пустым и генерировали РАЗНЫЕ токены — вторая запись
+  // побеждала, и уже показанная/скопированная на первом устройстве ссылка
+  // сразу становилась недействительной. Реальный баг, найден внешним
+  // ревью 2026-09-27. Транзакция: если токен уже появился (в том числе
+  // только что, от другого устройства) — возвращаем ЕГО, а не создаём
+  // ещё один.
+  function ensureInviteToken(tripId) {
+    const ref = _col().doc(tripId);
+    return firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('trip not found');
+      const existing = snap.data().inviteToken;
+      if (existing) return existing;
+      const token = _genInviteToken();
+      tx.update(ref, { inviteToken: token });
+      return token;
+    }).catch(e => { console.warn('ensureInviteToken:', e); throw e; });
   }
 
   // Удаление поездки насовсем — сам документ trips/{id} плюс все его
@@ -205,5 +279,5 @@ const TripsFirebase = (() => {
     await batch.commit();
   }
 
-  return { listen, stopListening, ready, addTrip, updateTrip, addParticipant, deleteTrip };
+  return { listen, stopListening, ready, addTrip, updateTrip, addParticipant, addGuestNames, ensureInviteToken, deleteTrip };
 })();

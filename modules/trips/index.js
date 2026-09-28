@@ -1473,6 +1473,22 @@ const TripsIndex = (() => {
             MenuFirebase.renameParticipant(_editTripId, was.name, p.name)
               .catch(e => console.error('rename participant menu:', e));
           }
+          // Расписание дороги (trip.travel.<имя>.legs, см. tripcover/
+          // index.js _saveTravelLegs) — тоже лежит по имени, не по uid/gid.
+          // Без переноса оно "прячется" под старым именем — экран ищет по
+          // новому и показывает "не указано", хотя рейсы уже заполнены.
+          // Реальный баг, найден внешним ревью 2026-09-27. FieldValue.delete()
+          // работает и внутри set(...,{merge:true}) (которым пишет
+          // TripsData.updateTrip) — старый ключ реально удаляется, а не
+          // просто перестаёт учитываться.
+          if (existing?.travel && existing.travel[was.name]) {
+            TripsData.updateTrip(_editTripId, {
+              travel: {
+                [was.name]: firebase.firestore.FieldValue.delete(),
+                [p.name]: existing.travel[was.name],
+              },
+            }).catch(e => console.error('rename participant travel:', e));
+          }
         }
       });
       // Кого-то исключили (был в memberIds, в новом списке уже нет) —

@@ -22,11 +22,29 @@ function ref(tripId) {
   return db.collection('shopping').doc(tripId);
 }
 
-/** Категории закупки поездки; создаёт документ с дефолтными категориями (пустые items), если его ещё нет. */
+/**
+ * Категории закупки поездки; создаёт документ с дефолтными категориями
+ * (пустые items), если его ещё нет.
+ *
+ * Веб-приложение (modules/shopping/state.js setFromFirebase) считает
+ * авторитетным ОТДЕЛЬНОЕ плоское поле `bought` документа, а не встроенное
+ * categories[].items[].bought — второе может быть устаревшим (правки с
+ * сайта пишут именно в плоское поле). toggleBoughtByIndex ниже уже пишет
+ * ОБА места при своих переключениях, но само чтение здесь до сих пор
+ * возвращало только встроенное значение — бот не видел отметки, сделанные
+ * на сайте, и повторное нажатие в боте не снимало их, а снова ставило
+ * true (переключало не от реального текущего состояния, а от устаревшего).
+ * Реальный баг, найден внешним ревью 2026-09-27.
+ */
 export async function getCategories(tripId) {
   const doc = await ref(tripId).get();
   if (doc.exists && Array.isArray(doc.data().categories)) {
-    return doc.data().categories;
+    const data = doc.data();
+    const boughtMap = data.bought || {};
+    data.categories.forEach((c) => (c.items || []).forEach((i) => {
+      if (Object.prototype.hasOwnProperty.call(boughtMap, i.id)) i.bought = !!boughtMap[i.id];
+    }));
+    return data.categories;
   }
   const categories = DEFAULT_CATEGORIES.map((c) => ({ ...c, items: [] }));
   await ref(tripId).set({ categories }, { merge: true });

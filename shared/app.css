@@ -48,3 +48,13 @@
    прокрутка, а сама страница всегда стоит наверху). Данные и так живые
    (Firestore onSnapshot), обновлять страницу вручную незачем. */
 html, body { overscroll-behavior-y: none; }
+
+/* iOS Safari приближает страницу при фокусе на поле со шрифтом < 16px —
+   экран «уезжает» и не возвращается. Во всех полях не меньше 16px (только
+   на iOS: у остальных браузеров этой проблемы нет, там компактные поля
+   остаются как задуманы). */
+@supports (-webkit-touch-callout: none) {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select {
+    font-size: max(16px, 1em) !important;
+  }
+}

@@ -194,7 +194,7 @@ const HomeRender = (() => {
   // index.js:_save — рыбалке эта церемония не нужна, раньше карточка на
   // главной этого не учитывала и рисовала пустой чек-лист всем подряд).
   function _upcomingBanner(trip) {
-    const days = Math.ceil((new Date(trip.startDate) - new Date()) / 86400000);
+    const days = TripsData.daysUntil(trip.startDate);
     const dates = _shortRange(trip.startDate, trip.endDate);
     const place = _tripPlace(trip);
     const nParts = (trip.participants || []).length;
@@ -509,7 +509,7 @@ const HomeRender = (() => {
     const statusCls = { upcoming:'status-soon', active:'status-active', done:'status-done' }[t.status] || 'status-done';
     const dates = _formatDateRange(t.startDate, t.endDate);
     const location = t.rivers && t.rivers.length ? t.rivers.map(r => r.region).filter((v,i,a) => a.indexOf(v) === i).join(', ') : '';
-    const daysLeft = Math.ceil((new Date(t.startDate) - new Date()) / 86400000);
+    const daysLeft = TripsData.daysUntil(t.startDate);
 
     let bottom = '';
     if (t.status === 'done' && t.rating) {
