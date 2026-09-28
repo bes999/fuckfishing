@@ -190,8 +190,13 @@ service cloud.firestore {
         allow read: if isMember();
         allow write: if isMember() && (request.auth.uid == uid || isOrganizer());
       }
+      // Личные аптечки живут в medkit_personal/{uid} (правило выше) — в
+      // общий документ modules/medkit поле personal больше не пускаем, иначе
+      // любой участник по-прежнему мог бы записать туда чужую аптечку.
       match /{subcollection}/{docId} {
-        allow read, write: if isMember() && !(subcollection in ['expenses', 'catches', 'notes', 'medkit_personal', 'activity', 'todo_personal']);
+        allow read, delete: if isMember() && !(subcollection in ['expenses', 'catches', 'notes', 'medkit_personal', 'activity', 'todo_personal']);
+        allow create, update: if isMember() && !(subcollection in ['expenses', 'catches', 'notes', 'medkit_personal', 'activity', 'todo_personal'])
+          && !(subcollection == 'modules' && docId == 'medkit' && ('personal' in request.resource.data));
       }
     }
 

@@ -81,50 +81,75 @@ export async function checkDutyReminders(bot) {
     if (!trip.startDate || !endDate) continue;
     if (today < trip.startDate || today > endDate) continue;
 
-    const dutySent = trip.dutyRemindersSent || {};
-    if (dutySent[today]) continue;
-
+    const menuRef = db.collection('menu').doc(doc.id);
     let menuSnap;
     try {
-      menuSnap = await db.collection('menu').doc(doc.id).get();
+      menuSnap = await menuRef.get();
     } catch (err) {
       console.error(`dutyReminders: не удалось прочитать menu/${doc.id}:`, err.message);
       continue;
     }
-    const mealDuty = menuSnap.exists ? (menuSnap.data().mealDuty || {}) : {};
+    const menuData = menuSnap.exists ? menuSnap.data() : {};
+    const mealDuty = menuData.mealDuty || {};
+    // Флаг — на конкретное НАЗНАЧЕНИЕ (день_приём_роль_имя), не один на
+    // весь день: раньше единый флаг на день ставился, даже когда дежурных
+    // ещё не было (чтобы не читать menu впустую весь день) — но тогда
+    // дежурный, назначенный ПОСЛЕ этой проверки, уже никогда не
+    // проверялся до конца дня. Замена уже уведомлённого человека другим —
+    // та же история: ключ теперь включает имя, так что смена назначения
+    // это новый, ещё не отправленный ключ. Реальный баг, найден внешним
+    // ревью 2026-09-27. Храним в menu/{tripId}, а не на самой поездке —
+    // это про конкретные назначения дежурства, а не про поездку целиком.
+    const dutySent = menuData.dutyRemindersSent || {};
 
-    // Имя участника -> список строк "Приём пищи — роль" на сегодня.
-    const byPerson = {};
+    const byPerson = {};     // name -> [текст строк на сегодня]
+    const keysByPerson = {}; // name -> [ещё не отправленные ключи]
     for (const mealId of Object.keys(MEAL_LABELS)) {
       const duty = mealDuty[`${dayId}_${mealId}`];
       if (!duty) continue;
       if (duty.cook) {
-        (byPerson[duty.cook] = byPerson[duty.cook] || []).push(`${MEAL_LABELS[mealId]} — повар 🍳`);
+        const key = `${dayId}_${mealId}_cook_${duty.cook}`;
+        if (!dutySent[key]) {
+          (byPerson[duty.cook] = byPerson[duty.cook] || []).push(`${MEAL_LABELS[mealId]} — повар 🍳`);
+          (keysByPerson[duty.cook] = keysByPerson[duty.cook] || []).push(key);
+        }
       }
       if (duty.cleanup) {
-        (byPerson[duty.cleanup] = byPerson[duty.cleanup] || []).push(`${MEAL_LABELS[mealId]} — уборка 🧽`);
-      }
-    }
-
-    const names = Object.keys(byPerson);
-    if (names.length) {
-      const participants = trip.participants || [];
-      for (const name of names) {
-        const p = participants.find((pp) => pp.name.toLowerCase() === name.toLowerCase());
-        const chatId = p ? await getTelegramIdByUid(p.uid) : null;
-        if (!chatId) continue;
-        const text = `📋 Сегодня твоё дежурство в «${trip.name}»:\n${byPerson[name].join('\n')}`;
-        try {
-          await bot.api.sendMessage(chatId, text);
-        } catch (err) {
-          console.error(`dutyReminders: не удалось отправить chatId=${chatId}:`, err.message);
+        const key = `${dayId}_${mealId}_cleanup_${duty.cleanup}`;
+        if (!dutySent[key]) {
+          (byPerson[duty.cleanup] = byPerson[duty.cleanup] || []).push(`${MEAL_LABELS[mealId]} — уборка 🧽`);
+          (keysByPerson[duty.cleanup] = keysByPerson[duty.cleanup] || []).push(key);
         }
       }
     }
 
-    // Флаг ставим и когда дежурств на сегодня нет — иначе на каждый следующий
-    // часовой тик снова читаем menu/{tripId} впустую до конца дня.
-    await doc.ref.set({ dutyRemindersSent: { ...dutySent, [today]: true } }, { merge: true });
+    const names = Object.keys(byPerson);
+    if (!names.length) continue; // всё назначенное на сегодня уже отправлено (или пока ничего нет)
+
+    const participants = trip.participants || [];
+    const sentUpdates = {};
+    for (const name of names) {
+      const p = participants.find((pp) => pp.name.toLowerCase() === name.toLowerCase());
+      const chatId = p ? await getTelegramIdByUid(p.uid) : null;
+      // Отмечаем ключи этого человека даже без chatId — иначе на каждом
+      // тике снова впустую пытались бы его найти.
+      if (!chatId) { keysByPerson[name].forEach((k) => { sentUpdates[k] = true; }); continue; }
+      const text = `📋 Сегодня твоё дежурство в «${trip.name}»:\n${byPerson[name].join('\n')}`;
+      try {
+        await bot.api.sendMessage(chatId, text);
+        keysByPerson[name].forEach((k) => { sentUpdates[k] = true; });
+      } catch (err) {
+        console.error(`dutyReminders: не удалось отправить chatId=${chatId}:`, err.message);
+      }
+    }
+
+    if (Object.keys(sentUpdates).length) {
+      try {
+        await menuRef.set({ dutyRemindersSent: { ...dutySent, ...sentUpdates } }, { merge: true });
+      } catch (err) {
+        console.error(`dutyReminders: не удалось обновить menu/${doc.id}:`, err.message);
+      }
+    }
   }
 }
 
@@ -135,6 +160,32 @@ export async function checkDutyReminders(bot) {
 // menu/{tripId}.cookDonePings.<dayId>_<mealId> (см. modules/menu/firebase.js
 // saveCookDone), с флагом sent — идемпотентность тем же принципом, что и
 // dutyRemindersSent выше: опрос может застать запись уже отправленной.
+// Отмечает cookDonePings[key] отправленным, но только если он всё ещё ТО
+// САМОЕ событие, которое мы обработали (сравниваем по at — serverTimestamp
+// момента нажатия "Готово"). Раньше sent писался поверх ключа ЗАДНИМ
+// ЧИСЛОМ, по локальной копии ping, снятой ДО await'ов (поиск chatId,
+// отправка сообщения) — если за это время кто-то поменял уборщика и снова
+// нажал "Готово", тот же ключ в Firestore уже стал новым событием, а мы
+// затирали его своей устаревшей копией с sent:true. Новый уборщик никогда
+// не получал уведомление, а следующий опрос эту запись больше не
+// перепроверял (sent уже стоял). Реальный баг, найден внешним ревью
+// 2026-09-27. Транзакция — читаем свежее значение прямо перед записью.
+async function _markPingSentIfUnchanged(menuRef, key, ping) {
+  try {
+    await db.runTransaction(async (tx) => {
+      const freshSnap = await tx.get(menuRef);
+      const freshPing = (freshSnap.data()?.cookDonePings || {})[key];
+      const freshAt = freshPing?.at?.toMillis ? freshPing.at.toMillis() : freshPing?.at;
+      const wasAt = ping?.at?.toMillis ? ping.at.toMillis() : ping?.at;
+      if (freshPing && String(freshAt) === String(wasAt)) {
+        tx.set(menuRef, { cookDonePings: { [key]: { ...freshPing, sent: true } } }, { merge: true });
+      }
+    });
+  } catch (err) {
+    console.error(`cookDonePings: не удалось обновить menu/${menuRef.id}:`, err.message);
+  }
+}
+
 export async function checkCookDonePings(bot) {
   const today = todayStr();
 
@@ -152,9 +203,10 @@ export async function checkCookDonePings(bot) {
     if (!trip.startDate || !endDate) continue;
     if (today < trip.startDate || today > endDate) continue; // только активные сейчас поездки — не гонять всю базу menu впустую
 
+    const menuRef = db.collection('menu').doc(doc.id);
     let menuSnap;
     try {
-      menuSnap = await db.collection('menu').doc(doc.id).get();
+      menuSnap = await menuRef.get();
     } catch (err) {
       console.error(`cookDonePings: не удалось прочитать menu/${doc.id}:`, err.message);
       continue;
@@ -166,13 +218,12 @@ export async function checkCookDonePings(bot) {
     if (!pending.length) continue;
 
     const participants = trip.participants || [];
-    const updates = {};
     for (const [key, ping] of pending) {
-      if (!ping.cleanup) { updates[key] = { ...ping, sent: true }; continue; } // уборка не назначена — слать некому, отмечаем сразу
+      if (!ping.cleanup) { await _markPingSentIfUnchanged(menuRef, key, ping); continue; } // уборка не назначена — слать некому
 
       const p = participants.find((pp) => pp.name.toLowerCase() === ping.cleanup.toLowerCase());
       const chatId = p ? await getTelegramIdByUid(p.uid) : null;
-      if (!chatId) { updates[key] = { ...ping, sent: true }; continue; } // нет Telegram — слать некуда, отмечаем сразу
+      if (!chatId) { await _markPingSentIfUnchanged(menuRef, key, ping); continue; } // нет Telegram — слать некуда
 
       const mealLabel = MEAL_LABELS[ping.mealId] || 'Приём пищи';
       const cookPart = ping.cook ? `${ping.cook} закончил(а) готовить` : 'Готовка закончена';
@@ -182,16 +233,11 @@ export async function checkCookDonePings(bot) {
       // опрос больше никогда не повторил бы попытку.
       try {
         await bot.api.sendMessage(chatId, text);
-        updates[key] = { ...ping, sent: true };
       } catch (err) {
         console.error(`cookDonePings: не удалось отправить chatId=${chatId}:`, err.message);
+        continue;
       }
-    }
-
-    try {
-      await db.collection('menu').doc(doc.id).set({ cookDonePings: updates }, { merge: true });
-    } catch (err) {
-      console.error(`cookDonePings: не удалось обновить menu/${doc.id}:`, err.message);
+      await _markPingSentIfUnchanged(menuRef, key, ping);
     }
   }
 }
