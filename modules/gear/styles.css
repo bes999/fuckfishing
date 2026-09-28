@@ -359,3 +359,8 @@
 .gear-ctx-item .ti { font-size: 20px; color: var(--label3); }
 .gear-ctx-danger, .gear-ctx-danger .ti { color: var(--red) !important; }
 .gear-ctx-cancel { justify-content: center; color: var(--label3) !important; font-weight: 600; }
+
+/* «Туда / Обратно» — вторичный переключатель под «Моё / Общее»: компактнее,
+   чтобы два одинаковых крупных сегмента подряд не спорили друг с другом. */
+.gear-seg:has([data-action="gear-pack-mode"]) { width: fit-content; min-width: 200px; margin-top: -4px; padding: 2px; }
+.gear-seg:has([data-action="gear-pack-mode"]) .gear-seg-i { min-height: 34px; height: 34px; font-size: 14px; padding: 0 18px; }

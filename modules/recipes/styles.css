@@ -636,3 +636,11 @@
 .rec-list-card { border: none; box-shadow: var(--card-shadow); }
 .rec-row { padding: 10px var(--row-x); gap: 12px; border-bottom: 1px solid var(--sep2); }
 .rec-det-body { padding-left: var(--page-x); padding-right: var(--page-x); }
+/* Верхние ряды (поиск, «Для», разделы) — на фоне страницы, как на всех
+   экранах v2, а не отдельной серой полосой. */
+.rec-search-row, .rec-tags-row, .rec-tabs { background: var(--bg); }
+.rec-tabs { border-bottom: 1px solid var(--sep2); }
+/* Кнопки «+» и «…» были под старую тёмную шапку (белые на полупрозрачном)
+   — в светлой теме пропадали. Теперь токены темы. */
+.rec-add-btn, .rec-menu-btn { background: var(--bg3) !important; color: var(--label) !important; width: 40px; height: 40px; border-radius: 50%; }
+.rec-done-btn { background: var(--accent-bg) !important; color: var(--accent) !important; height: 36px; padding: 0 14px; border-radius: 999px; font-weight: 600; }

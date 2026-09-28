@@ -527,3 +527,8 @@
 }
 .cm-done-btn:active { opacity: .85; }
 .cm-done-note { font-size: 12px; color: var(--label3); text-align: center; line-height: 1.4; }
+
+/* ── Сетка v2: полоса дней от поля страницы; строка «Планируем» — на одной
+   линии с подписями дня (поле + 4, как все подписи в макетах). ── */
+.mn-strip { padding: 10px var(--page-x); }
+.mn-mealsplan-row { padding: 0 calc(var(--page-x) + 4px) 4px; }

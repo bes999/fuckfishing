@@ -1090,3 +1090,7 @@
 
 .cw-hint--err { color: var(--red); }
 .cw-place-row[data-quiz-river-edit] { cursor: pointer; }
+
+/* Подписи статистики сезона — в одну строку, иначе «поездок позади»
+   переносилось, и три колонки стояли на разной высоте. */
+.tp-stat-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }

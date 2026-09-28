@@ -581,7 +581,7 @@ const TripCoverIndex = (() => {
         <div class="tc-stack">
           ${t.status === 'upcoming' && t.readiness ? _readiness(t) : ''}
           ${t.status !== 'done' ? _gearCard(t) : ''}
-          <div id="cover-lodging-block">${_lodgingCard(t)}</div>
+          <div id="cover-lodging-block">${_lodgingCard(t, 'cover')}</div>
           ${t.status === 'done' ? _doneContent(t) : ''}
           ${_weatherSection(t)}
           ${t.status === 'upcoming' ? _targetFish(t) : ''}
@@ -1794,9 +1794,16 @@ const TripCoverIndex = (() => {
   // необязательные строки, правит любой участник. Карточка одна и та же
   // функция для обложки экспедиции и вкладки «Инфо» — оба места просто
   // подменяют #cover-lodging-block / #g-lodging-section целиком.
-  function _lodgingCard(t) {
+  function _lodgingCard(t, where) {
     const l = t.lodging || {};
     const hasAny = l.address || l.link || l.checkin || l.checkout || l.note;
+    // Пустое жильё у прошедшей поездки не нужно вовсе.
+    if (!hasAny && t.status === 'done') return '';
+    // На обложке все блоки — карточки с заголовком внутри: пустое жильё —
+    // такая же строка-карточка, как «Снаряга на поездку».
+    if (!hasAny && where === 'cover') {
+      return `<section class="tc-card tc-card--list">${_linkRow({ action: 'lodging-edit', icon: 'home', title: 'Жильё', sub: 'адрес, бронь, заселение — добавить' })}</section>`;
+    }
     if (!hasAny) {
       // С заголовком, как у соседних блоков — раньше пунктир висел «сам по себе».
       return _secTitle('Жильё') + `<button type="button" class="tc-add-dashed" data-action="lodging-edit">+ Добавить жильё</button>`;
@@ -1826,7 +1833,7 @@ const TripCoverIndex = (() => {
 
   function _refreshLodging(trip) {
     const cover = document.getElementById('cover-lodging-block');
-    if (cover) cover.innerHTML = _lodgingCard(trip);
+    if (cover) cover.innerHTML = _lodgingCard(trip, 'cover');
     const guide = document.getElementById('g-lodging-section');
     if (guide) guide.innerHTML = _lodgingCard(trip);
   }

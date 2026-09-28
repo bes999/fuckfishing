@@ -200,19 +200,19 @@
 .year-month-cards { display: flex; flex-direction: column; gap: 10px; }
 
 /* Expedition card */
-.exp-card {
+#p-home .exp-card {
   background: var(--bg2); border-radius: var(--radius-lg);
   overflow: hidden; box-shadow: var(--card-shadow);
   cursor: pointer;
   transition: transform var(--duration-fast) var(--ease), background var(--duration) var(--ease);
   border-left: 3px solid var(--accent);
 }
-.exp-card.status-done   { border-left-color: var(--sep); }
-.exp-card.status-soon   { border-left-color: var(--orange); }
-.exp-card.status-active { border-left-color: var(--green); }
-.exp-card:active { transform: scale(.985); }
+#p-home .exp-card.status-done { border-left-color: var(--sep); }
+#p-home .exp-card.status-soon { border-left-color: var(--orange); }
+#p-home .exp-card.status-active { border-left-color: var(--green); }
+#p-home .exp-card:active { transform: scale(.985); }
 
-.exp-card-top {
+#p-home .exp-card-top {
   padding: 14px 16px 12px;
   border-bottom: 0.5px solid var(--sep2);
   background: linear-gradient(135deg, rgba(var(--river-rgb),0.06), transparent);
@@ -224,7 +224,7 @@
 .exp-parts { display: flex; gap: 6px; flex-wrap: wrap; }
 .part-tag  { background: var(--bg3); border-radius: var(--radius-lg); padding: 4px 10px; font-size: 12px; font-weight: 500; }
 
-.exp-card-bot {
+#p-home .exp-card-bot {
   padding: 11px 16px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
 }

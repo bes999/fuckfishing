@@ -106,3 +106,19 @@
 }
 .place-input:focus { outline: none; border-color: var(--accent); }
 .place-err { font-size: 13px; color: var(--red); }
+
+/* ── Кнопка «+ Добавить …» с пунктиром — один вид во всём приложении ──
+   Раньше в каждом разделе своя: где белый жирный текст, где серый, где
+   оранжевый, высота 48/52, радиус 16/24. Теперь: 52px, радиус карточки,
+   текст акцентом, по центру. Раскрывашки «Ещё N…» (summary) сюда не входят —
+   это не действие «добавить», они остаются приглушёнными. */
+html .tc-add-dashed, html .rv-add-place-btn, html .gear-dashed,
+html .mk-dashed--center, html .exp-cat-new {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; min-height: 52px; box-sizing: border-box; padding: 0 16px;
+  border: 1px dashed var(--sep); border-radius: var(--radius-lg); background: none;
+  color: var(--accent) !important; font-family: var(--font-body); font-size: 15px; font-weight: 600;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+html .tc-add-dashed:active, html .rv-add-place-btn:active, html .gear-dashed:active,
+html .mk-dashed--center:active, html .exp-cat-new:active { background: var(--bg3); }
