@@ -111,47 +111,49 @@ var RiversIndex = (function () {
     if (listCard && typeof UIUtils !== 'undefined') UIUtils.swipeToDelete(listCard, '.rv-row', '.rv-row-del');
   }
 
-  /* «+ Добавить место» — лист с названием и регионом. Пишем в trip.rivers
-     и, если у поездки есть AI-импорт, в importData.rivers (Места читают
-     его в первую очередь) — тот же формат, что у мастера поездки. */
+  /* «+ Добавить место» — общий лист «название + регион» с проверкой на
+     дубли (UIUtils.placeSheet). Пишем в trip.rivers и, если у поездки
+     есть AI-импорт, в importData.rivers (Места читают его в первую
+     очередь) — тот же формат, что у мастера поездки. */
   function _showAddPlace() {
-    document.getElementById('rv-add-overlay')?.remove();
-    var overlay = document.createElement('div');
-    overlay.className = 'cs-overlay';
-    overlay.id = 'rv-add-overlay';
-    overlay.innerHTML =
-      '<div class="cs-card rv-add-card">' +
-        '<div class="cs-title">Новое место</div>' +
-        '<input class="rv-add-input" id="rv-add-name" type="text" placeholder="Река или место — «Обь»" autocomplete="off">' +
-        '<input class="rv-add-input" id="rv-add-region" type="text" placeholder="Регион — необязательно" autocomplete="off">' +
-        '<div class="cs-actions">' +
-          '<button class="cs-btn cs-btn-cancel" data-rv-add="cancel">Отмена</button>' +
-          '<button class="cs-btn cs-btn-primary" data-rv-add="ok">Добавить</button>' +
-        '</div>' +
-      '</div>';
-    document.body.appendChild(overlay);
-    requestAnimationFrame(function () { overlay.classList.add('open'); });
-    var nameInp = overlay.querySelector('#rv-add-name');
-    setTimeout(function () { nameInp.focus(); }, 50);
-
-    function close() {
-      overlay.classList.remove('open');
-      setTimeout(function () { overlay.remove(); }, 200);
-    }
-    function submit() {
-      var name = nameInp.value.trim();
-      if (!name) { nameInp.focus(); return; }
-      var region = overlay.querySelector('#rv-add-region').value.trim();
-      close();
-      _addPlace(name, region);
-    }
-    overlay.addEventListener('click', function (e) {
-      if (e.target === overlay) { close(); return; }
-      var a = e.target.closest('[data-rv-add]');
-      if (!a) return;
-      if (a.dataset.rvAdd === 'ok') submit(); else close();
+    var list = (_trip && _trip.rivers) || [];
+    UIUtils.placeSheet({ title: 'Новое место', okLabel: 'Добавить', list: list }).then(function (res) {
+      if (res) _addPlace(res.name, res.region);
     });
-    overlay.addEventListener('keydown', function (e) { if (e.key === 'Enter') submit(); });
+  }
+
+  /* Правка места: название и регион. Уловы ссылаются на место по
+     названию (catch.river), поэтому при переименовании переносим и их —
+     иначе улов «пропадал» из карточки места. Точки и заметки — по id. */
+  function _editPlace(id) {
+    var list = (_trip && _trip.rivers) || [];
+    var place = null;
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) { place = list[i]; break; }
+    if (!place) return;
+    UIUtils.placeSheet({ title: 'Изменить место', name: place.name, region: place.region || place.type || '', list: list, exceptId: id })
+      .then(function (res) {
+        if (!res) return;
+        var trip = TripsData.getById(_tripId);
+        if (!trip) return;
+        var oldName = place.name;
+        var patch = function (r) { return r.id === id ? Object.assign({}, r, { name: res.name, region: res.region }) : r; };
+        var patchImp = function (r) { return r.id === id ? Object.assign({}, r, { name: res.name, type: res.region }) : r; };
+        var rivers = (trip.rivers || []).map(patch);
+        var changes = { rivers: rivers };
+        if (trip.importData) changes.importData = Object.assign({}, trip.importData, { rivers: (trip.importData.rivers || []).map(patchImp) });
+        TripsData.updateTrip(_tripId, changes).then(function () {
+          if (oldName !== res.name) {
+            var col = firebase.firestore().collection('trips').doc(_tripId).collection('catches');
+            col.where('river', '==', oldName).get().then(function (snap) {
+              snap.forEach(function (d) { d.ref.update({ river: res.name }); });
+            });
+          }
+          var data = changes.importData || { name: trip.name, rivers: rivers, participants: trip.participants || [] };
+          if (window.APP && window.APP.currentTripId === _tripId) window.APP.currentTripData = data;
+          _trip = data;
+          _openDetail(id);
+        });
+      });
   }
 
   // Убрать место из поездки (trip.rivers и importData.rivers). Уловы,
@@ -201,6 +203,7 @@ var RiversIndex = (function () {
       var data = changes.importData || { name: trip.name, rivers: rivers, participants: trip.participants || [] };
       if (window.APP && window.APP.currentTripId === _tripId) window.APP.currentTripData = data;
       _trip = data;
+      if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'place', 'добавил место: ' + name + (region ? ', ' + region : ''));
       _renderList();
     }).catch(function () {
       if (typeof UIUtils !== 'undefined') UIUtils.confirmSheet('Не получилось сохранить место — проверь интернет и попробуй ещё раз.', { title: 'Место не добавлено', okLabel: 'Понятно', danger: false });
@@ -268,6 +271,8 @@ var RiversIndex = (function () {
     /* назад */
     var backBtn = document.getElementById('rv-back-btn');
     if (backBtn) backBtn.addEventListener('click', _renderList);
+    var editBtn = document.getElementById('rv-edit-place');
+    if (editBtn) editBtn.addEventListener('click', function () { _editPlace(r.id); });
 
     /* навигатор (парковка, точки) */
     if (_navHandler) _el.removeEventListener('click', _navHandler);
@@ -430,7 +435,14 @@ var RiversIndex = (function () {
       // Fallback: старый localStorage
       _addCatch(entry);
     }
- 
+
+    if (tripId && typeof ActivityLog !== 'undefined') {
+      var t = entry.fish || 'рыба';
+      if (entry.count > 1) t += ' × ' + entry.count;
+      if (!entry.kept) t += ', отпустил';
+      ActivityLog.add(tripId, 'catch', 'записал улов: ' + t);
+    }
+
     _refreshCatchLog(r);
   }
 
@@ -490,9 +502,14 @@ var RiversIndex = (function () {
     var note  = (document.getElementById('rv-pt-note')  || {}).value || '';
     if (!name.trim()) return;
 
-    /* parse coordinates */
+    /* parse coordinates — знак минуса не входил в [\d.], поэтому «-33.86,
+       151.21» терял минус у широты (сохранялось другое полушарие), а
+       отрицательная долгота («51.5, -0.13») вообще не распознавалась —
+       вторая группа не могла зацепить «-» ни при каком бэктрекинге,
+       весь regex просто не матчился. Реальный баг, найден внешним
+       ревью 2026-09-27. */
     var lat = null, lon = null;
-    var m = coord.match(/([\d.]+)[,\s]+([\d.]+)/);
+    var m = coord.match(/(-?[\d.]+)[,\s]+(-?[\d.]+)/);
     if (m) { lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
 
     var pt = {
@@ -504,10 +521,14 @@ var RiversIndex = (function () {
       lon: lon
     };
 
+    var onSaveFail = function (e) {
+      console.warn('river point save:', e);
+      alert('Не удалось сохранить точку. Проверь соединение и попробуй ещё раз.');
+    };
     if (_editingPt && _editingPt.rid === rid) {
-      RiversFirebase.updatePoint(_tripId, _editingPt.id, pt);
+      RiversFirebase.updatePoint(_tripId, _editingPt.id, pt).catch(onSaveFail);
     } else {
-      RiversFirebase.addPoint(_tripId, pt);
+      RiversFirebase.addPoint(_tripId, pt).catch(onSaveFail);
     }
     // Список обновится сам через realtime-подписку (_onPointsUpdate) —
     // не патчим локально, чтобы не разойтись с тем, что реально сохранилось.
@@ -534,7 +555,7 @@ var RiversIndex = (function () {
   }
 
   function _deletePoint(rid, id) {
-    RiversFirebase.deletePoint(_tripId, id);
+    RiversFirebase.deletePoint(_tripId, id).catch(function (e) { console.warn('river point delete:', e); });
   }
 
   /* ──────────────────────────────────────────────────────
@@ -558,10 +579,10 @@ var RiversIndex = (function () {
 
     if (val) {
       _notesCache[rid] = val;
-      RiversFirebase.saveNote(_tripId, rid, val);
+      RiversFirebase.saveNote(_tripId, rid, val).catch(function (e) { console.warn('river note save:', e); });
     } else {
       delete _notesCache[rid];
-      RiversFirebase.deleteNote(_tripId, rid);
+      RiversFirebase.deleteNote(_tripId, rid).catch(function (e) { console.warn('river note delete:', e); });
     }
 
     var saved = document.getElementById('rv-notes-saved');
@@ -583,7 +604,7 @@ var RiversIndex = (function () {
 
   function _deleteNote(rid) {
     delete _notesCache[rid];
-    RiversFirebase.deleteNote(_tripId, rid);
+    RiversFirebase.deleteNote(_tripId, rid).catch(function (e) { console.warn('river note delete:', e); });
 
     var saved = document.getElementById('rv-notes-saved');
     var acts  = document.getElementById('rv-notes-acts');
@@ -624,9 +645,19 @@ var RiversIndex = (function () {
     _tripId = tripId || 'default';
 
     if (typeof RiversFirebase !== 'undefined' && _tripId && _tripId !== 'default') {
-      RiversFirebase.migrateFromLocalStorage(_tripId).then(function () {
+      // migrateFromLocalStorage теперь честно отклоняет промис, если запись
+      // в Firestore не прошла (см. разбор в RiversFirebase — раньше молча
+      // "успевала" и стирала единственную копию из localStorage). Слушать
+      // realtime всё равно надо запускать в любом случае — отказ миграции
+      // просто значит, что попробуем перенести снова при следующем входе
+      // (localStorage не тронут), а не что экран рек должен остаться пустым.
+      var startListening = function () {
         RiversFirebase.listenPoints(_tripId, _onPointsUpdate);
         RiversFirebase.listenNotes(_tripId, _onNotesUpdate);
+      };
+      RiversFirebase.migrateFromLocalStorage(_tripId).then(startListening, function (e) {
+        console.warn('river points/notes migration:', e);
+        startListening();
       });
     }
 

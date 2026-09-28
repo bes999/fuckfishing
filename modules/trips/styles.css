@@ -876,6 +876,13 @@
 .cw-seg-btn .ti { font-size: 16px; }
 .cw-seg-btn.on { background: var(--bg2); box-shadow: var(--card-shadow); }
 
+/* «Взять за основу прошлую поездку» — лист со списком поездок */
+.cw-copy-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px 16px; box-sizing: border-box;
+  border: none; background: none; color: var(--label); font-family: inherit; text-align: left; cursor: pointer;
+}
+.cw-copy-row:active { background: var(--bg3); }
+
 /* Места: строка + свайп-удаление */
 .cw-place-row {
   position: relative; overflow: hidden; touch-action: pan-y;
@@ -1080,3 +1087,6 @@
 }
 .cw-icons.exp .cw-icon.on  { background: var(--accent-bg); color: var(--accent); border-color: var(--accent); }
 .cw-icons.fish .cw-icon.on { background: var(--river-bg); color: var(--river); border-color: var(--river); }
+
+.cw-hint--err { color: var(--red); }
+.cw-place-row[data-quiz-river-edit] { cursor: pointer; }

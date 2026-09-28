@@ -11,6 +11,17 @@ const PurchasesRender = (() => {
   let _uid = null;
   let _tripId = null;
   let _items = [];
+  // Резолвится, когда пришёл первый снапшот ТЕКУЩЕЙ пары (uid, tripId) —
+  // без этого "Добавить" мог сработать до того, как реальный список вообще
+  // загрузился: _items ещё [] (не потому что список пуст, а потому что
+  // ответа сервера ещё не было), push() добавлял к этой пустой заглушке, а
+  // save() перезаписывает документ целиком — уже сохранённые покупки
+  // терялись. При смене аккаунта было хуже: _items не сбрасывался в
+  // destroy(), и если новый _add() успевал сработать до первого снапшота
+  // НОВОГО пользователя, в его документ улетал список ПРЕДЫДУЩЕГО (реальная
+  // утечка чужих данных, найдена внешним ревью 2026-09-27).
+  let _loadedPromise = null;
+  let _loadedResolve = null;
 
   function _esc(s) {
     return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -76,9 +87,14 @@ const PurchasesRender = (() => {
   }
 
   function _subscribe() {
+    _items = [];
+    _loadedPromise = new Promise(resolve => { _loadedResolve = resolve; });
     if (typeof PurchasesFirebase === 'undefined' || !_tripId) return;
+    const forUid = _uid, forTripId = _tripId;
     PurchasesFirebase.subscribe(_uid, _tripId, items => {
+      if (_uid !== forUid || _tripId !== forTripId) return;
       _items = items || [];
+      if (_loadedResolve) { _loadedResolve(); _loadedResolve = null; }
       _renderList();
     });
   }
@@ -86,6 +102,9 @@ const PurchasesRender = (() => {
   function destroy() {
     if (typeof PurchasesFirebase !== 'undefined') PurchasesFirebase.unsubscribe();
     _el = null;
+    _items = [];
+    _loadedPromise = null;
+    _loadedResolve = null;
   }
 
   function _renderList() {
@@ -146,8 +165,11 @@ const PurchasesRender = (() => {
     const name = nameEl?.value.trim();
     if (!name) { nameEl?.focus(); return; }
     const amount = Number(amtEl?.value) || 0;
-    _items.push({ id: 'pi_' + Date.now() + '_' + Math.random().toString(36).slice(2), name, amount, bought: false });
+    const forUid = _uid, forTripId = _tripId;
     await UIUtils.withBusyButton(btn, async () => {
+      if (_loadedPromise) await _loadedPromise;
+      if (_uid !== forUid || _tripId !== forTripId) return; // переключили аккаунт/поездку, пока ждали загрузку
+      _items.push({ id: 'pi_' + Date.now() + '_' + Math.random().toString(36).slice(2), name, amount, bought: false });
       await PurchasesFirebase.save(_uid, _tripId, _items);
     });
     nameEl.value = ''; if (amtEl) amtEl.value = '';

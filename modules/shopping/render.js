@@ -107,6 +107,13 @@ const ShoppingRender = (() => {
     return f5;
   }
 
+  // Текст для ленты активности: до 5 названий, дальше «и ещё N» —
+  // см. ActivityLog (shared/activity.js).
+  function _activityItemsText(names) {
+    if (names.length <= 5) return names.join(', ');
+    return names.slice(0, 5).join(', ') + ` и ещё ${names.length - 5}`;
+  }
+
   // ── Быстрое добавление прямо на экране (без листа) — категория
   //    подбирается сама по названию (тем же RecipesData.resolveShoppingCategory,
   //    что и «вставить списком»), количество разбирается из хвоста строки
@@ -161,6 +168,7 @@ const ShoppingRender = (() => {
     if (input) input.value = '';
     _openCats.add(cat.id);
     await ShoppingFirebase.save(_tripId, cats);
+    if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'shopping', `добавил в закупку: ${_activityItemsText([name])}`);
     _rebuildBody();
   }
 
@@ -460,6 +468,7 @@ _bodyHandler = e => {
     if (!name) return;
     ShoppingState.addDayOneItem(_tripId, name, qtyEl?.value.trim() || '');
     ShoppingFirebase.saveDayOne(_tripId, ShoppingState.getDayOneItems(_tripId));
+    if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'shopping', `добавил в закупку: ${_activityItemsText([name])}`);
     _rebuildDayOne();
     return;
   }
@@ -522,6 +531,7 @@ body.addEventListener('click', _bodyHandler, true);
         const qty  = num ? `${num} ${unit}` : '';
         ShoppingState.addItem(_tripId, catId, name, qty);
         _sync();
+        if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'shopping', `добавил в закупку: ${_activityItemsText([name])}`);
         overlay.remove();
         _openCats.add(catId);
         _rebuildCat(catId);
@@ -550,6 +560,7 @@ body.addEventListener('click', _bodyHandler, true);
       cats.forEach(c => c.items.forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
 
       let added = 0;
+      const addedNames = [];
       ShoppingData.getDefaults().forEach(defCat => {
         defCat.items.forEach(defItem => {
           const key = defItem.name.trim().toLowerCase();
@@ -560,6 +571,7 @@ body.addEventListener('click', _bodyHandler, true);
             name: defItem.name, qty: defItem.qty, bought: false,
           });
           existingNames.add(key);
+          addedNames.push(defItem.name);
           added++;
         });
       });
@@ -567,6 +579,7 @@ body.addEventListener('click', _bodyHandler, true);
       if (added) {
         ShoppingState.persist();
         await ShoppingFirebase.save(_tripId, cats);
+        if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'shopping', `добавил в закупку: ${_activityItemsText(addedNames)}`);
         _rebuildBody();
         _showToast(`Добавлено ${added} ${_plural(added, 'позиция', 'позиции', 'позиций')}`);
       } else {
@@ -632,6 +645,7 @@ body.addEventListener('click', _bodyHandler, true);
         cats.forEach(c => c.items.forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
 
         let added = 0;
+        const addedNames = [];
         lines.forEach(line => {
           const parts = line.split(/\s+—\s+|\s+-\s+/);
           const name = parts[0].trim();
@@ -646,12 +660,14 @@ body.addEventListener('click', _bodyHandler, true);
             name, qty, bought: false,
           });
           existingNames.add(key);
+          addedNames.push(name);
           added++;
         });
 
         if (added) {
           ShoppingState.persist();
           await ShoppingFirebase.save(_tripId, cats);
+          if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'shopping', `добавил в закупку: ${_activityItemsText(addedNames)}`);
           _rebuildBody();
           _showToast(`Добавлено ${added} ${_plural(added, 'позиция', 'позиции', 'позиций')}`);
         }

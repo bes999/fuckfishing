@@ -31,67 +31,147 @@ const GearData = (() => {
   }
 
   /* ── Списки снаряги по поездкам (Firestore, gear_trip_snapshots) ──
-     Кэш в памяти на пользователя — читается синхронно всеми остальными
-     функциями ниже, наполняется один раз через ensureLoaded(uid). Видно
-     всем участникам (read: isMember()), редактирует только владелец. */
-  let _snapshots  = {};   // { tripId: {uid, tripId, tripName, locations, categories, items, checked} }
-  let _loadedForUid = null;
-  let _loadPromise  = null;
+     Кэш в памяти НА ПОЛЬЗОВАТЕЛЯ (не общий!) — читается синхронно всеми
+     остальными функциями ниже, наполняется через ensureLoaded(uid). Видно
+     всем участникам (read: isMember()), редактирует только владелец — эта
+     же страница может смотреть снаряжение РАЗНЫХ людей по очереди (своё,
+     потом чей-то ещё, см. GearModule.init(uid, isMe, ...)). Раньше кэш был
+     ОДИН на всех и ensureLoaded держал единственный _loadedForUid: если
+     загрузка A задерживалась, а тем временем открывали список Б,
+     запоздавший ответ A перезаписывал общий кэш поверх уже показанного Б —
+     а повторный ensureLoaded(Б) ничего не чинил, потому что код уже считал
+     Б "загруженным" (_loadedForUid стоял в 'Б', хотя данные там были от A).
+     Реальный баг, найден внешним ревью 2026-09-27. Теперь кэш и трекер
+     загрузки — по uid: у ответа A просто нет доступа к слоту Б, значения
+     физически не могут перепутаться. */
+  let _snapshots    = {};   // { uid: { tripId: {uid, tripId, tripName, locations, categories, items, checked} } }
+  let _loadedForUid = {};   // { uid: true } — кэш для этого uid валиден
+  let _loadPromises = {};   // { uid: Promise } — загрузка в процессе
 
   function _docId(uid, tripId) { return uid + '_' + tripId; }
+  function _forUid(uid) { return _snapshots[uid] || (_snapshots[uid] = {}); }
 
   function ensureLoaded(uid) {
-    if (_loadedForUid === uid) return _loadPromise;
-    _loadedForUid = uid;
-    _loadPromise = db.collection('gear_trip_snapshots').where('uid', '==', uid).get()
+    if (_loadedForUid[uid]) return Promise.resolve();
+    if (_loadPromises[uid]) return _loadPromises[uid];
+    const promise = db.collection('gear_trip_snapshots').where('uid', '==', uid).get()
       .then(snap => {
-        _snapshots = {};
-        snap.forEach(doc => { _snapshots[doc.data().tripId] = doc.data(); });
+        const forUid = {};
+        snap.forEach(doc => { forUid[doc.data().tripId] = doc.data(); });
+        _snapshots[uid] = forUid;
+        _loadedForUid[uid] = true;
       })
       .catch(err => {
         console.error('GearData.ensureLoaded: не удалось загрузить списки поездок', err);
-        _snapshots = {};
-      });
-    return _loadPromise;
+        // Не помечаем uid загруженным — следующий ensureLoaded(uid) честно
+        // попробует снова, а не тихо вернёт пустоту навсегда.
+      })
+      .finally(() => { delete _loadPromises[uid]; });
+    _loadPromises[uid] = promise;
+    return promise;
   }
 
   /* ── Чекбоксы поездки ── */
   function getChecked(uid, tripId) {
-    return (_snapshots[tripId] && _snapshots[tripId].checked) || [];
+    const s = _forUid(uid)[tripId];
+    return (s && s.checked) || [];
   }
 
   async function setChecked(uid, tripId, ids) {
-    if (_snapshots[tripId]) _snapshots[tripId].checked = ids;
+    const s = _forUid(uid)[tripId];
+    if (s) s.checked = ids;
     await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId))
       .set({ checked: ids }, { merge: true })
       .catch(err => console.error('GearData.setChecked:', err));
   }
 
+  // Точечная отметка (вкл/выкл конкретных id), а не вся отметка целиком.
+  // Личный список поездки не подписан на живые обновления (загружается
+  // один раз в ensureLoaded) — если поставить/снять отметку на телефоне, а
+  // потом на ноутбуке с ещё не обновившимся кэшем (или наоборот), setChecked
+  // выше перезаписывает checked ЦЕЛИКОМ по устаревшей локальной копии, и
+  // отметка с другого устройства пропадает. arrayUnion/arrayRemove трогают
+  // только конкретные id — тот же приём, что уже есть у общего списка
+  // (markSharedChecked). Реальный баг, найден внешним ревью 2026-09-27.
+  async function markChecked(uid, tripId, ids, on) {
+    if (!ids || !ids.length) return;
+    const FV = firebase.firestore.FieldValue;
+    const s = _forUid(uid)[tripId];
+    if (s) {
+      const cur = new Set(s.checked || []);
+      ids.forEach(id => on ? cur.add(id) : cur.delete(id));
+      s.checked = Array.from(cur);
+    }
+    await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId))
+      .set({ checked: on ? FV.arrayUnion(...ids) : FV.arrayRemove(...ids) }, { merge: true })
+      .catch(err => console.error('GearData.markChecked:', err));
+  }
+
+  /* ── Чекбоксы обратного пути — отдельное узкое поле, не трогает checked.
+     Нужны, чтобы перед отъездом с места проверить, что ничего не забыли,
+     не сбрасывая отметки "взял с собой" по дороге туда. ── */
+  function getCheckedBack(uid, tripId) {
+    const s = _forUid(uid)[tripId];
+    return (s && s.checkedBack) || [];
+  }
+
+  async function setCheckedBack(uid, tripId, ids) {
+    const s = _forUid(uid)[tripId];
+    if (s) s.checkedBack = ids;
+    await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId))
+      .set({ checkedBack: ids }, { merge: true })
+      .catch(err => console.error('GearData.setCheckedBack:', err));
+  }
+
+  // Точечная отметка «Обратно» — та же причина и приём, что у markChecked.
+  async function markCheckedBack(uid, tripId, ids, on) {
+    if (!ids || !ids.length) return;
+    const FV = firebase.firestore.FieldValue;
+    const s = _forUid(uid)[tripId];
+    if (s) {
+      const cur = new Set(s.checkedBack || []);
+      ids.forEach(id => on ? cur.add(id) : cur.delete(id));
+      s.checkedBack = Array.from(cur);
+    }
+    await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId))
+      .set({ checkedBack: on ? FV.arrayUnion(...ids) : FV.arrayRemove(...ids) }, { merge: true })
+      .catch(err => console.error('GearData.markCheckedBack:', err));
+  }
+
   /* ── Снимок списка для поездки ── */
   function getTripSnapshot(uid, tripId) {
-    return _snapshots[tripId] || null;
+    return _forUid(uid)[tripId] || null;
   }
 
   async function saveTripSnapshot(uid, tripId, tripName, template) {
+    // JSON-клон — createTripList выше нередко строит template прямо из
+    // закэшированного снимка ДРУГОЙ поездки (GearData.getTripSnapshot),
+    // то есть locations/categories/items были бы ТЕМИ ЖЕ массивами и
+    // объектами вещей, что и в снимке-источнике. Без клона правка вещи
+    // (например, смена сумки) в одной поездке молча меняла тот же объект
+    // и в другой — до следующего сохранения это видно только на экране, а
+    // после могло утечь и в Firestore. Реальный баг, найден внешним ревью
+    // 2026-09-27.
     const snap = {
       uid, tripId, tripName,
-      locations:  template.locations  || [],
-      categories: template.categories || [],
-      items:      template.items      || [],
+      locations:  JSON.parse(JSON.stringify(template.locations  || [])),
+      categories: JSON.parse(JSON.stringify(template.categories || [])),
+      items:      JSON.parse(JSON.stringify(template.items      || [])),
       checked:    [],
+      checkedBack: [],
       updatedAt:  firebase.firestore.FieldValue.serverTimestamp()
     };
     await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId)).set(snap);
-    _snapshots[tripId] = snap;
+    _forUid(uid)[tripId] = snap;
     return snap;
   }
 
   function getTripList(uid) {
-    return Object.values(_snapshots).map(s => ({ id: s.tripId, name: s.tripName }));
+    return Object.values(_forUid(uid)).map(s => ({ id: s.tripId, name: s.tripName }));
   }
 
-  function hasTripSnapshot(tripId) {
-    return !!_snapshots[tripId];
+  function hasTripSnapshot(uid, tripId) {
+    return !!_forUid(uid)[tripId];
   }
 
   /* ── Обновить личный список поездки из актуального шаблона ──
@@ -103,7 +183,7 @@ const GearData = (() => {
      явно при сборе списка, синк их не трогает. Безопасно жать сколько
      угодно раз. */
   async function syncTripFromTemplate(uid, tripId, template) {
-    const snap = _snapshots[tripId];
+    const snap = _forUid(uid)[tripId];
     if (!snap) return null;
 
     const existingCatIds = new Set(snap.categories.map(c => c.id));
@@ -127,7 +207,7 @@ const GearData = (() => {
      Не трогает locations/categories/checked — используется, например,
      когда меняешь место хранения у конкретной вещи прямо внутри поездки. */
   async function updateTripSnapshotItems(uid, tripId, items) {
-    const snap = _snapshots[tripId];
+    const snap = _forUid(uid)[tripId];
     if (snap) snap.items = items;
     await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId))
       .set({ items, updatedAt: firebase.firestore.FieldValue.serverTimestamp() }, { merge: true });
@@ -141,13 +221,30 @@ const GearData = (() => {
 
   async function loadShared(tripId) {
     const doc = await db.collection('gear_trip_shared').doc(tripId).get();
-    _shared[tripId] = doc.exists ? doc.data() : { tripId, categories: [], items: [], checked: [] };
+    _shared[tripId] = doc.exists ? doc.data() : { tripId, categories: [], items: [], checked: [], ready: {} };
     _sharedBase[tripId] = _snapBase(_shared[tripId]);
     return _shared[tripId];
   }
 
   function getShared(tripId) {
     return _shared[tripId] || null;
+  }
+
+  /* ── «Я собран» — gear_trip_shared/{tripId}.ready = { [uid]: true|false }.
+     Общая договорённость между модулями (см. BRIEF2) — узкая запись, не
+     трогает categories/items/checked. Видно всем участникам, в т.ч. в
+     чужой снаряге на просмотр. ── */
+  function getReady(tripId) {
+    return (_shared[tripId] && _shared[tripId].ready) || {};
+  }
+
+  async function setReady(tripId, uid, val) {
+    if (!_shared[tripId]) _shared[tripId] = { tripId, categories: [], items: [], checked: [], ready: {} };
+    if (!_shared[tripId].ready) _shared[tripId].ready = {};
+    _shared[tripId].ready[uid] = val;
+    await db.collection('gear_trip_shared').doc(tripId)
+      .set({ ready: { [uid]: val } }, { merge: true })
+      .catch(err => console.error('GearData.setReady:', err));
   }
 
   // Общий список правят все участники, а подписки на документ нет — поэтому
@@ -219,9 +316,11 @@ const GearData = (() => {
 
   return {
     load, save,
-    ensureLoaded, getChecked, setChecked, getTripSnapshot, saveTripSnapshot, getTripList, hasTripSnapshot,
+    ensureLoaded, getChecked, setChecked, markChecked, getCheckedBack, setCheckedBack, markCheckedBack,
+    getTripSnapshot, saveTripSnapshot, getTripList, hasTripSnapshot,
     syncTripFromTemplate, updateTripSnapshotItems,
     loadShared, getShared, saveShared, setSharedChecked, markSharedChecked,
+    getReady, setReady,
     uid,
   };
 })();

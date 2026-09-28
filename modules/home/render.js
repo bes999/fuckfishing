@@ -346,8 +346,13 @@ const HomeRender = (() => {
       const days = (snap.exists && snap.data().days) || [];
       const day = days.find(d => d.date === todayISO);
       const box = el.querySelector('#homeActiveMenu');
-      if (day && box) {
-        const meals = (typeof MenuData !== 'undefined' ? MenuData.getMeals() : []);
+      // Показываем только приёмы, включённые в планирование этой поездки
+      // (trip.mealsPlanned) — если пусто, блок меню на сегодня не выводим
+      // совсем (см. TripsData.plannedMeals).
+      const planned = typeof TripsData !== 'undefined' ? TripsData.plannedMeals(trip) : null;
+      if (day && box && (!planned || planned.length)) {
+        const allMeals = (typeof MenuData !== 'undefined' ? MenuData.getMeals() : []);
+        const meals = planned ? allMeals.filter(m => planned.includes(m.id)) : allMeals;
         const duty = (snap.data().mealDuty) || {};
         const rows = meals.map(m => {
           const slots = (day.meals && day.meals[m.id] && day.meals[m.id].slots) || [];

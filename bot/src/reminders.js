@@ -9,6 +9,7 @@
 
 import { db } from './firestore.js';
 import { formatDateRu } from './ui.js';
+import { todayStr } from './dates.js';
 
 const DAYS_BEFORE = 3;
 
@@ -50,12 +51,6 @@ async function sendToTrip(bot, trip, text) {
 // опечатка) просто тихо пропускается — слать некуда.
 
 const MEAL_LABELS = { breakfast: 'Завтрак', snack: 'Перекус', lunch: 'Обед', dinner: 'Ужин' };
-
-function todayStr() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString().slice(0, 10);
-}
 
 async function getTelegramIdByUid(uid) {
   if (!uid) return null;
@@ -173,18 +168,21 @@ export async function checkCookDonePings(bot) {
     const participants = trip.participants || [];
     const updates = {};
     for (const [key, ping] of pending) {
-      updates[key] = { ...ping, sent: true };
-      if (!ping.cleanup) continue; // уборка не назначена — слать некому
+      if (!ping.cleanup) { updates[key] = { ...ping, sent: true }; continue; } // уборка не назначена — слать некому, отмечаем сразу
 
       const p = participants.find((pp) => pp.name.toLowerCase() === ping.cleanup.toLowerCase());
       const chatId = p ? await getTelegramIdByUid(p.uid) : null;
-      if (!chatId) continue;
+      if (!chatId) { updates[key] = { ...ping, sent: true }; continue; } // нет Telegram — слать некуда, отмечаем сразу
 
       const mealLabel = MEAL_LABELS[ping.mealId] || 'Приём пищи';
       const cookPart = ping.cook ? `${ping.cook} закончил(а) готовить` : 'Готовка закончена';
       const text = `🍽 ${cookPart} — ${mealLabel} в «${trip.name}».\nТвоя очередь: уборка 🧽`;
+      // sent ставим только при реально успешной отправке — иначе сбой
+      // Telegram API навсегда помечался бы как "отправлено", и следующий
+      // опрос больше никогда не повторил бы попытку.
       try {
         await bot.api.sendMessage(chatId, text);
+        updates[key] = { ...ping, sent: true };
       } catch (err) {
         console.error(`cookDonePings: не удалось отправить chatId=${chatId}:`, err.message);
       }
@@ -216,13 +214,19 @@ export async function checkTripDeletions(bot) {
     const { tripName, deletedByName, memberIds } = doc.data();
     const ids = await getTelegramIds(memberIds);
     const text = `🗑 ${deletedByName || 'Участник'} удалил(а) поездку «${tripName || 'без названия'}»`;
+    let allSent = true;
     for (const chatId of ids) {
       try {
         await bot.api.sendMessage(chatId, text);
       } catch (err) {
         console.error(`tripDeletions: не удалось отправить chatId=${chatId}:`, err.message);
+        allSent = false;
       }
     }
+    // Если хоть одна отправка не удалась — не отмечаем sent: следующий опрос
+    // повторит рассылку целиком (тем, кому уже дошло, придёт дубль, но это
+    // лучше, чем часть участников не узнает про удаление поездки вовсе).
+    if (!allSent) continue;
     try {
       await doc.ref.update({ sent: true });
     } catch (err) {
@@ -247,18 +251,25 @@ export async function checkReminders(bot) {
     const d = daysUntil(trip.startDate);
     const sent = trip.remindersSent || {};
 
-    if (d === DAYS_BEFORE && !sent.beforeTrip) {
+    // Флаги хранят ДАТУ, для которой отправлено, а не просто true/false —
+    // поездку могли перенести ПОСЛЕ того, как "за 3 дня"/"сегодня старт" уже
+    // ушли на старую дату; булев флаг остался бы true навсегда и напоминание
+    // на новую дату никогда бы не пришло. Реальный баг, найден внешним
+    // ревью 2026-09-27. Старые документы (флаг ещё true) естественно
+    // проходят проверку заново один раз при следующем совпадении d — этим
+    // дело и ограничивается, отдельной миграции не нужно.
+    if (d === DAYS_BEFORE && sent.beforeTrip !== trip.startDate) {
       await sendToTrip(
         bot,
         trip,
         `⏳ Через ${DAYS_BEFORE} дня старт поездки «${trip.name}» (${formatDateRu(trip.startDate)}).\nПроверь снарягу, меню и аптечку!`
       );
-      await doc.ref.set({ remindersSent: { ...sent, beforeTrip: true } }, { merge: true });
+      await doc.ref.set({ remindersSent: { ...sent, beforeTrip: trip.startDate } }, { merge: true });
     }
 
-    if (d === 0 && !sent.dayOf) {
+    if (d === 0 && sent.dayOf !== trip.startDate) {
       await sendToTrip(bot, trip, `🚀 Сегодня старт — «${trip.name}»! Удачной поездки.`);
-      await doc.ref.set({ remindersSent: { ...sent, dayOf: true } }, { merge: true });
+      await doc.ref.set({ remindersSent: { ...sent, dayOf: trip.startDate } }, { merge: true });
     }
   }
 }

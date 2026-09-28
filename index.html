@@ -123,6 +123,7 @@
   <script src="modules/trips/firebase.js"></script>
   <script src="modules/trips/state.js"></script>
   <script src="modules/trips/data.js"></script>
+  <script src="shared/activity.js"></script>
 
   <!-- ── Navigation ── -->
   <script src="shared/nav.js"></script>
@@ -468,8 +469,10 @@
     // другое не уводит со страницы. Обрабатывается один раз здесь, когда
     // кэш поездок уже точно наполнен.
     function _processJoinInvite() {
-      const tripId = new URLSearchParams(location.search).get('joinTrip');
+      const params = new URLSearchParams(location.search);
+      const tripId = params.get('joinTrip');
       if (!tripId) return;
+      const token = params.get('t');
 
       // Чистим URL сразу — обновление страницы не должно повторять вступление
       history.replaceState(null, '', location.pathname + location.hash);
@@ -485,12 +488,32 @@
         return;
       }
 
+      // Ссылка раньше несла только id поездки — не секрет и никогда не
+      // меняется, так что зарегистрированный человек мог сам собрать
+      // рабочую ссылку в любую поездку, а исключённый участник — вернуться
+      // по старой ссылке (отозвать было нечем). Токен на самой поездке
+      // (см. TripsData.ensureInviteToken/regenerateInviteToken) закрывает
+      // оба случая. И сама ссылка больше не обходит «Добавлять людей могу
+      // только я» — раньше этот переключатель самовступление по ссылке
+      // вообще не проверял. Реальная дыра, найдена внешним ревью 2026-09-27.
+      if (!token || !trip.inviteToken || token !== trip.inviteToken) {
+        alert('Ссылка на поездку недействительна — попроси новую.');
+        return;
+      }
+      if (trip.inviteRestricted) {
+        alert('В этой поездке добавлять участников может только организатор — попроси его добавить тебя.');
+        return;
+      }
+
       UIUtils.confirmSheet(`Присоединиться к поездке «${trip.name}»?`, {
         title: 'Приглашение в поездку', okLabel: 'Присоединиться', danger: false
       }).then(ok => {
         if (!ok) return;
         TripsData.addParticipant(tripId, { uid, name })
-          .then(() => TripCoverIndex.show(tripId));
+          .then(() => {
+            if (typeof ActivityLog !== 'undefined') ActivityLog.add(tripId, 'member', 'присоединился к поездке');
+            TripCoverIndex.show(tripId);
+          });
       });
     }
 

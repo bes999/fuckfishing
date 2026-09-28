@@ -33,6 +33,14 @@ const MenuRender = (() => {
   const WD_LONG  = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
   const MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
                       'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+  // Короткая дата для ленты активности («3 окт»), тот же набор сокращений,
+  // что у ActivityLog.ago (shared/activity.js).
+  const MONTHS_SHORT = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  function _shortDate(day) {
+    if (!day?.date) return '';
+    const d = _parseISO(day.date);
+    return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  }
 
   // day.date — 'YYYY-MM-DD'. Парсим как локальную дату, а не через
   // new Date(iso) (тот читает строку как UTC-полночь и в западных поясах
@@ -112,20 +120,38 @@ const MenuRender = (() => {
   }
 
   // ── Каркас ──────────────────────────────────────────────────────────────
+  // #mn-wrap — единственный узел, который перерисовывают _rerender()/*Body —
+  // листы (см. _openSheet) вставляются как СОСЕДИ #mn-wrap внутри _el, а не
+  // внутрь него, поэтому перерисовка тела не сносит открытый лист (важно
+  // для листа "какие приёмы планируем" — он сам себя перерисовывает после
+  // каждого тычка и дёргает _rerender() у фона).
   function render(el, tripId) {
     _el     = el;
     _tripId = tripId;
     if (!el) return;
     if (_selForTrip !== tripId) { _selDayId = null; _selForTrip = tripId; }
     _ensureSelectedDay();
-    el.innerHTML = `
-      <div class="mn-wrap">
-        ${_topbar()}
-        <div id="mn-strip-wrap">${_renderStrip()}</div>
-        <div class="mn-day" id="mn-day">${_renderDayView()}</div>
-      </div>`;
+    el.innerHTML = `<div class="mn-wrap" id="mn-wrap">${_renderBody()}</div>`;
     _bindEvents();
     _centerSelectedInStrip();
+  }
+
+  // Тело экрана — либо обычный вид (полоса дней + карточки приёмов), либо,
+  // если в поездке осознанно выключены все приёмы (trip.mealsPlanned = []),
+  // карточка-заглушка вместо дней целиком.
+  function _renderBody() {
+    const planned = TripsData.plannedMeals(_trip());
+    if (!planned.length) {
+      return `
+        ${_topbar()}
+        <div id="mn-meals-row">${_renderMealsPlannedRow()}</div>
+        ${_renderNoPlanCard()}`;
+    }
+    return `
+      ${_topbar()}
+      <div id="mn-strip-wrap">${_renderStrip()}</div>
+      <div id="mn-meals-row">${_renderMealsPlannedRow()}</div>
+      <div class="mn-day" id="mn-day">${_renderDayView()}</div>`;
   }
 
   // Меню открывается на сегодняшнем дне, если сегодня внутри дат поездки
@@ -143,7 +169,7 @@ const MenuRender = (() => {
     const sub  = trip ? `${trip.name} · ${_days.length} дней` : '';
     return `
       <div class="mn-topbar">
-        <button class="mn-back" id="mn-back" aria-label="Назад">
+        <button class="mn-back" id="mn-back" data-action="back" aria-label="Назад">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
@@ -162,10 +188,11 @@ const MenuRender = (() => {
   function _renderStrip() {
     if (!_days.length) return '';
     const todayISO = _todayISO();
+    const planned = TripsData.plannedMeals(_trip());
     const btns = _days.map(day => {
       const d = _parseISO(day.date);
       const on = day.id === _selDayId;
-      const status = MenuState.getDayStatus(_tripId, day.id);
+      const status = MenuState.getDayStatus(_tripId, day.id, planned);
       const cls = ['mn-strip-day', on ? 'on' : '', day.date === todayISO ? 'today' : ''].filter(Boolean).join(' ');
       return `
         <button type="button" class="${cls}" data-action="select-day" data-day="${day.id}"
@@ -197,7 +224,8 @@ const MenuRender = (() => {
     const day = _days.find(d => d.id === _selDayId) || _days[0];
     const trip = _trip();
     const isToday = day.date === _todayISO();
-    const hasAny = MenuData.getMeals().some(m => (day.meals[m.id]?.slots || []).some(s => s.item));
+    const plannedMeals = MenuData.getMeals().filter(m => TripsData.plannedMeals(trip).includes(m.id));
+    const hasAny = plannedMeals.some(m => (day.meals[m.id]?.slots || []).some(s => s.item));
 
     const head = `
       <div class="mn-day-head">
@@ -213,7 +241,7 @@ const MenuRender = (() => {
       </div>`;
 
     const attendance = trip?.attendanceEnabled ? _renderAttendanceCard(day, trip) : '';
-    const meals = MenuData.getMeals().map(m => _renderMeal(day, m)).join('');
+    const meals = plannedMeals.map(m => _renderMeal(day, m)).join('');
 
     return `
       ${head}
@@ -241,6 +269,98 @@ const MenuRender = (() => {
       </button>`;
   }
 
+  // ── Какие приёмы пищи планируем ────────────────────────────────────────
+  // Компактная строка под полосой дней — перечисляет включённые приёмы
+  // (или "ничего", если поездка сознательно без меню). Тап открывает лист
+  // с независимыми чекбоксами (см. _showMealsPlannedSheet).
+  function _renderMealsPlannedRow() {
+    const trip = _trip();
+    if (!trip) return '';
+    const planned = TripsData.plannedMeals(trip);
+    const label = planned.length
+      ? MenuData.getMeals().filter(m => planned.includes(m.id)).map(m => m.label.toLowerCase()).join(', ')
+      : 'ничего';
+    return `
+      <button type="button" class="mn-mealsplan-row" data-action="edit-meals-planned">
+        <span class="mn-mealsplan-row__text">Планируем: ${_esc(label)}</span>
+        ${UIUtils.ico('chevron-right', 'mn-mealsplan-row__chev')}
+      </button>`;
+  }
+
+  // Заглушка вместо дней, когда в поездке ни один приём пищи не планируется
+  // (trip.mealsPlanned = []) — дни меню всё равно существуют в данных
+  // (ничего не удаляем), просто не показываем их, пока планирование снова
+  // не включат.
+  function _renderNoPlanCard() {
+    return `
+      <div class="mn-empty">
+        <div class="mn-empty__icon">${UIUtils.ico('tools-kitchen-2')}</div>
+        <div class="mn-empty__title">Меню в этой поездке не планируем</div>
+        <button type="button" class="mn-btn-primary mn-noplan-btn" data-action="edit-meals-planned">Включить планирование</button>
+      </div>`;
+  }
+
+  // Лист "какие приёмы пищи планируем" — 4 независимых круглых чекбокса
+  // (не радио: любой набор допустим, вплоть до одного ужина) + ссылка
+  // "Меню не планируем" снизу, которая снимает все разом. Пишет узкое поле
+  // trip.mealsPlanned сразу на каждый тычок (тот же паттерн, что и
+  // toggle-attendance-enabled ниже) — сохранять отдельной кнопкой незачем,
+  // тут нечего "отменить" перед уходом.
+  function _showMealsPlannedSheet() {
+    const trip = _trip();
+    if (!trip) return;
+    const allMeals = MenuData.getMeals();
+    let planned = new Set(TripsData.plannedMeals(trip));
+
+    function _persist() {
+      const arr = allMeals.filter(m => planned.has(m.id)).map(m => m.id);
+      // Снапшот поездок подменяет объект trip после каждой записи — ставим
+      // и в захваченный, и в текущий, иначе второй тык рисовал старое.
+      trip.mealsPlanned = arr;
+      const cur = _trip();
+      if (cur) cur.mealsPlanned = arr;
+      TripsData.updateTrip(_tripId, { mealsPlanned: arr });
+      _rerender();
+    }
+
+    function _body() {
+      const rows = allMeals.map(m => {
+        const on = planned.has(m.id);
+        return `
+          <button type="button" class="mn-mealplan-row" data-sh="toggle" data-meal="${m.id}">
+            <span class="mn-check ${on ? 'on' : ''}" role="checkbox" aria-checked="${on ? 'true' : 'false'}">${UIUtils.ico('check')}</span>
+            <span class="mn-mealplan-row__label">${_esc(m.label)}</span>
+          </button>`;
+      }).join('');
+      return `
+        <div class="mn-mealplan-list">${rows}</div>
+        <button type="button" class="mn-link-quiet" data-sh="none">Меню не планируем</button>
+        <span class="mn-hint-sm">Выключенные приёмы скрываются из меню, явки и дежурств. Уже выбранные блюда не удаляются — вернутся, если включить обратно.</span>`;
+    }
+
+    const overlay = _openSheet('mn-mealplan-sheet', {
+      title: 'Какие приёмы пищи планируем',
+      body: `<div id="mn-mealplan-body">${_body()}</div>`,
+    });
+    const bodyEl = overlay.querySelector('#mn-mealplan-body');
+
+    overlay.addEventListener('click', e => {
+      const btn = e.target.closest('[data-sh]');
+      if (!btn) return;
+      const a = btn.dataset.sh;
+      if (a === 'toggle') {
+        const id = btn.dataset.meal;
+        if (planned.has(id)) planned.delete(id); else planned.add(id);
+        _persist();
+        bodyEl.innerHTML = _body();
+      } else if (a === 'none') {
+        planned = new Set();
+        _persist();
+        bodyEl.innerHTML = _body();
+      }
+    });
+  }
+
   // Матрица явки: участник × приём пищи, круглый чек-бокс на пересечении.
   // Компактнее, чем отдельный тоггл на весь день — видно, кто на месте к
   // какому конкретно приёму (кто-то уезжает на рыбалку с утра и пропускает
@@ -250,7 +370,8 @@ const MenuRender = (() => {
   function _renderAttendanceCard(day, trip) {
     const names = TripsData.participantNames(trip);
     if (!names.length) return '';
-    const meals = MenuData.getMeals();
+    const meals = MenuData.getMeals().filter(m => TripsData.plannedMeals(trip).includes(m.id));
+    if (!meals.length) return '';
 
     const head = `<div class="mn-att-grid mn-att-grid--head"><span></span>${meals.map(m => `<span>${_MEAL_SHORT[m.id] || m.label}</span>`).join('')}</div>`;
     const rows = names.map(name => {
@@ -487,10 +608,16 @@ const MenuRender = (() => {
 
     function _save(item, btn) {
       UIUtils.withBusyButton(btn, () => {
+        // Выбор в пустую позицию — новая запись в ленте; замену уже
+        // выбранного блюда ("Заменить блюдо") в ленту не пишем.
+        const wasEmpty = !_findMeal(dayId, mealId)?.slots.find(s => s.id === slotId)?.item;
         // Точечная запись только этого слота, а не всего _syncFirebase() —
         // см. MenuFirebase.saveSlotItem про гонку при одновременном выборе.
         MenuState.updateSlot(_tripId, dayId, mealId, slotId, item);
         MenuFirebase.saveSlotItem(_tripId, slotId, item);
+        if (wasEmpty && typeof ActivityLog !== 'undefined') {
+          ActivityLog.add(_tripId, 'menu', `добавил в меню: ${item.name} (${(mealMeta?.label || '').toLowerCase()}, ${_shortDate(day)})`);
+        }
         overlay.remove();
         _rerender();
       });
@@ -622,8 +749,11 @@ const MenuRender = (() => {
       if (a === 'remove') { overlay.remove(); _removeItem(dayId, mealId, slotId); return; }
       if (a === 'shop') {
         await UIUtils.withBusyButton(btn, async () => {
-          const res = await _pushIngredientsToShopping([slot.item]);
+          const res = await _pushIngredientsToShopping([{ slotId, ...slot.item }]);
           if (res) _flash(res.added ? `В закупку: +${res.added}` : 'Всё уже есть в закупке');
+          if (res && res.added && typeof ActivityLog !== 'undefined') {
+            ActivityLog.add(_tripId, 'shopping', `добавил ингредиенты блюда «${slot.item.name}» в закупку (${res.added})`);
+          }
         });
         overlay.remove();
       }
@@ -675,7 +805,7 @@ const MenuRender = (() => {
     if (!meal) return;
 
     const sel = { cook: meal.cook || null, cleanup: meal.cleanup || null };
-    const counts = MenuState.getDutyCounts(_tripId);
+    const counts = MenuState.getDutyCounts(_tripId, TripsData.plannedMeals(trip));
 
     // Уже назначенный человек, которого нет среди доступных (отметили
     // dutyExempt позже) — всё равно показываем чипом, чтобы было видно и
@@ -895,6 +1025,7 @@ const MenuRender = (() => {
       if (typeof MenuFirebase !== 'undefined') {
         MenuFirebase.saveCookDone(_tripId, dayId, mealId, fresh.cook, fresh.cleanup);
       }
+      if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'menu', `приготовил ${meal.label.toLowerCase()}`);
       _cookModeOpenFor = null;
       overlay.remove();
       _rerender();
@@ -915,6 +1046,13 @@ const MenuRender = (() => {
       const action = target.dataset.action;
       const { day, meal } = target.dataset;
 
+      if (action === 'back') {
+        if (typeof MenuIndex !== 'undefined') MenuIndex.close();
+        return;
+      }
+
+      if (action === 'edit-meals-planned') { _showMealsPlannedSheet(); return; }
+
       if (action === 'select-day') {
         _selDayId = day;
         _rerender();
@@ -931,11 +1069,15 @@ const MenuRender = (() => {
       if (action === 'push-day') {
         const dayObj = _findDay(day);
         if (!dayObj) return;
+        const planned = TripsData.plannedMeals(_trip());
         const items = [];
-        Object.values(dayObj.meals || {}).forEach(m => (m.slots || []).forEach(s => { if (s.item) items.push(s.item); }));
+        planned.forEach(mealId => (dayObj.meals?.[mealId]?.slots || []).forEach(s => { if (s.item) items.push({ slotId: s.id, ...s.item }); }));
         UIUtils.withBusyButton(target, async () => {
           const res = await _pushIngredientsToShopping(items);
           if (res) _flash(res.added ? `В закупку: +${res.added}` : 'Всё уже есть в закупке');
+          if (res && res.added && typeof ActivityLog !== 'undefined') {
+            ActivityLog.add(_tripId, 'shopping', `добавил ингредиенты на ${_shortDate(dayObj)} в закупку (${res.added})`);
+          }
         });
         return;
       }
@@ -967,26 +1109,24 @@ const MenuRender = (() => {
       }
     };
 
-    _el.querySelector('#mn-back')?.addEventListener('click', function() {
-      if (typeof MenuIndex !== 'undefined') MenuIndex.close();
-    });
     _el.addEventListener('click', _el._mnClickHandler);
   }
 
-  // Перерисовать полосу дней и выбранный день (без каркаса). Прокрутку
-  // полосы сохраняем — иначе каждый снапшот дёргал бы её в начало.
+  // Перерисовать тело (без каркаса _el) — полосу дней, строку "Планируем…"
+  // и выбранный день, либо карточку-заглушку, если приёмы выключены целиком
+  // (структура тела могла смениться между вызовами — так что перерисовываем
+  // #mn-wrap целиком, а не отдельные под-узлы, как раньше). Прокрутку
+  // полосы сохраняем — иначе каждый снапшот дёргал бы её в начало. Листы
+  // (см. _openSheet) — соседи #mn-wrap внутри _el, их это не касается.
   function _rerender() {
     if (!_el) return;
     _ensureSelectedDay();
-    const stripWrap = _el.querySelector('#mn-strip-wrap');
-    if (stripWrap) {
-      const prev = stripWrap.querySelector('#mn-strip')?.scrollLeft || 0;
-      stripWrap.innerHTML = _renderStrip();
-      const strip = stripWrap.querySelector('#mn-strip');
-      if (strip) strip.scrollLeft = prev;
-    }
-    const dayEl = _el.querySelector('#mn-day');
-    if (dayEl) dayEl.innerHTML = _renderDayView();
+    const wrap = _el.querySelector('#mn-wrap');
+    if (!wrap) return;
+    const prevScroll = wrap.querySelector('#mn-strip')?.scrollLeft || 0;
+    wrap.innerHTML = _renderBody();
+    const strip = wrap.querySelector('#mn-strip');
+    if (strip) strip.scrollLeft = prevScroll;
   }
 
   // Ингредиенты блюда по его source/id — те же каталоги, откуда слот
@@ -999,6 +1139,38 @@ const MenuRender = (() => {
     return (recipe && recipe.ingredients && recipe.ingredients.length) ? recipe.ingredients : [];
   }
 
+  // "4 шт" → {amount:4, unit:'шт'}; "150 г" → {amount:150, unit:'г'};
+  // "по вкусу" / "2 ст.л. на литр воды" (не чистое "число + единица") →
+  // null — не пытаемся угадывать состав сложной строки, просто не считаем
+  // её числом.
+  function _parseQty(qty) {
+    const s = String(qty || '').trim();
+    const m = s.match(/^(\d+(?:[.,]\d+)?)\s*([^\d]*)$/);
+    if (!m) return null;
+    const amount = parseFloat(m[1].replace(',', '.'));
+    if (!isFinite(amount)) return null;
+    return { amount, unit: m[2].trim() };
+  }
+
+  // Сложить два qty. Если оба — чистое число с одной и той же единицей
+  // (без учёта регистра) — суммируем в одну цифру. Иначе (единицы разные,
+  // либо один из них не число, например "по вкусу") — ничего не выдумываем
+  // и не теряем: просто соединяем обе строки текстом.
+  function _combineQty(a, b) {
+    const existing = String(a || '').trim();
+    const add = String(b || '').trim();
+    if (!existing) return add;
+    if (!add) return existing;
+    const pa = _parseQty(existing), pb = _parseQty(add);
+    if (pa && pb && pa.unit.toLowerCase() === pb.unit.toLowerCase()) {
+      const sum = pa.amount + pb.amount;
+      const sumStr = Number.isInteger(sum) ? String(sum) : String(Math.round(sum * 100) / 100);
+      return (sumStr + (pa.unit ? ' ' + pa.unit : '')).trim();
+    }
+    if (existing === add) return existing;
+    return existing + ' + ' + add;
+  }
+
   // Закидывает ингредиенты блюд (одного — из листа блюда, или всех блюд
   // дня — кнопкой-корзиной у дня) в Закупку этой же поездки — категория
   // резолвится через RecipesData.resolveShoppingCategory (каталог
@@ -1006,55 +1178,91 @@ const MenuRender = (() => {
   // ключевым словам → "Разное"), тот же резолвер использует и вставка
   // списка текстом в самой Закупке (см. modules/shopping/render.js:
   // _showPasteList) — одна логика на оба входа в закупку.
-  // Дедуп по имени (без учёта регистра) против ВСЕХ категорий, не только
-  // целевой, чтобы не плодить то, что уже кто-то вписал руками. Полный
-  // overwrite categories — тот же паттерн, что и у остальных мутаций в
-  // самом модуле Закупки (см. shopping/render.js:_sync).
+  // slotItems: [{slotId, id, source, name}] — slotId обязателен для
+  // идемпотентности (см. shoppingPushed ниже).
+  //
+  // Раньше при одинаковом имени (без учёта регистра) вторая и последующая
+  // позиция ПРОСТО ОТБРАСЫВАЛАСЬ, а количество оставалось от первой — "Яйца
+  // пашот" (4 шт) + "Омлет" (3 шт) в закупке давали 4 или 3 яйца в
+  // зависимости от порядка добавления блюд, а не 7. Та же участь была у
+  // позиции, уже существующей в закупке — её количество вообще не
+  // увеличивалось. Реальный баг, найден внешним ревью 2026-09-27. Теперь
+  // одинаковые ингредиенты (в том числе уже существующие в закупке)
+  // суммируются через _combineQty. Чтобы повторное нажатие "В закупку" не
+  // удваивало количество — menu/{tripId}.shoppingPushed запоминает id
+  // уже отправленных слотов, и уже отправленные молча пропускаются.
+  // Свежие данные (и Закупки, и Меню) читаем в транзакции, а не из
+  // localStorage: Меню не подписано на Закупку, и раньше код писал
+  // полный categories из пустого/устаревшего кэша — стирал весь чужой
+  // список закупки (нашёл аудит 2026-09-27).
   // Возвращает { added, total } или null, если закупки нет/нечего добавлять.
-  async function _pushIngredientsToShopping(items) {
+  async function _pushIngredientsToShopping(slotItems) {
     if (typeof ShoppingState === 'undefined' || typeof ShoppingFirebase === 'undefined') return null;
-    const ingredients = [];
-    (items || []).forEach(it => ingredients.push(..._ingredientsForItem(it.id, it.source, it.name)));
-    if (!ingredients.length) {
+    if (!slotItems || !slotItems.length) return null;
+
+    const allIngredients = [];
+    slotItems.forEach(si => allIngredients.push(..._ingredientsForItem(si.id, si.source, si.name)));
+    if (!allIngredients.length) {
       _flash('У этих блюд нет списка ингредиентов — добавь их в Рецептах');
       return null;
     }
 
-    // Свежий список закупки берём с сервера в транзакции, а не из
-    // localStorage: Меню не подписано на Закупку, и старый код писал
-    // полный categories из пустого/устаревшего кэша — стирал весь чужой
-    // список закупки (нашёл аудит 2026-09-27).
     ShoppingState.load();
-    const ref = db.collection('shopping').doc(_tripId);
+    const menuRef = db.collection('menu').doc(_tripId);
+    const shopRef = db.collection('shopping').doc(_tripId);
     let added = 0;
     try {
       await db.runTransaction(async tx => {
         added = 0;
-        const snap = await tx.get(ref);
-        const cats = (snap.exists && snap.data().categories) || [];
-        const existingNames = new Set();
-        cats.forEach(c => (c.items || []).forEach(i => existingNames.add(String(i.name).trim().toLowerCase())));
+        const [menuSnap, shopSnap] = await Promise.all([tx.get(menuRef), tx.get(shopRef)]);
+        const pushed = (menuSnap.exists && menuSnap.data().shoppingPushed) || {};
+        const fresh = slotItems.filter(si => !si.slotId || !pushed[si.slotId]);
+        if (!fresh.length) return;
 
+        const ingredients = [];
+        fresh.forEach(si => ingredients.push(..._ingredientsForItem(si.id, si.source, si.name)));
+
+        const byName = new Map();
         ingredients.forEach(ing => {
           const key = String(ing.name || '').trim().toLowerCase();
-          if (!key || existingNames.has(key)) return;
-          const title = RecipesData.resolveShoppingCategory(ing.name, ing.category, ing.ingredientId);
-          const cat = ShoppingState.findOrCreateCategory(cats, title);
-          cat.items.push({
-            id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
-            name: ing.name, qty: ing.qty || '', bought: false,
-          });
-          existingNames.add(key);
+          if (!key) return;
+          const existing = byName.get(key);
+          if (existing) existing.qty = _combineQty(existing.qty, ing.qty);
+          else byName.set(key, { name: ing.name, qty: ing.qty || '', category: ing.category, ingredientId: ing.ingredientId });
+        });
+
+        const cats = (shopSnap.exists && shopSnap.data().categories) || [];
+        const existingItemByName = new Map();
+        cats.forEach(c => (c.items || []).forEach(i => existingItemByName.set(String(i.name).trim().toLowerCase(), i)));
+
+        byName.forEach((ing, key) => {
+          const already = existingItemByName.get(key);
+          if (already) {
+            already.qty = _combineQty(already.qty, ing.qty);
+          } else {
+            const title = RecipesData.resolveShoppingCategory(ing.name, ing.category, ing.ingredientId);
+            const cat = ShoppingState.findOrCreateCategory(cats, title);
+            cat.items.push({
+              id: `item_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+              name: ing.name, qty: ing.qty || '', bought: false,
+            });
+          }
           added++;
         });
-        if (added) tx.set(ref, { categories: cats }, { merge: true });
+
+        tx.set(shopRef, { categories: cats }, { merge: true });
+        if (fresh.some(si => si.slotId)) {
+          const newPushed = Object.assign({}, pushed);
+          fresh.forEach(si => { if (si.slotId) newPushed[si.slotId] = true; });
+          tx.set(menuRef, { shoppingPushed: newPushed }, { merge: true });
+        }
       });
     } catch (e) {
       console.error('menu → shopping:', e);
       _flash('Не получилось добавить в закупку — проверь интернет');
       return null;
     }
-    return { added, total: ingredients.length };
+    return { added, total: allIngredients.length };
   }
 
   function _syncFirebase() {

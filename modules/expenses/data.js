@@ -46,5 +46,19 @@ const ExpensesData = (() => {
     };
   }
 
-  return { getDefaultCategories, normalizeExpense, normalizeSettlement };
+  // «Бюджет до поездки» — заранее известные траты (билеты, аренда,
+  // трансфер). Отдельная подколлекция trips/{tripId}/budget, не расходы.
+  function normalizeBudgetLine(data, id) {
+    return {
+      _id: id,
+      title: data.title || '',
+      amount: parseFloat(data.amount) || 0,
+      participants: Array.isArray(data.participants) ? data.participants : [],
+      note: data.note || '',
+      createdAt: data.createdAt || new Date().toISOString(),
+      createdBy: data.createdBy || null,
+    };
+  }
+
+  return { getDefaultCategories, normalizeExpense, normalizeSettlement, normalizeBudgetLine };
 })();

@@ -82,6 +82,34 @@
 .mn-day-cart:active { background: var(--bg3); }
 .mn-day-cart.is-busy { opacity: .5; }
 
+/* ── "Планируем: …" — строка над днём, открывает лист приёмов пищи ── */
+.mn-mealsplan-row {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; min-height: 36px; padding: 0 16px 4px;
+  border: none; background: none;
+  color: var(--label3); font-family: inherit; font-size: 13px; font-weight: 600; text-align: left;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.mn-mealsplan-row__text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mn-mealsplan-row__chev { font-size: 14px; flex-shrink: 0; }
+.mn-mealsplan-row:active { opacity: .7; }
+
+/* ── Заглушка "меню не планируем" ── */
+.mn-noplan-btn { max-width: 280px; margin: 18px auto 0; }
+
+/* ── Лист "какие приёмы пищи планируем" ── */
+.mn-mealplan-list { display: flex; flex-direction: column; }
+.mn-mealplan-row {
+  display: flex; align-items: center; gap: 14px;
+  width: 100%; min-height: 56px; padding: 8px 4px;
+  border: none; border-bottom: 1px solid var(--sep2); background: none;
+  color: var(--label); font-family: inherit; text-align: left;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.mn-mealplan-row:last-child { border-bottom: none; }
+.mn-mealplan-row:active { background: var(--bg3); }
+.mn-mealplan-row__label { font-size: 16px; font-weight: 600; }
+
 .mn-empty { padding: 48px 24px; text-align: center; }
 .mn-empty__icon  { font-size: 44px; margin-bottom: 12px; color: var(--label3); }
 .mn-empty__title { font-size: 16px; font-weight: 700; color: var(--label); margin-bottom: 6px; }

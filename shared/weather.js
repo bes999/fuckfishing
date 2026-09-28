@@ -18,10 +18,20 @@ const WeatherService = (() => {
     return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
   }
 
+  // new Date(dateStr + 'T00:00:00') без суффикса 'Z' парсится как ПОЛНОЧЬ
+  // ПО МЕСТНОМУ времени устройства, а .toISOString() потом переводит это
+  // обратно в UTC — в часовых поясах восточнее UTC (Екатеринбург UTC+5 и
+  // так далее) местная полночь оказывается вечером ПРЕДЫДУЩЕГО дня по UTC,
+  // и .slice(0,10) отдаёт не ту дату даже при n=0. У поездки, разбитой на
+  // архив/прогноз по "сегодня", это теряло день посередине (архив
+  // заканчивался на день раньше, прогноз начинался на день позже — дыра).
+  // Реальный баг, найден внешним ревью 2026-09-27. Считаем в UTC явно —
+  // локальный часовой пояс тут вообще не должен участвовать.
   function _addDays(dateStr, n) {
-    const d = new Date(dateStr + 'T00:00:00');
-    d.setDate(d.getDate() + n);
-    return d.toISOString().slice(0, 10);
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCDate(dt.getUTCDate() + n);
+    return dt.toISOString().slice(0, 10);
   }
 
   async function _fetchDaily(url, lat, lon, startDate, endDate) {

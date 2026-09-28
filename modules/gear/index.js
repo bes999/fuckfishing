@@ -1,5 +1,5 @@
 'use strict';
-/* globals GearData, GearRender, TripsData, UIUtils */
+/* globals GearData, GearRender, TripsData, UIUtils, ActivityLog */
 
 const GearModule = (() => {
   var _uid        = null;
@@ -10,6 +10,7 @@ const GearModule = (() => {
   var _tripList   = [];
   var _scope      = 'personal'; // 'personal' | 'shared' — только внутри поездки
   var _tripMode   = 'cats';     // 'cats' | 'bags' — «По категориям / По сумкам»
+  var _packMode   = 'there';    // 'there' | 'back' — сборы туда/обратно, только для своего списка
   var _sharedData = null;       // загруженный общий список текущей поездки
   var _sharedAddCatId = null;   // категория, в которую добавляем вещь (лист)
   var _pickMode     = false;    // мастер «Собрать список на поездку»
@@ -28,13 +29,14 @@ const GearModule = (() => {
     _isMe       = isMe;
     _container  = container;
     _scope      = 'personal';
+    _packMode   = 'there';
     _sharedData = null;
     _pickMode   = false;
     _pickStep   = 'items';
     _open       = {};
     await GearData.ensureLoaded(uid);
     _tripList   = GearData.getTripList(uid);
-    _activeTrip = (openTrip && GearData.hasTripSnapshot(openTrip)) ? openTrip : 'template';
+    _activeTrip = (openTrip && GearData.hasTripSnapshot(uid, openTrip)) ? openTrip : 'template';
     try {
       _template = await GearData.load(uid);
     } catch (err) {
@@ -45,6 +47,17 @@ const GearModule = (() => {
       return;
     }
     _render();
+    // «Готовы N из M» нужна сразу при открытии списка поездки, не только
+    // при переключении на вкладку «Общее» — подгружаем общий документ.
+    if (_activeTrip !== 'template' && _activeTrip !== 'catalog') {
+      try {
+        _sharedData = await GearData.loadShared(_activeTrip);
+      } catch (err) {
+        console.error('GearData.loadShared:', err);
+        _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [], ready: {} };
+      }
+      _render();
+    }
   }
 
   // Собирает урезанный шаблон только из отмеченных вещей — плюс их
@@ -102,14 +115,21 @@ const GearModule = (() => {
     } else if (_activeTrip === 'template' || _activeTrip === 'catalog') {
       _container.innerHTML = GearRender.rootView(_template, _tripRows(), _isMe, _activeTrip, _open);
     } else {
+      var readyMap = GearData.getReady(_activeTrip) || {};
+      var tripForReady = _trip(_activeTrip);
+      var readyParticipants = ((tripForReady && tripForReady.participants) || []).filter(function(p) { return p && p.uid; });
+      var readyNames = readyParticipants.filter(function(p) { return readyMap[p.uid]; }).map(function(p) { return p.name; });
       _container.innerHTML = GearRender.tripView({
         snap: GearData.getTripSnapshot(_uid, _activeTrip),
-        checked: GearData.getChecked(_uid, _activeTrip),
+        checked: _packMode === 'back' ? GearData.getCheckedBack(_uid, _activeTrip) : GearData.getChecked(_uid, _activeTrip),
         tripName: _tripName(_activeTrip),
         scope: _isMe ? _scope : 'personal',
         shared: _sharedData,
         sharedChecked: (_sharedData && _sharedData.checked) || [],
-        mode: _tripMode, isMe: _isMe, open: _open
+        mode: _tripMode, isMe: _isMe, open: _open,
+        packMode: _packMode,
+        ready: { n: readyNames.length, m: readyParticipants.length, names: readyNames },
+        readySelf: !!readyMap[_uid]
       });
     }
     // Удаление свайпом (привязывается к контейнеру один раз)
@@ -124,12 +144,14 @@ const GearModule = (() => {
   }
 
   async function _saveShared() {
-    if (!_sharedData) return;
+    if (!_sharedData) return false;
     try {
       await GearData.saveShared(_activeTrip, _tripName(_activeTrip), _sharedData.categories, _sharedData.items);
+      return true;
     } catch (err) {
       console.error('GearModule._saveShared: не удалось сохранить общий список', err);
       alert('Не удалось сохранить общий список. Проверь соединение и попробуй ещё раз.');
+      return false;
     }
   }
 
@@ -230,9 +252,30 @@ const GearModule = (() => {
     if (action === 'gear-trip-switch') {
       _activeTrip = t.dataset.trip;
       _scope = 'personal';
+      _packMode = 'there';
       _sharedData = null;
       _render();
       _scrollTop();
+      // Подгружаем общий документ (там же «Готовы N из M») сразу, не
+      // только при переключении на вкладку «Общее».
+      if (_activeTrip !== 'template' && _activeTrip !== 'catalog') {
+        try {
+          _sharedData = await GearData.loadShared(_activeTrip);
+        } catch (err) {
+          console.error('GearData.loadShared:', err);
+          _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [], ready: {} };
+        }
+        _render();
+      }
+      return;
+    }
+
+    /* ── «Туда / Обратно» — раздельные отметки сборов, только свой список ── */
+    if (action === 'gear-pack-mode') {
+      var newPackMode = t.dataset.mode === 'back' ? 'back' : 'there';
+      if (newPackMode === _packMode) return;
+      _packMode = newPackMode;
+      _render();
       return;
     }
 
@@ -285,11 +328,19 @@ const GearModule = (() => {
     }
 
     if (action === 'gear-trip-more') {
-      _openSheet(GearRender.sheetActions('', _scope === 'shared'
-        ? [ { action: 'gear-shared-cat-add',       icon: 'layout-list',  label: 'Новая категория' },
-            { action: 'gear-shared-clear-checked', icon: 'circle-check', label: 'Снять все отметки' } ]
-        : [ { action: 'gear-trip-sync',     icon: 'download',     label: 'Обновить из шаблона' },
-            { action: 'gear-clear-checked', icon: 'circle-check', label: 'Снять все отметки' } ]));
+      var moreActions;
+      if (_scope === 'shared') {
+        moreActions = [ { action: 'gear-shared-cat-add',       icon: 'layout-list',  label: 'Новая категория' },
+                        { action: 'gear-shared-clear-checked', icon: 'circle-check', label: 'Снять все отметки' } ];
+      } else if (_packMode === 'back') {
+        // В режиме «Обратно» своя, отдельная от «Туда» отметка собранности —
+        // синк из шаблона тут не при чём (он пополняет только личный список).
+        moreActions = [ { action: 'gear-clear-checked-back', icon: 'circle-check', label: 'Снять все отметки' } ];
+      } else {
+        moreActions = [ { action: 'gear-trip-sync',     icon: 'download',     label: 'Обновить из шаблона' },
+                        { action: 'gear-clear-checked', icon: 'circle-check', label: 'Снять все отметки' } ];
+      }
+      _openSheet(GearRender.sheetActions('', moreActions));
       return;
     }
 
@@ -325,6 +376,17 @@ const GearModule = (() => {
       return;
     }
 
+    // То же самое, но для отдельных отметок «Обратно».
+    if (action === 'gear-clear-checked-back') {
+      _closeAllSheets();
+      if (_activeTrip === 'template' || _activeTrip === 'catalog') return;
+      var gcbOk = await UIUtils.confirmSheet('Снять все обратные отметки?', { okLabel: 'Сбросить', danger: false });
+      if (!gcbOk) return;
+      await GearData.setCheckedBack(_uid, _activeTrip, []);
+      _render();
+      return;
+    }
+
     if (action === 'gear-shared-clear-checked') {
       _closeAllSheets();
       if (!_sharedData) return;
@@ -346,8 +408,22 @@ const GearModule = (() => {
       var ccIds = GearRender.groups(ccSnap.categories || [], ccSnap.items || [])
         .filter(function(g) { return g.cat.id === ccCatId; })
         .reduce(function(a, g) { return a.concat(g.items.map(function(i) { return i.id; })); }, []);
-      var ccChecked = GearData.getChecked(_uid, _activeTrip).filter(function(id) { return ccIds.indexOf(id) < 0; });
-      await GearData.setChecked(_uid, _activeTrip, ccChecked);
+      await GearData.markChecked(_uid, _activeTrip, ccIds, false);
+      _render();
+      return;
+    }
+
+    // То же самое для категории, но в отметках «Обратно».
+    if (action === 'gear-cat-clear-checked-back') {
+      var ccbCatId = t.dataset.catid;
+      var ccbOk = await UIUtils.confirmSheet('Снять отметки в этой категории?', { okLabel: 'Сбросить', danger: false });
+      if (!ccbOk) return;
+      var ccbSnap = GearData.getTripSnapshot(_uid, _activeTrip);
+      if (!ccbSnap) return;
+      var ccbIds = GearRender.groups(ccbSnap.categories || [], ccbSnap.items || [])
+        .filter(function(g) { return g.cat.id === ccbCatId; })
+        .reduce(function(a, g) { return a.concat(g.items.map(function(i) { return i.id; })); }, []);
+      await GearData.markCheckedBack(_uid, _activeTrip, ccbIds, false);
       _render();
       return;
     }
@@ -723,7 +799,7 @@ const GearModule = (() => {
 
     if (action === 'gear-pick-create') {
       if (!_pickTrip) return;
-      if (GearData.hasTripSnapshot(_pickTrip.id)) {
+      if (GearData.hasTripSnapshot(_uid, _pickTrip.id)) {
         var repOk = await UIUtils.confirmSheet('У «' + _pickTrip.name + '» уже есть список — заменить? Отметки и раскладка по сумкам сбросятся.', { okLabel: 'Заменить' });
         if (!repOk) return;
       }
@@ -812,7 +888,8 @@ const GearModule = (() => {
       if (!_sharedData) _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [] };
       _sharedData.items.push({ id: GearData.uid(), name: siName, owner: siOwner, categoryId: _sharedAddCatId });
       _closeAllSheets();
-      await _saveShared();
+      var siSaved = await _saveShared();
+      if (siSaved) ActivityLog.add(_activeTrip, 'gear', 'добавил в общую снарягу: ' + siName);
       _render();
       return;
     }
@@ -844,10 +921,30 @@ const GearModule = (() => {
     if (action === 'gear-item-check') {
       if (_activeTrip === 'template' || _activeTrip === 'catalog') return;
       var checkItemId = t.dataset.itemid;
-      var checked     = GearData.getChecked(_uid, _activeTrip).slice();
-      var idx         = checked.indexOf(checkItemId);
-      if (idx >= 0) checked.splice(idx, 1); else checked.push(checkItemId);
-      GearData.setChecked(_uid, _activeTrip, checked); // узкая merge-запись поля checked
+      var willCheck   = GearData.getChecked(_uid, _activeTrip).indexOf(checkItemId) < 0;
+      GearData.markChecked(_uid, _activeTrip, [checkItemId], willCheck); // arrayUnion/arrayRemove — не весь массив
+      _render();
+      return;
+    }
+
+    // Отдельные отметки обратного пути — не трогают checked («туда»).
+    if (action === 'gear-item-check-back') {
+      if (_activeTrip === 'template' || _activeTrip === 'catalog') return;
+      var checkBackId    = t.dataset.itemid;
+      var willCheckBack  = GearData.getCheckedBack(_uid, _activeTrip).indexOf(checkBackId) < 0;
+      GearData.markCheckedBack(_uid, _activeTrip, [checkBackId], willCheckBack); // arrayUnion/arrayRemove
+      _render();
+      return;
+    }
+
+    /* ═════════════ «Я СОБРАН» ═════════════ */
+
+    if (action === 'gear-ready-toggle') {
+      if (_activeTrip === 'template' || _activeTrip === 'catalog') return;
+      var wasReady = !!(GearData.getReady(_activeTrip) || {})[_uid];
+      var willBeReady = !wasReady;
+      GearData.setReady(_activeTrip, _uid, willBeReady); // узкая merge-запись ready.{uid}
+      if (willBeReady) ActivityLog.add(_activeTrip, 'gear', 'собрался в поездку');
       _render();
       return;
     }

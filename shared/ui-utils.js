@@ -216,6 +216,72 @@ const UIUtils = (() => {
     }, true);
   }
 
+  // ── Места поездки: лист «название + регион» и проверка на дубли ──────
+  // Общие для мастера поездки (modules/trips) и вкладки «Места»
+  // (modules/rivers). placeSheet → Promise<{name, region} | null>.
+  function _placeNorm(s) {
+    return String(s || '').trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
+  }
+  // Дубль — то же название и тот же регион (или регион не указан у одного
+  // из двух): «Обь / ХМАО» и «Обь» — одно место, «Обь / ХМАО» и
+  // «Обь / Новосибирская» — разные. exceptId — само редактируемое место.
+  function findDuplicatePlace(list, name, region, exceptId) {
+    const n = _placeNorm(name), r = _placeNorm(region);
+    return (list || []).find(p => {
+      if (exceptId && p.id === exceptId) return false;
+      if (_placeNorm(p.name) !== n) return false;
+      const pr = _placeNorm(p.region || p.type);
+      return !r || !pr || pr === r;
+    }) || null;
+  }
+  function placeSheet(opts = {}) {
+    return new Promise(resolve => {
+      document.getElementById('place-sheet-overlay')?.remove();
+      const overlay = document.createElement('div');
+      overlay.className = 'cs-overlay';
+      overlay.id = 'place-sheet-overlay';
+      overlay.innerHTML = `
+        <div class="cs-card place-card">
+          <div class="cs-title">${_esc(opts.title || 'Место')}</div>
+          <input class="place-input" data-f="name" type="text" placeholder="Река или место — «Обь»" autocomplete="off" value="${_esc(opts.name || '')}">
+          <input class="place-input" data-f="region" type="text" placeholder="Регион — необязательно" autocomplete="off" value="${_esc(opts.region || '')}">
+          <div class="place-err" hidden></div>
+          <div class="cs-actions">
+            <button class="cs-btn cs-btn-cancel" data-cs="cancel">Отмена</button>
+            <button class="cs-btn cs-btn-primary" data-cs="ok">${_esc(opts.okLabel || 'Сохранить')}</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => overlay.classList.add('open'));
+      const nameInp = overlay.querySelector('[data-f="name"]');
+      const regInp = overlay.querySelector('[data-f="region"]');
+      const err = overlay.querySelector('.place-err');
+      setTimeout(() => nameInp.focus(), 50);
+      function close(result) {
+        overlay.classList.remove('open');
+        setTimeout(() => overlay.remove(), 200);
+        resolve(result);
+      }
+      function submit() {
+        const name = nameInp.value.trim(), region = regInp.value.trim();
+        if (!name) { nameInp.focus(); return; }
+        const dup = opts.list ? findDuplicatePlace(opts.list, name, region, opts.exceptId) : null;
+        if (dup) {
+          err.textContent = `«${dup.name}${(dup.region || dup.type) ? ', ' + (dup.region || dup.type) : ''}» уже есть в поездке`;
+          err.hidden = false; nameInp.focus(); return;
+        }
+        close({ name, region });
+      }
+      overlay.addEventListener('click', e => {
+        if (e.target === overlay) { close(null); return; }
+        const a = e.target.closest('[data-cs]')?.dataset.cs;
+        if (a === 'ok') submit(); else if (a === 'cancel') close(null);
+      });
+      overlay.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+      overlay.addEventListener('input', () => { err.hidden = true; });
+    });
+  }
+
   return {
-    initials, withBusyButton, confirmSheet, avatarHtml, splitNames, ico, emojiIcon, swipeToDelete };
+    initials, withBusyButton, confirmSheet, placeSheet, findDuplicatePlace, avatarHtml, splitNames, ico, emojiIcon, swipeToDelete };
 })();

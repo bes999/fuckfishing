@@ -18,9 +18,37 @@ const AuthActions = (() => {
       return;
     }
     _user = user;
+    // Быстрая смена аккаунта (вышел из А, вошёл в Б) может застать запрос
+    // профиля А ещё в полёте — он резолвится ПОЗЖЕ, чем уже вошедший Б, и
+    // без проверки его ответ применился бы поверх уже актуального Б
+    // (APP.profile от А, включая признак админа в интерфейсе, хотя
+    // авторизован Б). Server-side права это не обходит, но экран и
+    // локальное состояние показывают не того человека. Реальный баг,
+    // найден внешним ревью 2026-09-27. uid — не сам объект user: и то, и
+    // другое сравнение допустимо, но uid надёжнее пережидает возможные
+    // пересоздания объекта SDK.
     try {
       const snap = await db.collection('members').doc(user.uid).get();
+      if (_user?.uid !== user.uid) return;
       if (!snap.exists) {
+        // Email/пароль без подтверждения — не показываем онбординг вообще:
+        // members.create всё равно упрётся в isInvited()'s email_verified
+        // и покажет обманчивое "email не приглашён", хотя причина —
+        // неподтверждённая почта. НЕ трогает уже онбордившихся — сюда
+        // попадают только те, у кого ещё нет профиля (см. ветку else
+        // ниже): isMember() в правилах на email_verified не смотрит
+        // вообще, их доступ остаётся как был. Google сюда не попадает — у
+        // него emailVerified всегда true (OAuth уже подтверждает
+        // владение). Заодно это и есть "отправить письмо ещё раз" для тех,
+        // у кого отправка сорвалась при регистрации (см. registerEmail) —
+        // просто попробовать войти теперь само повторяет попытку отправки.
+        // Реальный баг, найден внешним ревью 2026-09-27.
+        if (user.providerData?.some(p => p.providerId === 'password') && !user.emailVerified) {
+          await user.sendEmailVerification().catch(() => {});
+          await auth.signOut();
+          AuthRender.showError('Подтверди почту по ссылке из письма (отправили на ' + (user.email || '') + '), потом войди снова.');
+          return;
+        }
         document.getElementById('auth-screen')?.style.setProperty('display','none');
         AuthRender.showOnboarding(user);
       } else {
@@ -28,12 +56,15 @@ const AuthActions = (() => {
         _boot();
       }
     } catch (_) {
+      if (_user?.uid !== user.uid) return;
       // Оффлайн — пробуем кеш
       try {
         const snap = await db.collection('members').doc(user.uid).get({source:'cache'});
+        if (_user?.uid !== user.uid) return;
         if (snap.exists) { _profile = snap.data(); _boot(); }
         else AuthRender.showOnboarding(user);
       } catch (__) {
+        if (_user?.uid !== user.uid) return;
         AuthRender.showOnboarding(user);
       }
     }
@@ -118,13 +149,42 @@ const AuthActions = (() => {
   // (человек долетал до "Как тебя зовут?" со свежим аккаунтом-призраком,
   // без профиля и без приглашения). Теперь регистрация — отдельное явное
   // действие: обычная опечатка при входе просто покажет ошибку.
+  // Firebase НЕ проверяет владение почтой при регистрации по паролю — можно
+  // создать аккаунт с ЛЮБЫМ email, включая чужой из /invites, на который у
+  // тебя нет доступа (token.email при этом стоит, но email_verified — нет).
+  // isInvited() в firestore.rules раньше проверял только сам факт
+  // приглашения, без email_verified — посторонний, узнавший приглашённый
+  // адрес (email вообще не секрет), мог зарегистрироваться им и пройти
+  // онбординг, даже не имея доступа к почте. Реальная дыра, найдена внешним
+  // ревью 2026-09-27. Теперь после регистрации сразу шлём письмо-
+  // подтверждение и разлогиниваем — оба входа (Google и email/pass) дают
+  // members.create только при email_verified == true (см. firestore.rules
+  // isInvited()); у Google это true само по себе (OAuth уже подтверждает
+  // владение), у email/pass — только после перехода по ссылке из письма.
   async function registerEmail() {
     AuthRender.clearError();
     const email = (document.getElementById('auth-email')?.value || '').trim();
     const pass  = (document.getElementById('auth-password')?.value || '').trim();
     if (!email || !pass) { AuthRender.showError('Введи email и пароль'); return; }
     try {
-      await auth.createUserWithEmailAndPassword(email, pass);
+      const cred = await auth.createUserWithEmailAndPassword(email, pass);
+      try {
+        await cred.user.sendEmailVerification();
+        await auth.signOut();
+        AuthRender.showError('Мы отправили письмо со ссылкой для подтверждения на ' + email + ' — перейди по ней, потом войди.');
+      } catch (sendErr) {
+        // Аккаунт уже создан (createUserWithEmailAndPassword не откатить) —
+        // раньше эту ошибку глотали и ВСЁ РАВНО показывали "письмо
+        // отправлено", хотя оно не ушло: повторная регистрация тем же
+        // email потом сообщала бы "уже есть — войди", а способа повторить
+        // отправку не было нигде. Реальный баг (в моём же более раннем
+        // фиксе), найден внешним ревью 2026-09-27. Не выдумываем успех —
+        // следующая попытка ВОЙТИ этим же email/паролем сама повторит
+        // отправку и разлогинит (см. _onAuthChange), так это и есть
+        // "отправить письмо ещё раз", отдельной кнопки не нужно.
+        await auth.signOut().catch(() => {});
+        AuthRender.showError('Аккаунт создан, но письмо не отправилось — попробуй войти этим же паролем, мы пришлём его ещё раз.');
+      }
     } catch (e) {
       if (e.code === 'auth/email-already-in-use') {
         AuthRender.showError('Аккаунт с таким email уже есть — просто войди');

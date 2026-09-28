@@ -74,6 +74,8 @@ var RiversRender = (function () {
     var navUrl = hasCoords ? _navUrl(r.lat, r.lon, r.name) : '';
     var isOpt = r.day && r.day.toLowerCase().indexOf('опцион') !== -1;
     var metaBits = [];
+    var region = r.region || r.type || '';
+    if (region) metaBits.push(_esc(region));
     if (r.day)  metaBits.push('<span class="' + (isOpt ? 'rv-row-day opt' : 'rv-row-day') + '">' + _esc(r.day) + '</span>');
     if (r.dist) metaBits.push(_esc(r.dist));
     if (r.time) metaBits.push(_esc(r.time));
@@ -121,8 +123,9 @@ var RiversRender = (function () {
 
     /* hero: название крупно */
     h += '<div class="rv-hero">';
-    h += '  <h2>' + _esc(r.name) + '</h2>';
-    var heroMeta = [r.day, r.dist, r.time].filter(Boolean).join(' · ');
+    h += '  <div class="rv-hero-top"><h2>' + _esc(r.name) + '</h2>';
+    h += '  <button type="button" class="rv-edit-btn" id="rv-edit-place" aria-label="Изменить название и регион">' + UIUtils.ico('pencil') + '</button></div>';
+    var heroMeta = [r.region || r.type, r.day, r.dist, r.time].filter(Boolean).join(' · ');
     if (heroMeta) h += '  <div class="rv-hero-meta">' + _esc(heroMeta) + '</div>';
     h += '</div>';
 
@@ -302,7 +305,12 @@ var RiversRender = (function () {
       h += '  <div class="rv-pt-info">';
       h += '    <div class="rv-pt-name">' + _esc(pt.name) + '</div>';
       if (pt.note)  h += '<div class="rv-pt-note">' + _esc(pt.note) + '</div>';
-      if (navUrl)   h += '<div class="rv-pt-coord" data-rv-nav="' + navUrl + '">' + pt.coordStr + ' → Навигатор</div>';
+      // coordStr — сырой текст, вписанный руками в поле координат, не
+      // числа (см. modules/rivers/index.js:_savePoint) — без _esc() тут был
+      // stored XSS: кто угодно из участников мог вписать HTML/script вместо
+      // координат, и он бы выполнился в браузере любого, кто открыл эту
+      // реку. Реальная дыра, найдена внешним ревью 2026-09-27.
+      if (navUrl)   h += '<div class="rv-pt-coord" data-rv-nav="' + navUrl + '">' + _esc(pt.coordStr) + ' → Навигатор</div>';
       h += '  </div>';
       h += '  <button type="button" class="rv-pt-del" data-pt-del="' + pt._id + '">Удалить</button>';
       h += '</div>';

@@ -10,7 +10,7 @@ const ExpensesRender = (() => {
 
   let _el     = null;
   let _tripId = null;
-  let _tab    = 'expenses'; // 'expenses' (Записи) | 'balance' (Кто кому)
+  let _tab    = 'expenses'; // 'expenses' (Записи) | 'balance' (Кто кому) | 'budget' (Бюджет)
   let _bodyHandler = null;
   let _catsOpen = false;          // «По категориям» раскрыто — переживает refresh()
   const _openDays = new Set();    // дни, где нажали «Ещё N за этот день»
@@ -25,7 +25,7 @@ const ExpensesRender = (() => {
     _tripId = tripId;
     if (!el) return;
     // Старая третья вкладка «Итог» влита в «Записи».
-    if (_tab !== 'balance') _tab = 'expenses';
+    if (_tab !== 'balance' && _tab !== 'budget') _tab = 'expenses';
     el.innerHTML = `
       <div class="exp-wrap">
         ${_topbar()}
@@ -36,7 +36,7 @@ const ExpensesRender = (() => {
           </button>
         </div>
         <div class="exp-body" id="exp-body">${_body()}</div>
-        <button type="button" class="exp-fab" id="exp-fab" data-action="add-expense">
+        <button type="button" class="exp-fab" id="exp-fab" data-action="add-expense" ${_tab === 'budget' ? 'hidden' : ''}>
           ${UIUtils.ico('plus')} Расход
         </button>
       </div>`;
@@ -74,6 +74,7 @@ const ExpensesRender = (() => {
     const tabs = [
       { id: 'expenses', label: 'Записи'   },
       { id: 'balance',  label: 'Кто кому' },
+      { id: 'budget',   label: 'Бюджет'   },
     ];
     return tabs.map(t => `
       <button type="button" role="tab" class="exp-seg__btn ${_tab === t.id ? 'active' : ''}"
@@ -81,7 +82,9 @@ const ExpensesRender = (() => {
   }
 
   function _body() {
-    return _tab === 'balance' ? _tabBalance() : _tabExpenses();
+    if (_tab === 'balance') return _tabBalance();
+    if (_tab === 'budget')  return _tabBudget();
+    return _tabExpenses();
   }
 
   // ── Вкладка «Записи» ─────────────────────────────────────────
@@ -266,8 +269,15 @@ const ExpensesRender = (() => {
                 <span class="exp-tr__who"><b>${_esc(t.from)}</b> переводит <b>${_esc(t.to)}</b></span>
                 <span class="exp-tr__amt">${_rub(t.amount)}</span>
               </div>
+              <!-- До копейки, а не до рубля (Math.round тут раньше отбрасывал
+                   дробную часть целиком — 33,33₽ округлялось до 33₽, а
+                   недостающие 0,33₽ навсегда оседали недопогашенным долгом,
+                   реальный баг, найден внешним ревью 2026-09-27) — но и не
+                   сырой float (33.333333333333336), это поле потом видно и
+                   редактируемо в форме погашения, туда нельзя тащить мусор
+                   после запятой. -->
               <button type="button" class="exp-tr__btn ${mine ? 'mine' : ''}" data-action="settle"
-                data-from="${_esc(t.from)}" data-to="${_esc(t.to)}" data-amt="${Math.round(t.amount)}">Погасить</button>
+                data-from="${_esc(t.from)}" data-to="${_esc(t.to)}" data-amt="${Math.round(t.amount * 100) / 100}">Погасить</button>
             </div>`;
         }).join('')}</div>`;
 
@@ -349,6 +359,186 @@ const ExpensesRender = (() => {
         <span class="exp-mine__head exp-mine__head--${cls}">${head}</span>
         <span class="exp-mine__text">${base}${tail ? ' ' + tail : ''}</span>
       </div>`;
+  }
+
+  // ── Вкладка «Бюджет» ─────────────────────────────────────────
+  // «Бюджет до поездки» — заранее известные траты (билеты, аренда, трансфер).
+  // Отдельно от расходов и их расчётов (ExpensesState.computeSummary), своя
+  // подколлекция trips/{tripId}/budget — см. ExpensesState.computeBudgetSummary.
+
+  function _tabBudget() {
+    const summary = ExpensesState.computeBudgetSummary(_tripId);
+    const lines   = ExpensesState.getBudget(_tripId);
+    const members = _getMembers();
+    const myName  = _myName();
+    const myShare = myName ? (summary.shares[myName] || 0) : 0;
+
+    const sumCard = `
+      <div class="exp-card exp-sum">
+        <div class="exp-sum-lbl">Твоя доля</div>
+        <div class="exp-sum-total">≈ ${_rub(myShare)}</div>
+        <div class="exp-budget-sub">из ${_rub(summary.total)} всего · ${summary.count} ${_plural(summary.count, 'строка', 'строки', 'строк')}</div>
+      </div>`;
+
+    const sharesHtml = summary.rows.length ? `
+      <div class="exp-sec">Доли участников</div>
+      <div class="exp-card exp-list">${summary.rows.map(r => `
+        <div class="exp-budget-share">
+          <span class="exp-budget-share__name">${_esc(r.name)}</span>
+          <span class="exp-budget-share__amt">${_rub(r.amount)}</span>
+        </div>`).join('')}</div>` : '';
+
+    const linesHtml = lines.length
+      ? `<div class="exp-card exp-list" id="exp-budget-list">${lines.map(l => _budgetRow(l, members)).join('')}</div>`
+      : `<div class="exp-hint exp-hint--body">Пока нет ни одной строки бюджета.</div>`;
+
+    return `
+      <div class="exp-scroll">
+        ${sumCard}
+        ${sharesHtml}
+        <div class="exp-sec">Строки бюджета</div>
+        ${linesHtml}
+        <button type="button" class="exp-cat-new" data-action="add-budget">${UIUtils.ico('plus')} Строка бюджета</button>
+        <div class="exp-hint">Заранее известные траты — билеты, аренда катера или машины, трансфер. Это прикидка, а не расходы: в «Кто кому» не попадает.</div>
+      </div>`;
+  }
+
+  // Строка бюджета — тап открывает лист правки, свайп влево — «Удалить»
+  // (тот же приём, что у категорий — UIUtils.swipeToDelete).
+  function _budgetRow(l, members) {
+    const n = (l.participants || []).length;
+    const all = members.length > 0 && n === members.length && members.every(m => l.participants.includes(m));
+    const sub = all ? 'на всех' : `на ${n} чел.`;
+    return `
+      <div class="exp-cat-item exp-budget-item">
+        <button type="button" class="exp-cat-item__main" data-action="edit-budget" data-id="${l._id}">
+          <span class="exp-cat-item__ico">${UIUtils.ico('cash')}</span>
+          <span class="exp-cat-item__body">
+            <span class="exp-cat-item__title">${_esc(l.title)}</span>
+            <span class="exp-cat-item__split">${sub}${l.note ? ' · ' + _esc(l.note) : ''}</span>
+          </span>
+          <span class="exp-budget-item__amt">${_rub(l.amount)}</span>
+        </button>
+        <button type="button" class="exp-cat-item__del" data-action="del-budget" data-id="${l._id}" aria-label="Удалить строку бюджета">Удалить</button>
+      </div>`;
+  }
+
+  // ── Лист: добавить / изменить строку бюджета ─────────────────
+
+  function _showBudgetForm(lineId) {
+    document.getElementById('exp-budget-overlay')?.remove();
+
+    const members = _getMembers();
+    const editing = lineId ? ExpensesState.getBudget(_tripId).find(l => l._id === lineId) : null;
+    const l = editing || {};
+    // Новая строка — по умолчанию отмечены все участники (снять можно);
+    // при редактировании — реальные участники строки.
+    let checked = editing ? (l.participants || []).slice() : members.slice();
+
+    const overlay = document.createElement('div');
+    overlay.id        = 'exp-budget-overlay';
+    overlay.className = 'exp-overlay';
+    overlay.innerHTML = `
+      <div class="exp-sheet" role="dialog" aria-label="Строка бюджета">
+        <div class="exp-sheet__handle"></div>
+        <div class="exp-sheet__head">
+          <span class="exp-sheet__title">${editing ? 'Строка бюджета' : 'Новая строка бюджета'}</span>
+          <button type="button" class="exp-sheet__close" id="exp-bud-close" aria-label="Закрыть">${UIUtils.ico('x')}</button>
+        </div>
+        <div class="exp-sheet__body">
+          <input class="exp-input" id="exp-bud-title" type="text" placeholder="Название — билеты, аренда катера…" value="${_esc(l.title || '')}" autocomplete="off">
+          <label class="exp-amount">
+            <span class="exp-sr">Сумма</span>
+            <input id="exp-bud-amt" type="number" inputmode="decimal" placeholder="0" value="${l.amount || ''}">
+            <span class="exp-amount__cur">₽</span>
+          </label>
+          <div class="exp-field">
+            <span class="exp-field__lbl">Делим на</span>
+            <div class="exp-chips" id="exp-bud-chips"></div>
+          </div>
+          <input class="exp-input" id="exp-bud-note" type="text" placeholder="Комментарий — необязательно" value="${_esc(l.note || '')}" autocomplete="off">
+        </div>
+        <div class="exp-sheet__actions">
+          <button type="button" class="exp-sheet__save" id="exp-bud-save">${editing ? 'Сохранить' : 'Добавить строку'}</button>
+          ${editing ? `<button type="button" class="exp-sheet__del" id="exp-bud-del">Удалить строку</button>` : ''}
+        </div>
+      </div>`;
+
+    _el.appendChild(overlay);
+    const $ = s => overlay.querySelector(s);
+
+    const renderChips = () => {
+      $('#exp-bud-chips').innerHTML = members.map(n => `
+        <button type="button" class="exp-chip ${checked.includes(n) ? 'on' : ''}" aria-pressed="${checked.includes(n)}" data-name="${_esc(n)}">${_esc(n)}</button>`).join('');
+    };
+    renderChips();
+    if (!editing) $('#exp-bud-title').focus();
+
+    $('#exp-bud-chips').addEventListener('click', ev => {
+      const chip = ev.target.closest('[data-name]');
+      if (!chip) return;
+      const n = chip.dataset.name;
+      checked = checked.includes(n) ? checked.filter(x => x !== n) : checked.concat(n);
+      renderChips();
+    });
+
+    $('#exp-bud-close').addEventListener('click', () => overlay.remove());
+    overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
+
+    $('#exp-bud-del')?.addEventListener('click', async () => {
+      const ok = await UIUtils.confirmSheet(`Удалить «${l.title || 'строку'}»?`, { okLabel: 'Удалить' });
+      if (!ok) return;
+      ExpensesState.removeBudgetLine(_tripId, l._id);
+      ExpensesFirebase.deleteBudgetLine(_tripId, l._id);
+      overlay.remove();
+      refresh();
+    });
+
+    const saveBtn = $('#exp-bud-save');
+    saveBtn.addEventListener('click', () => {
+      UIUtils.withBusyButton(saveBtn, async () => {
+        const title = $('#exp-bud-title').value.trim();
+        const amt   = parseFloat($('#exp-bud-amt').value) || 0;
+        const note  = $('#exp-bud-note').value.trim();
+
+        if (!title) { $('#exp-bud-title').focus(); return; }
+        if (!amt)   { $('#exp-bud-amt').focus();   return; }
+        if (!checked.length) { alert('Отметь хотя бы одного участника'); return; }
+
+        // Порядок участников — как в списке поездки, как в форме расхода.
+        const participants = members.filter(m => checked.includes(m))
+          .concat(checked.filter(n => !members.includes(n)));
+
+        const entry = ExpensesData.normalizeBudgetLine(
+          { title, amount: amt, participants, note,
+            createdAt: editing ? editing.createdAt : undefined,
+            createdBy: editing ? editing.createdBy : undefined },
+          lineId || ('tmp_' + Date.now())
+        );
+
+        if (editing) {
+          ExpensesState.updateBudgetLine(_tripId, lineId, entry);
+          try {
+            await ExpensesFirebase.updateBudgetLine(_tripId, lineId, entry);
+          } catch (err) {
+            alert('Не удалось сохранить строку. Проверь соединение и попробуй ещё раз.');
+            return;
+          }
+        } else {
+          ExpensesState.addBudgetLine(_tripId, entry);
+          try {
+            await ExpensesFirebase.addBudgetLine(_tripId, entry);
+            ActivityLog.add(_tripId, 'expense', `добавил в бюджет: ${title} — ${_rub(amt)}`);
+          } catch (err) {
+            alert('Не удалось сохранить строку. Проверь соединение и попробуй ещё раз.');
+            return;
+          }
+        }
+
+        overlay.remove();
+        refresh();
+      });
+    });
   }
 
   // ── Лист: добавить / изменить расход ─────────────────────────
@@ -545,7 +735,7 @@ const ExpensesRender = (() => {
 
     const saveBtn = $('#exp-ov-save');
     saveBtn.addEventListener('click', () => {
-      UIUtils.withBusyButton(saveBtn, () => {
+      UIUtils.withBusyButton(saveBtn, async () => {
         syncManual();
         const desc = $('#exp-desc').value.trim();
         const amt  = parseFloat($('#exp-amt').value) || 0;
@@ -582,12 +772,41 @@ const ExpensesRender = (() => {
           expenseId || ('tmp_' + Date.now())
         );
 
+        // Раньше запись в Firestore не ожидалась — форма закрывалась сразу
+        // по локальному (оптимистичному) состоянию, а отказ базы улетал
+        // только в консоль, пользователь думал, что расход сохранён, хотя
+        // он никуда не попал. Реальный баг, найден внешним ревью 2026-09-27.
         if (editing) {
           ExpensesState.updateExpense(_tripId, expenseId, entry);
-          ExpensesFirebase.updateExpense(_tripId, expenseId, entry);
+          try {
+            await ExpensesFirebase.updateExpense(_tripId, expenseId, entry);
+          } catch (err) {
+            // Откатываем оптимистичную правку — иначе список за этой
+            // формой (сейчас скрыт под ней) на следующем рендере покажет
+            // будто сохранение прошло, хотя запись в базу не попала.
+            // .update() (см. ExpensesFirebase.updateExpense) падает с
+            // not-found, если запись успели удалить с другого устройства,
+            // пока форма была открыта — тогда "Сохранить" раньше тихо
+            // создавал её заново неполной. Реальный баг, найден внешним
+            // ревью 2026-09-27.
+            ExpensesState.updateExpense(_tripId, expenseId, editing);
+            alert(err?.code === 'not-found'
+              ? 'Этот расход уже удалили — сохранить правку некуда.'
+              : 'Не удалось сохранить расход. Проверь соединение и попробуй ещё раз.');
+            refresh();
+            return;
+          }
         } else {
           ExpensesState.addExpense(_tripId, entry);
-          ExpensesFirebase.addExpense(_tripId, entry);
+          try {
+            await ExpensesFirebase.addExpense(_tripId, entry);
+            ActivityLog.add(_tripId, 'expense', `добавил расход: ${desc} — ${_rub(amt)}`);
+          } catch (err) {
+            ExpensesState.removeExpense(_tripId, entry._id);
+            alert('Не удалось сохранить расход. Проверь соединение и попробуй ещё раз.');
+            refresh();
+            return;
+          }
         }
 
         overlay.remove();
@@ -615,7 +834,10 @@ const ExpensesRender = (() => {
           <div class="exp-settle-who"><b>${_esc(fromName)}</b> переводит <b>${_esc(toName)}</b></div>
           <label class="exp-amount">
             <span class="exp-sr">Сумма</span>
-            <input id="exp-sett-amt" type="number" inputmode="decimal" value="${Math.round(amount || 0)}">
+            <!-- До копейки (не до рубля — см. разбор у кнопки "Погасить"
+                 выше), но округлено, а не сырой float — поле видно и
+                 редактируется вручную. -->
+            <input id="exp-sett-amt" type="number" inputmode="decimal" value="${Math.round((amount || 0) * 100) / 100}">
             <span class="exp-amount__cur">₽</span>
           </label>
           <div class="exp-field">
@@ -638,7 +860,7 @@ const ExpensesRender = (() => {
     overlay.querySelector('#exp-sett-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
 
-    overlay.querySelector('#exp-sett-save').addEventListener('click', () => {
+    overlay.querySelector('#exp-sett-save').addEventListener('click', async () => {
       const amt  = parseFloat(overlay.querySelector('#exp-sett-amt').value) || 0;
       const date = overlay.querySelector('#exp-sett-date').value;
       const note = overlay.querySelector('#exp-sett-note').value.trim();
@@ -648,8 +870,22 @@ const ExpensesRender = (() => {
         { fromName, toName, amount: amt, date, note },
         'tmp_' + Date.now()
       );
+      // Раньше запись в Firestore не ожидалась (и addSettlement глотал
+      // ошибку без re-throw) — форма закрывалась сразу по локальному
+      // (оптимистичному) состоянию, и локальный расчёт уже показывал долг
+      // погашенным, даже если перевод никуда не попал — на другом
+      // устройстве или после обновления страницы долг возвращался. Тот же
+      // баг, что уже чинили для формы расхода выше. Реальный баг, найден
+      // внешним ревью 2026-09-27.
       ExpensesState.addSettlement(_tripId, entry);
-      ExpensesFirebase.addSettlement(_tripId, entry);
+      try {
+        await ExpensesFirebase.addSettlement(_tripId, entry);
+      } catch (err) {
+        ExpensesState.removeSettlement(_tripId, entry._id);
+        alert('Не удалось сохранить погашение. Проверь соединение и попробуй ещё раз.');
+        refresh();
+        return;
+      }
 
       overlay.remove();
       refresh();
@@ -898,6 +1134,9 @@ const ExpensesRender = (() => {
 
   function _setTab(tab) {
     _tab = tab;
+    // На «Бюджете» своя кнопка «+ Строка бюджета» — «+ Расход» там путает
+    const fab = _el.querySelector('#exp-fab');
+    if (fab) fab.hidden = tab === 'budget';
     refresh();
     _el.querySelector('#exp-body')?.scrollTo?.(0, 0);
   }
@@ -910,6 +1149,10 @@ const ExpensesRender = (() => {
     // обновления из Firestore) не схлопывал его.
     body.querySelector('#exp-cats')?.addEventListener('toggle', ev => { _catsOpen = ev.target.open; });
 
+    // Строки бюджета — удаление свайпом влево (как категории).
+    const budList = body.querySelector('#exp-budget-list');
+    if (budList) UIUtils.swipeToDelete(budList, '.exp-budget-item', '.exp-cat-item__del');
+
     if (_bodyHandler) body.removeEventListener('click', _bodyHandler);
     _bodyHandler = async ev => {
       const btn = ev.target.closest('[data-action]');
@@ -919,6 +1162,18 @@ const ExpensesRender = (() => {
       if (action === 'go-balance') { _setTab('balance'); return; }
       if (action === 'edit-expense') { _showExpenseForm(btn.dataset.id); return; }
       if (action === 'more-day') { _openDays.add(btn.dataset.day); refresh(); return; }
+      if (action === 'add-budget')  { _showBudgetForm(null); return; }
+      if (action === 'edit-budget') { _showBudgetForm(btn.dataset.id); return; }
+      if (action === 'del-budget') {
+        const id = btn.dataset.id;
+        const l  = ExpensesState.getBudget(_tripId).find(x => x._id === id);
+        const ok = await UIUtils.confirmSheet(l ? `Удалить «${l.title}»?` : 'Удалить строку бюджета?', { okLabel: 'Удалить' });
+        if (!ok) return;
+        ExpensesState.removeBudgetLine(_tripId, id);
+        ExpensesFirebase.deleteBudgetLine(_tripId, id);
+        refresh();
+        return;
+      }
       if (action === 'settle') {
         _showSettleForm(btn.dataset.from, btn.dataset.to, parseFloat(btn.dataset.amt));
         return;

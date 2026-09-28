@@ -7,6 +7,7 @@ var MembersModule = (() => {
   // внутри IIFE MembersModule ещё undefined, обращение к его свойствам падает
   let _listenerBound = false;
   let _unsub = null;
+  let _pendingTgCode = null; // код, отправленный в createTelegramLinkCode — нужен для cancel
 
   // Хранение — международные id ('AB−' и т.п.), кнопки — по-русски I+…IV−.
   const BLOOD_TYPES = [
@@ -314,7 +315,7 @@ var MembersModule = (() => {
       const name = document.getElementById('edit-name')?.value.trim();
       if (name) profile.displayName = name;
       profile.nickname = document.getElementById('edit-nickname')?.value.trim() ?? profile.nickname;
-      profile.birthday = document.getElementById('edit-birthday')?.value.trim() || profile.birthday;
+      profile.birthday = document.getElementById('edit-birthday')?.value.trim() ?? profile.birthday;
       const ph = document.getElementById('edit-phone')?.value.trim();
       profile.phone = (ph === '+7 (' || ph === '+7') ? '' : (ph || profile.phone);
       profile.wa  = document.getElementById('edit-wa')?.value.trim()  ?? profile.wa;
@@ -323,14 +324,19 @@ var MembersModule = (() => {
     } else {
       const selBlood = document.querySelector('#edit-overlay .ob-blood-btn.sel');
       if (selBlood) profile.bloodType = selBlood.dataset.blood;
-      profile.height     = document.getElementById('edit-height')?.value.trim()     || profile.height;
-      profile.weight     = document.getElementById('edit-weight')?.value.trim()     || profile.weight;
-      profile.allergies  = document.getElementById('edit-allergies')?.value.trim()  || profile.allergies;
-      profile.conditions = document.getElementById('edit-conditions')?.value.trim() || profile.conditions;
-      profile.meds       = document.getElementById('edit-meds')?.value.trim()       || profile.meds;
-      profile.insurance  = document.getElementById('edit-insurance')?.value.trim()  || profile.insurance;
-      profile.passportRf   = document.getElementById('edit-passport-rf')?.value   || profile.passportRf;
-      profile.passportIntl = document.getElementById('edit-passport-intl')?.value || profile.passportIntl;
+      // ?? (не ||) — пустая строка это ЗНАЧЕНИЕ "очистить поле", а не
+      // "поле не трогали": || трактовал стёртый текст как "оставить как
+      // было", и очистить аллергии/заболевания/лекарства/паспорт/рост/вес
+      // было нельзя — сохранение всегда возвращало старое значение.
+      // Реальный баг, найден внешним ревью 2026-09-27.
+      profile.height     = document.getElementById('edit-height')?.value.trim()     ?? profile.height;
+      profile.weight     = document.getElementById('edit-weight')?.value.trim()     ?? profile.weight;
+      profile.allergies  = document.getElementById('edit-allergies')?.value.trim()  ?? profile.allergies;
+      profile.conditions = document.getElementById('edit-conditions')?.value.trim() ?? profile.conditions;
+      profile.meds       = document.getElementById('edit-meds')?.value.trim()       ?? profile.meds;
+      profile.insurance  = document.getElementById('edit-insurance')?.value.trim()  ?? profile.insurance;
+      profile.passportRf   = document.getElementById('edit-passport-rf')?.value   ?? profile.passportRf;
+      profile.passportIntl = document.getElementById('edit-passport-intl')?.value ?? profile.passportIntl;
       const selSwim = document.querySelector('#edit-overlay .ob-pill-btn.sel[data-swim]');
       if (selSwim) profile.swim = selSwim.dataset.swim;
       const selTick = document.querySelector('#edit-overlay .ob-pill-btn.sel[data-tick]');
@@ -747,11 +753,14 @@ var MembersModule = (() => {
         const buf = new Uint32Array(1);
         crypto.getRandomValues(buf);
         const code = String(buf[0] % 1000000).padStart(6, '0');
+        const codeAt = new Date().toISOString();
         try {
-          await MembersFirebase.updateProfile(profile.uid, {
-            telegramLinkCode: code,
-            telegramLinkCodeAt: new Date().toISOString(),
-          });
+          // Код больше не пишется в общий профиль (см. разбор в
+          // firestore.rules) — отдельный write-only документ, показываем
+          // код из памяти вкладки (см. MembersRender.setPendingTgCode).
+          await MembersFirebase.createTelegramLinkCode(profile.uid, code);
+          _pendingTgCode = code;
+          MembersRender.setPendingTgCode(code, codeAt);
           MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
         } catch (err) {
           alert('Не получилось сгенерировать код. Попробуй ещё раз.');
@@ -762,10 +771,9 @@ var MembersModule = (() => {
         const profile = window.APP?.profile;
         if (!profile) return;
         try {
-          await MembersFirebase.updateProfile(profile.uid, {
-            telegramLinkCode: null,
-            telegramLinkCodeAt: null,
-          });
+          await MembersFirebase.cancelTelegramLinkCode(_pendingTgCode);
+          _pendingTgCode = null;
+          MembersRender.setPendingTgCode(null, null);
           MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
         } catch (err) {
           alert('Не получилось отменить привязку. Попробуй ещё раз.');
@@ -780,9 +788,9 @@ var MembersModule = (() => {
           await MembersFirebase.updateProfile(profile.uid, {
             telegramId: null,
             telegramUsername: null,
-            telegramLinkCode: null,
-            telegramLinkCodeAt: null,
           });
+          _pendingTgCode = null;
+          MembersRender.setPendingTgCode(null, null);
           MembersRender.showProfile(profile.uid, profile.uid, { keepNav: true });
         } catch (err) {
           alert('Не получилось отвязать Telegram. Попробуй ещё раз.');

@@ -684,6 +684,7 @@ const CatchesRender = (() => {
             }), 'tmp_' + Date.now());
             CatchesState.addCatch(_tripId, entry);
             CatchesFirebase.addCatch(_tripId, entry);
+            if (typeof ActivityLog !== 'undefined') ActivityLog.add(_tripId, 'catch', `записал улов: ${_activityCatchText(entry)}`);
           }
           close();
           refresh();
@@ -832,6 +833,16 @@ const CatchesRender = (() => {
 
   function _fmtKg(w) {
     return String(Math.round(w * 100) / 100).replace('.', ',');
+  }
+
+  // Текст для ленты активности при новой записи улова — вид, вес (если
+  // есть), «× N» при нескольких и «, отпустил» при непойманном на еду.
+  function _activityCatchText(e) {
+    let t = e.fish || 'рыба';
+    if (e.weight) t += ` ${_fmtKg(e.weight)} кг`;
+    if (e.count > 1) t += ` × ${e.count}`;
+    if (!e.kept) t += ', отпустил';
+    return t;
   }
 
   function _plural(n, forms) {

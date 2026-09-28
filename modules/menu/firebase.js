@@ -28,16 +28,52 @@ const MenuFirebase = (() => {
     } catch (_) {}
   }
 
+  // Первая генерация дней локально (см. MenuState.initDays) — раньше эта
+  // ветка вообще не пушила days в Firestore (только saveDays на пересборку
+  // после смены дат). Устройство, первым открывшее новую поездку, строило
+  // days со случайными id слотов только у себя в localStorage — выбор блюд
+  // уходил узкой записью в slotItems по ЭТИМ id, а другое устройство,
+  // открыв то же меню, генерировало СВОИ случайные id и не находило
+  // совпадений — видело пустое меню навсегда. Реальный баг, найден внешним
+  // ревью 2026-09-27. Чинится пушем скелета и на первую генерацию тоже —
+  // но НЕ вслепую: сперва проверяем, что в Firestore правда ещё пусто,
+  // иначе можно затереть уже заполненный чужой days гонкой (два человека
+  // одновременно первыми открывают меню новой поездки). Само чтение+запись
+  // — тоже гонка (та же, что чинили): отдельные get() и set() не атомарны,
+  // и если оба устройства успевают прочитать «пусто» до того, как первое
+  // из них запишет, второе всё равно затирает первое своими (другими)
+  // случайными id слотов. Транзакция делает проверку и запись одной
+  // атомарной операцией — Firestore сам переигрывает при конфликте.
+  // Реальный баг, найден внешним ревью 2026-09-27.
+  async function ensureDaysSeeded(tripId, days) {
+    try {
+      const ref = db.collection(COLLECTION).doc(tripId);
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const existing = snap.exists ? snap.data().days : null;
+        if (!existing || !existing.length) {
+          tx.set(ref, { days }, { merge: true });
+        }
+      });
+    } catch (_) {}
+  }
+
   // Отдельное узкое поле для конкретной позиции — та же гонка, что была в
   // Закупке: несколько человек одновременно выбирают разные блюда в разные
   // слоты, а saveDays() выше перезаписывает ВЕСЬ days целиком, так что
   // второе почти одновременное сохранение тихо стирает выбор из первого.
   // slot.id уже глобально уникален в пределах поездки (см. MenuState.addSlot),
-  // так что плоская мапа по нему безопасна — Firestore мёржит вложенные
-  // map-поля при merge:true, запись одного ключа не задевает остальные.
+  // так что плоская мапа по нему безопасна — запись одного ключа не задевает
+  // остальные. Но .set(…,{merge:true}) с вложенным объектом мёржит его
+  // РЕКУРСИВНО, а не заменяет: если у старого блюда в этом слоте был
+  // leftover:true, а новое блюдо (без этого поля) просто заменило его,
+  // старое значение leftover молча переживало замену — новое блюдо
+  // "наследовало" отметку "остатки" от прежнего. Реальный баг, найден
+  // внешним ревью 2026-09-27. update() с путём через точку пишет ровно в
+  // этот путь, заменяя значение целиком, а не мёржа его подполя.
   async function saveSlotItem(tripId, slotId, item) {
     try {
-      await db.collection(COLLECTION).doc(tripId).set({ slotItems: { [slotId]: item } }, { merge: true });
+      await db.collection(COLLECTION).doc(tripId).update({ ['slotItems.' + slotId]: item });
     } catch (_) {}
   }
 
@@ -92,6 +128,11 @@ const MenuFirebase = (() => {
     'обед': 'lunch', 'ужин': 'dinner' };
   async function importPlan(tripId, startDate, endDate, plan) {
     if (!tripId || !Array.isArray(plan) || !plan.length) return 0;
+    // Приёмы пищи, выключенные для этой поездки (см. trip.mealsPlanned /
+    // TripsData.plannedMeals) — план из AI-импорта их пропускает, а не
+    // молча создаёт заново то, что пользователь явно отключил.
+    const trip = typeof TripsData !== 'undefined' ? TripsData.getById(tripId) : null;
+    const planned = typeof TripsData !== 'undefined' ? TripsData.plannedMeals(trip) : null;
     const ref = db.collection(COLLECTION).doc(tripId);
     return db.runTransaction(async tx => {
       const snap = await tx.get(ref);
@@ -116,6 +157,7 @@ const MenuFirebase = (() => {
         (pd.meals || []).forEach(m => {
           if (m.editable === false) return;
           const mealId = _IMPORT_MEAL[String(m.type || '').trim().toLowerCase()];
+          if (mealId && planned && !planned.includes(mealId)) return;
           const meal = mealId && day.meals && day.meals[mealId];
           if (!meal) return;
           const text = String(m.text || '').trim();
@@ -134,5 +176,115 @@ const MenuFirebase = (() => {
     });
   }
 
-  return { subscribe, unsubscribe, saveDays, saveSlotItem, saveMealDuty, saveDayAttendance, saveCookDone, importPlan };
+  // Даты поездки поменялись — пересобираем дни меню сразу на сервере, а
+  // не когда кто-нибудь откроет Меню (раньше Главная и напоминания бота до
+  // этого видели старые дни). Поездку обычно ПЕРЕНОСЯТ, поэтому день N
+  // остаётся днём N (как у Group Trip Planner): блюда, дежурства и явка
+  // едут вместе с днём. Если поездка стала короче — блюда хвостовых дней
+  // не выбрасываем молча: возвращаем их список, мастер предупреждает до
+  // сохранения (countTail). Меню, которого ещё нет, не создаём.
+  function _tailDishes(days, newLen, slotItems) {
+    const out = [];
+    days.slice(newLen).forEach(d => Object.values(d.meals || {}).forEach(m => (m.slots || []).forEach(sl => {
+      const it = Object.prototype.hasOwnProperty.call(slotItems, sl.id) ? slotItems[sl.id] : sl.item;
+      if (it && it.name) out.push(it.name);
+    })));
+    return out;
+  }
+  async function countTail(tripId, startDate, endDate) {
+    const snap = await db.collection(COLLECTION).doc(tripId).get();
+    if (!snap.exists) return [];
+    const newLen = MenuData.generateDays(startDate, endDate || startDate).length;
+    return _tailDishes(snap.data().days || [], newLen, snap.data().slotItems || {});
+  }
+  async function syncDays(tripId, startDate, endDate) {
+    if (!tripId || !startDate) return;
+    const ref = db.collection(COLLECTION).doc(tripId);
+    await db.runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      const data = snap.exists ? snap.data() : {};
+      const old = data.days || [];
+      if (!old.length) return;
+      const fresh = MenuData.generateDays(startDate, endDate || startDate);
+      const idMap = {};
+      fresh.forEach((d, i) => {
+        const was = old[i];
+        if (!was) return;
+        d.meals = was.meals;
+        if (was.attendance) d.attendance = was.attendance;
+        idMap[was.id] = d.id;
+      });
+      const remap = (m) => {
+        const out = {};
+        Object.keys(m || {}).forEach(k => {
+          const dayId = Object.keys(idMap).find(o => k === o || k.startsWith(o + '_'));
+          if (dayId) out[idMap[dayId] + k.slice(dayId.length)] = m[k];
+        });
+        return out;
+      };
+      // mealDuty/attendance ключуются id дня — переносим ключи целиком
+      // (set без merge по этим полям: старые ключи должны исчезнуть).
+      tx.update(ref, {
+        days: fresh,
+        mealDuty: remap(data.mealDuty),
+        attendance: remap(data.attendance),
+      });
+    });
+  }
+
+  // Переименование участника (_showRenameSheet в modules/trips/index.js,
+  // «как показывать в этой поездке») — дежурства (mealDuty[key].cook/
+  // .cleanup) и явка (attendance[dayId][name]) хранятся по имени-строке, не
+  // по uid, так же как paidBy в Расходах (см. ExpensesFirebase.renameParticipant,
+  // тот же вызов из trips/index.js _save()). Без переноса старое имя
+  // остаётся дежурным (бот его не находит среди участников с новым именем и
+  // молча пропускает напоминание — см. bot/src/reminders.js), а отметка
+  // отсутствия «отваливается» от человека под новым именем (снова
+  // считается присутствующим). Реальный баг, найден внешним ревью
+  // 2026-09-27. Транзакция — та же атомарность, что у syncDays выше.
+  async function renameParticipant(tripId, oldName, newName) {
+    if (!tripId || !oldName || !newName || oldName === newName) return;
+    const ref = db.collection(COLLECTION).doc(tripId);
+    try {
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const data = snap.data();
+        const updates = {};
+
+        const mealDuty = data.mealDuty || {};
+        let dutyChanged = false;
+        const newMealDuty = {};
+        Object.keys(mealDuty).forEach(key => {
+          const duty = mealDuty[key] || {};
+          const nd = Object.assign({}, duty);
+          if (duty.cook === oldName)    { nd.cook = newName;    dutyChanged = true; }
+          if (duty.cleanup === oldName) { nd.cleanup = newName; dutyChanged = true; }
+          newMealDuty[key] = nd;
+        });
+        if (dutyChanged) updates.mealDuty = newMealDuty;
+
+        const attendance = data.attendance || {};
+        let attChanged = false;
+        const newAttendance = {};
+        Object.keys(attendance).forEach(dayId => {
+          const dayAtt = attendance[dayId] || {};
+          if (Object.prototype.hasOwnProperty.call(dayAtt, oldName)) {
+            const copy = Object.assign({}, dayAtt);
+            copy[newName] = copy[oldName];
+            delete copy[oldName];
+            newAttendance[dayId] = copy;
+            attChanged = true;
+          } else {
+            newAttendance[dayId] = dayAtt;
+          }
+        });
+        if (attChanged) updates.attendance = newAttendance;
+
+        if (Object.keys(updates).length) tx.set(ref, updates, { merge: true });
+      });
+    } catch (e) { console.warn('MenuFirebase.renameParticipant:', e); }
+  }
+
+  return { subscribe, unsubscribe, saveDays, ensureDaysSeeded, saveSlotItem, saveMealDuty, saveDayAttendance, saveCookDone, importPlan, syncDays, countTail, renameParticipant };
 })();

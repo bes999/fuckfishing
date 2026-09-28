@@ -8,7 +8,19 @@ const TripCoverIndex = (() => {
 
   let _tripId = null;
   let _guideHandler = null;
+  let _guideKeyHandler = null;
   let _notesUnsub = null;
+  let _activityUnsub = null;
+  let _activityItems = [];
+  let _activityLimit = 10;
+
+  // ── «Мои дела по поездке» (см. BRIEF2.md) — личный чек-лист вкладки
+  // «Инфо», виден только автору. Свои пункты — trips/{tripId}/todo_personal/
+  // {uid}.items[]; авто-пункты (даты, снаряга, медданные) не хранятся,
+  // считаются на лету при каждом показе карточки.
+  let _todoItems = [];
+  let _todoGearReady = false;
+  let _todoCollapsed = false;
 
   // Лист в стиле v2 (макеты V2Invite/V2GuideTabs/V2TravelSheet): ручка,
   // заголовок Unbounded + подпись, круглая «×» справа, необязательный
@@ -61,9 +73,20 @@ const TripCoverIndex = (() => {
   // (MembersFirebase.addInvite), гости без аккаунта — { name, uid: null }
   // в participants через TripsData.addGuestNames (не в memberIds, войти не
   // могут). onGuestsAdded — чем перерисовать экран после добавления гостей.
-  function _showInviteSheet(trip, onGuestsAdded) {
+  async function _showInviteSheet(trip, onGuestsAdded) {
     const base = window.location.href.split('?')[0].split('#')[0];
-    const url = `${base}?joinTrip=${encodeURIComponent(trip.id)}`;
+    let url = `${base}?joinTrip=${encodeURIComponent(trip.id)}`;
+    // Токен — случайная часть ссылки на самой поездке (см.
+    // TripsData.ensureInviteToken/index.html _processJoinInvite). Раньше
+    // ссылка несла только id поездки — не секрет и никогда не меняется,
+    // так что её мог собрать кто угодно сам, а отозвать было нечем.
+    // Реальная дыра, найдена внешним ревью 2026-09-27.
+    if (typeof TripsData !== 'undefined') {
+      try {
+        const token = await TripsData.ensureInviteToken(trip.id);
+        if (token) url += `&t=${encodeURIComponent(token)}`;
+      } catch (_) {}
+    }
     const body = `
       <p class="tc-sheet-lead">Отправь ссылку — человек войдёт через Google или email и сразу попадёт в эту поездку.</p>
       <div class="tc-inv-link">
@@ -275,7 +298,12 @@ const TripCoverIndex = (() => {
     // Ветер закэширован ещё в км/ч (до перехода на wind_speed_unit=ms в
     // запросе) — у старых записей windUnit просто нет, добираем один раз.
     const staleWindUnit = !!w && w.windUnit !== 'ms';
-    const isStale = force || !w || missingHourly || staleWindUnit || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
+    // Погода запрошена под другие даты (поездку перенесли) — раньше кэш
+    // жил дальше, и прогноз оставался по старым датам. У записей без
+    // forDates (до этой правки) — тоже один раз перезапрашиваем.
+    const datesKey = (trip.startDate || '') + '_' + (trip.endDate || trip.startDate || '');
+    const staleDates = !!w && w.forDates !== datesKey;
+    const isStale = force || !w || missingHourly || staleWindUnit || staleDates || (w.source !== 'archive' && Date.now() - (w.fetchedAt || 0) > STALE_MS);
     if (!isStale) return;
 
     // Однодневная рыбалка — суточный максимум/минимум почти бесполезен,
@@ -295,7 +323,18 @@ const TripCoverIndex = (() => {
       WeatherService.fetchDailyForTrip(coords.lat, coords.lon, trip.startDate, trip.endDate),
       hourlyPromise
     ]).then(([weather, weatherDaily, weatherHourly]) => {
-        if (!weather) return;
+        if (!weather) {
+          // Новые даты вне окна прогноза (дальше ~16 дней) — старый прогноз
+          // под прежние даты показывать нельзя, убираем его.
+          if (staleDates) {
+            trip.weather = null; trip.weatherDaily = null; trip.weatherHourly = null;
+            if (typeof TripsData !== 'undefined') TripsData.updateTrip(trip.id, { weather: null, weatherDaily: null, weatherHourly: null });
+            const blk = document.getElementById('cover-weather-block');
+            if (blk && _tripId === trip.id) blk.outerHTML = _weatherSection(trip);
+          }
+          return;
+        }
+        weather.forDates = datesKey;
         trip.weather = weather;
         trip.weatherDaily = weatherDaily || null;
         trip.weatherHourly = weatherHourly || null;
@@ -516,6 +555,7 @@ const TripCoverIndex = (() => {
     requestAnimationFrame(() => el.classList.add('visible'));
     _bind(el, trip);
     _patchGearSub(trip);
+    _patchGearReady(trip);
   }
 
   function hide() {
@@ -541,6 +581,7 @@ const TripCoverIndex = (() => {
         <div class="tc-stack">
           ${t.status === 'upcoming' && t.readiness ? _readiness(t) : ''}
           ${t.status !== 'done' ? _gearCard(t) : ''}
+          <div id="cover-lodging-block">${_lodgingCard(t)}</div>
           ${t.status === 'done' ? _doneContent(t) : ''}
           ${_weatherSection(t)}
           ${t.status === 'upcoming' ? _targetFish(t) : ''}
@@ -703,8 +744,10 @@ const TripCoverIndex = (() => {
     });
   }
 
+  // «Собраны N из M» — под карточкой снаряги, id общий (карточка либо на
+  // обложке экспедиции, либо в Инфо рыбалки — никогда не обе разом).
   function _gearCard(t) {
-    return `<section class="tc-card tc-card--list">${_gearRow(t)}</section>`;
+    return `<section class="tc-card tc-card--list">${_gearRow(t)}</section><div class="tc-sec-hint" id="g-gear-ready-sub"></div>`;
   }
 
   function _patchGearSub(t) {
@@ -716,6 +759,21 @@ const TripCoverIndex = (() => {
         ? `собрано ${Math.min((snap.checked || []).length, (snap.items || []).length)} из ${(snap.items || []).length}`
         : 'список ещё не создан';
       document.querySelectorAll(`[data-gear-sub="${t.id}"]`).forEach(el => { el.textContent = text; });
+    }).catch(() => {});
+  }
+
+  // «Собраны N из M» (участники поездки, отметившие себя готовыми в общем
+  // списке снаряги) — gear_trip_shared/{tripId}.ready, {uid: bool}, договорённость
+  // с модулем gear (см. BRIEF2.md). Читаем один раз при показе обложки/Инфо,
+  // не живая подписка — не так критично, как сам список снаряги.
+  function _patchGearReady(t) {
+    const participants = (t.participants || []).filter(p => p.uid);
+    if (!participants.length) return;
+    firebase.firestore().collection('gear_trip_shared').doc(t.id).get().then(doc => {
+      const ready = (doc.exists && doc.data().ready) || {};
+      const n = participants.filter(p => ready[p.uid]).length;
+      const el = document.getElementById('g-gear-ready-sub');
+      if (el) el.textContent = `Собраны ${n} из ${participants.length}`;
     }).catch(() => {});
   }
 
@@ -1237,7 +1295,7 @@ const TripCoverIndex = (() => {
     const uid = window.APP?.user?.uid;
     if (!uid || typeof GearData === 'undefined') return;
     await GearData.ensureLoaded(uid);
-    if (GearData.hasTripSnapshot(trip.id)) {
+    if (GearData.hasTripSnapshot(uid, trip.id)) {
       if (fromCover) hide();
       _openGear(trip.id);
     } else {
@@ -1338,6 +1396,7 @@ const TripCoverIndex = (() => {
       if (act === 'tc-open-notes') { _openTripTab(trip.id, 'info', 'g-notes-block'); return; }
       if (act === 'edit-rating') { _showEditRating(trip); return; }
       if (act === 'edit-comment') { _showEditComment(trip); return; }
+      if (act === 'lodging-edit') { _showLodgingEdit(trip); return; }
     });
 
     el.querySelector('#coverEnter')?.addEventListener('click', () => {
@@ -1450,6 +1509,33 @@ const TripCoverIndex = (() => {
         if (_canInvite(trip)) _showInviteSheet(trip, () => _mountGuideTab(trip, 'info'));
         return;
       }
+
+      // Приветствие новому участнику (верх таба "Инфо")
+      if (e.target.closest('[data-action="welcome-dismiss"]')) {
+        _dismissWelcome(trip.id);
+        // Раньше удаляли весь враппер .tc-stack — теперь в нём же лежит
+        // карточка «Мои дела» (см. _mountGuideTab), трогаем только себя.
+        document.getElementById('g-welcome-card')?.remove();
+        return;
+      }
+      if (e.target.closest('[data-action="welcome-travel"]')) {
+        const myUid = window.APP?.user?.uid;
+        const mine = (trip.participants || []).find(p => p.uid === myUid);
+        _showTravelEdit(trip.id, mine?.name || window.APP?.profile?.displayName || '');
+        return;
+      }
+      if (e.target.closest('[data-action="welcome-medical"]')) {
+        if (typeof onNavigate === 'function') onNavigate('profile');
+        return;
+      }
+      if (e.target.closest('[data-action="welcome-gear"]')) { _onGearClick(trip, false); return; }
+
+      // Лента "Что нового" — "Показать ещё" расширяет лимит и переподписывается.
+      if (e.target.closest('[data-action="activity-more"]')) {
+        _activityLimit = 30;
+        _listenActivity(trip.id);
+        return;
+      }
       const rateBtn = e.target.closest('[data-action="tc-rate"]');
       if (rateBtn) { _setRating(trip, parseInt(rateBtn.dataset.val, 10)); return; }
       if (e.target.closest('[data-action="tc-weather-open"]')) { _showWeatherScreen(trip); return; }
@@ -1474,6 +1560,43 @@ const TripCoverIndex = (() => {
       const travelRow = e.target.closest('[data-action="travel-edit"]');
       if (travelRow) {
         _showTravelEdit(trip.id, travelRow.dataset.name);
+        return;
+      }
+
+      // Жильё (таб "Инфо") — карандаш на заполненной карточке или
+      // пунктирная «+ Добавить жильё» на пустой, один и тот же лист.
+      if (e.target.closest('[data-action="lodging-edit"]')) { _showLodgingEdit(trip); return; }
+
+      // «Мои дела» — авто-пункты ведут к своему делу, свои пункты —
+      // чекбокс/свайп-удаление/добавление (см. _todoCard).
+      if (e.target.closest('[data-action="todo-toggle-collapse"]')) {
+        _todoCollapsed = !_todoCollapsed;
+        _saveTodoCollapsed(_todoCollapsed);
+        _refreshTodoCard(trip);
+        return;
+      }
+      if (e.target.closest('[data-action="todo-auto-travel"]')) {
+        const myUid = window.APP?.user?.uid;
+        const mine = (trip.participants || []).find(p => p.uid === myUid);
+        _showTravelEdit(trip.id, mine?.name || window.APP?.profile?.displayName || '');
+        return;
+      }
+      if (e.target.closest('[data-action="todo-auto-gear"]')) { _onGearClick(trip, false); return; }
+      if (e.target.closest('[data-action="todo-auto-med"]')) {
+        if (typeof onNavigate === 'function') onNavigate('profile');
+        return;
+      }
+      const todoToggle = e.target.closest('[data-action="todo-toggle"]');
+      if (todoToggle) {
+        const it = _todoItems.find(x => x.id === todoToggle.dataset.id);
+        if (it) { it.done = !it.done; _saveTodoItems(trip.id); _refreshTodoCard(trip); }
+        return;
+      }
+      const todoDel = e.target.closest('[data-action="todo-del"]');
+      if (todoDel) {
+        _todoItems = _todoItems.filter(x => x.id !== todoDel.dataset.id);
+        _saveTodoItems(trip.id);
+        _refreshTodoCard(trip);
         return;
       }
 
@@ -1518,6 +1641,14 @@ const TripCoverIndex = (() => {
       }
     };
     guideEl.addEventListener('click', _guideHandler);
+
+    // «+ Своё дело» — Enter добавляет пункт (делегировано на весь Гид,
+    // переживает перерисовку самой карточки, см. _refreshTodoCard).
+    if (_guideKeyHandler) guideEl.removeEventListener('keydown', _guideKeyHandler);
+    _guideKeyHandler = e => {
+      if (e.key === 'Enter' && e.target?.id === 'g-todo-input') { e.preventDefault(); _addTodoItem(trip); }
+    };
+    guideEl.addEventListener('keydown', _guideKeyHandler);
 
     _mountGuideTab(trip, 'info');
   }
@@ -1617,6 +1748,269 @@ const TripCoverIndex = (() => {
   // Заголовок секции Инфо (20px) + необязательная мелкая подсказка под ним.
   function _secTitle(title, right, hint) {
     return `<div class="tc-sec"><h2 class="tc-sec-title">${title}</h2>${right || ''}</div>${hint ? `<div class="tc-sec-hint">${hint}</div>` : ''}`;
+  }
+
+  // ── Приветствие новому участнику (самый верх вкладки «Инфо») ────────────
+  // Показывается любому, кто НЕ создатель поездки (trip.ownerId), пока сам
+  // не скроет — members/{uid}.welcomedTrips.{tripId}=true, узкая запись
+  // (тот же паттерн, что hiddenGuideTabs). Организатору не нужен — это его
+  // же поездка, он и так знает, что в ней есть.
+  function _isWelcomed(tripId) {
+    return !!(window.APP?.profile?.welcomedTrips || {})[tripId];
+  }
+
+  function _dismissWelcome(tripId) {
+    const uid = window.APP?.user?.uid;
+    if (!uid) return;
+    if (window.APP.profile) {
+      window.APP.profile.welcomedTrips = { ...(window.APP.profile.welcomedTrips || {}), [tripId]: true };
+    }
+    firebase.firestore().collection('members').doc(uid)
+      .set({ welcomedTrips: { [tripId]: true } }, { merge: true })
+      .catch(() => {});
+  }
+
+  function _welcomeCard(trip) {
+    const uid = window.APP?.user?.uid;
+    if (!uid || trip.ownerId === uid || _isWelcomed(trip.id)) return '';
+    return `
+      <section class="tc-card tc-welcome" id="g-welcome-card">
+        <h2 class="tc-welcome-title">Ты в поездке «${_esc(trip.name)}»</h2>
+        <div class="tc-welcome-rows">
+          ${_linkRow({ action: 'welcome-travel', icon: 'plane', title: 'Мои даты приезда и отъезда' })}
+          ${_linkRow({ action: 'welcome-medical', icon: 'first-aid-kit', title: 'Аллергии и медданные' })}
+          ${_linkRow({ action: 'welcome-gear', icon: 'backpack', title: 'Что я везу' })}
+        </div>
+        <button type="button" class="tc-btn-secondary" data-action="welcome-dismiss">Всё ок, скрыть</button>
+      </section>`;
+  }
+
+  // ── Жильё (trip.lodging, см. BRIEF2.md) — адрес/бронь/заселение-выезд,
+  // необязательные строки, правит любой участник. Карточка одна и та же
+  // функция для обложки экспедиции и вкладки «Инфо» — оба места просто
+  // подменяют #cover-lodging-block / #g-lodging-section целиком.
+  function _lodgingCard(t) {
+    const l = t.lodging || {};
+    const hasAny = l.address || l.link || l.checkin || l.checkout || l.note;
+    if (!hasAny) {
+      return `<button type="button" class="tc-add-dashed" data-action="lodging-edit">+ Добавить жильё</button>`;
+    }
+    const schedule = [l.checkin ? `Заселение ${l.checkin}` : '', l.checkout ? `выезд ${l.checkout}` : '']
+      .filter(Boolean).join(' · ');
+    const mapsUrl = l.address ? `https://yandex.ru/maps/?text=${encodeURIComponent(l.address)}` : '';
+    return `
+      <section class="tc-card">
+        <div class="tc-card-head">
+          <h2 class="tc-card-title">Жильё</h2>
+          <button type="button" class="tc-icon-btn" data-action="lodging-edit" aria-label="Изменить жильё">${UIUtils.ico('pencil')}</button>
+        </div>
+        <div class="tc-lodging-row">
+          <span class="tc-tile">${UIUtils.ico('home')}</span>
+          <span class="tc-link-main">
+            ${l.address
+              ? `<a class="tc-lodging-addr" href="${_esc(mapsUrl)}" target="_blank" rel="noopener">${_esc(l.address)}</a>`
+              : `<span class="tc-muted">Адрес не указан</span>`}
+            ${schedule ? `<span class="tc-link-sub">${_esc(schedule)}</span>` : ''}
+          </span>
+        </div>
+        ${l.link ? `<a class="tc-btn-secondary" href="${_esc(l.link)}" target="_blank" rel="noopener">${UIUtils.ico('external-link')} Бронь</a>` : ''}
+        ${l.note ? `<div class="tc-hint">${_esc(l.note)}</div>` : ''}
+      </section>`;
+  }
+
+  function _refreshLodging(trip) {
+    const cover = document.getElementById('cover-lodging-block');
+    if (cover) cover.innerHTML = _lodgingCard(trip);
+    const guide = document.getElementById('g-lodging-section');
+    if (guide) guide.innerHTML = _lodgingCard(trip);
+  }
+
+  // Правка — лист с обычными текстовыми полями (не date/time-пикеры —
+  // формулировки вроде «3 окт, 14:00» вводятся текстом, см. BRIEF2.md).
+  function _showLodgingEdit(trip) {
+    const l = trip.lodging || {};
+    const body = `
+      <div class="tc-field-title">Адрес</div>
+      <input type="text" class="tc-input" id="ld-address" placeholder="ул. Ленина, 5" value="${_esc(l.address || '')}">
+      <div class="tc-field-title">Ссылка на бронь</div>
+      <input type="text" class="tc-input" id="ld-link" placeholder="https://…" value="${_esc(l.link || '')}">
+      <div class="tc-grid2">
+        <div>
+          <div class="tc-field-title">Заселение</div>
+          <input type="text" class="tc-input" id="ld-checkin" placeholder="3 окт, 14:00" value="${_esc(l.checkin || '')}">
+        </div>
+        <div>
+          <div class="tc-field-title">Выезд</div>
+          <input type="text" class="tc-input" id="ld-checkout" placeholder="7 окт, 12:00" value="${_esc(l.checkout || '')}">
+        </div>
+      </div>
+      <div class="tc-field-title">Заметка</div>
+      <textarea class="tc-input tc-textarea" id="ld-note" placeholder="Код от домофона, контакт хозяина…">${_esc(l.note || '')}</textarea>`;
+    const overlay = _openSheet('tc-lodging-overlay', 'Жильё', trip.name || '', body,
+      { footer: '<button type="button" class="tc-btn-primary" data-action="lodging-save">Сохранить</button>' });
+
+    overlay.addEventListener('click', async e => {
+      if (!e.target.closest('[data-action="lodging-save"]')) return;
+      const lodging = {
+        address: document.getElementById('ld-address')?.value.trim() || '',
+        link: document.getElementById('ld-link')?.value.trim() || '',
+        checkin: document.getElementById('ld-checkin')?.value.trim() || '',
+        checkout: document.getElementById('ld-checkout')?.value.trim() || '',
+        note: document.getElementById('ld-note')?.value.trim() || '',
+      };
+      trip.lodging = lodging;
+      overlay.remove();
+      await TripsData.updateTrip(trip.id, { lodging });
+      _refreshLodging(trip);
+    });
+  }
+
+  // ── «Мои дела по поездке» (вкладка «Инфо», самый верх) ──────────────────
+  function _todoCollapsedKey() { return 'ff_todo_collapsed'; }
+  function _loadTodoCollapsed() {
+    try { return localStorage.getItem(_todoCollapsedKey()) === '1'; } catch (e) { return false; }
+  }
+  function _saveTodoCollapsed(v) {
+    try {
+      if (v) localStorage.setItem(_todoCollapsedKey(), '1');
+      else localStorage.removeItem(_todoCollapsedKey());
+    } catch (e) { /* приватный режим — переживём без запоминания */ }
+  }
+
+  // Три авто-пункта не хранятся — считаются на лету по уже загруженным
+  // данным поездки/профиля (плюс _todoGearReady, подтягивается отдельно).
+  function _todoAutoItems(trip) {
+    const uid = window.APP?.user?.uid;
+    const myName = (trip.participants || []).find(p => p.uid === uid)?.name
+      || window.APP?.profile?.displayName || '';
+    const travelDone = !!((trip.travel?.[myName]?.legs) || []).length;
+    const profile = window.APP?.profile || {};
+    const medDone = !!(profile.bloodType || profile.allergies);
+    return [
+      { id: '_auto_travel', text: 'Указать даты приезда и отъезда', done: travelDone, auto: 'travel' },
+      { id: '_auto_gear', text: 'Собрать снарягу и нажать «Я собран»', done: !!_todoGearReady, auto: 'gear' },
+      { id: '_auto_med', text: 'Заполнить медданные', done: medDone, auto: 'med' },
+    ];
+  }
+
+  function _todoCard(trip) {
+    const auto = _todoAutoItems(trip);
+    const all = [...auto, ..._todoItems];
+    const done = all.filter(it => it.done).length;
+    const total = all.length;
+    const row = it => `
+      <div class="tc-swipe-row g-todo-row">
+        <button type="button" class="g-todo-item" data-action="${it.auto ? 'todo-auto-' + it.auto : 'todo-toggle'}" data-id="${_esc(it.id)}">
+          <span class="tc-check ${it.done ? 'done' : ''}">${it.done ? UIUtils.ico('check') : ''}</span>
+          <span class="g-todo-text ${it.done ? 'done' : ''}">${_esc(it.text)}</span>
+        </button>
+        ${it.auto ? '' : `<button type="button" class="tc-swipe-del" data-action="todo-del" data-id="${_esc(it.id)}" aria-label="Удалить">Удалить</button>`}
+      </div>`;
+    return `
+      <section class="tc-card" id="g-todo-card">
+        <button type="button" class="tc-card-head g-todo-head" data-action="todo-toggle-collapse" aria-expanded="${!_todoCollapsed}">
+          <h2 class="tc-card-title">Мои дела · ${done} из ${total}</h2>
+          <span class="tc-icon-btn">${UIUtils.ico(_todoCollapsed ? 'chevron-down' : 'chevron-up')}</span>
+        </button>
+        ${_todoCollapsed ? '' : `
+          <div class="tc-legs" id="g-todo-rows">${all.map(row).join('')}</div>
+          <input type="text" class="tc-input" id="g-todo-input" placeholder="+ Своё дело">
+        `}
+      </section>`;
+  }
+
+  function _bindTodoSwipe() {
+    const rows = document.getElementById('g-todo-rows');
+    if (rows) UIUtils.swipeToDelete(rows, '.tc-swipe-row', '.tc-swipe-del');
+  }
+
+  function _refreshTodoCard(trip) {
+    const el = document.getElementById('g-todo-card');
+    if (!el) return;
+    el.outerHTML = _todoCard(trip);
+    _bindTodoSwipe();
+  }
+
+  async function _ensureTodoLoaded(tripId) {
+    const uid = window.APP?.user?.uid;
+    if (!uid) { _todoItems = []; return; }
+    try {
+      const doc = await firebase.firestore().collection('trips').doc(tripId)
+        .collection('todo_personal').doc(uid).get();
+      _todoItems = (doc.exists && Array.isArray(doc.data().items)) ? doc.data().items : [];
+    } catch (e) { _todoItems = []; }
+  }
+
+  async function _ensureTodoGearReady(tripId) {
+    const uid = window.APP?.user?.uid;
+    if (!uid) { _todoGearReady = false; return; }
+    try {
+      const doc = await firebase.firestore().collection('gear_trip_shared').doc(tripId).get();
+      _todoGearReady = !!(doc.exists && doc.data().ready && doc.data().ready[uid]);
+    } catch (e) { _todoGearReady = false; }
+  }
+
+  // Пишет весь документ разом — правило брифа: документ пишет только сам
+  // владелец (см. firestore.rules todo_personal), гонки с другими людьми
+  // тут не бывает, транзакция не нужна.
+  function _saveTodoItems(tripId) {
+    const uid = window.APP?.user?.uid;
+    if (!uid) return;
+    firebase.firestore().collection('trips').doc(tripId)
+      .collection('todo_personal').doc(uid).set({ items: _todoItems }).catch(() => {});
+  }
+
+  function _addTodoItem(trip) {
+    const input = document.getElementById('g-todo-input');
+    const text = input?.value.trim();
+    if (!text) { input?.focus(); return; }
+    _todoItems.push({ id: 'td_' + Date.now() + '_' + Math.random().toString(36).slice(2), text, done: false });
+    _saveTodoItems(trip.id);
+    _refreshTodoCard(trip);
+  }
+
+  // Читает todo_personal + gear_trip_shared один раз при показе таба и
+  // перерисовывает карточку поверх уже показанной синхронной версии —
+  // тот же приём, что _patchGearSub/_patchGearReady.
+  function _loadTodoAsync(trip) {
+    if (!window.APP?.user?.uid) return;
+    Promise.all([_ensureTodoLoaded(trip.id), _ensureTodoGearReady(trip.id)]).then(() => {
+      _refreshTodoCard(trip);
+    });
+  }
+
+  // ── Лента «Что нового» (вкладка «Инфо», над заметками группы) ───────────
+  // ActivityLog.listen — та же подписка-по-требованию, что у заметок
+  // (_listenNotes ниже): переподписываемся при каждом входе на вкладку
+  // «Инфо», старая подписка снимается сама внутри функции.
+  function _listenActivity(tripId) {
+    if (_activityUnsub) { _activityUnsub(); _activityUnsub = null; }
+    if (typeof ActivityLog === 'undefined') return;
+    _activityUnsub = ActivityLog.listen(tripId, items => {
+      _activityItems = items;
+      const section = document.getElementById('g-activity-section');
+      if (section) section.innerHTML = _activitySection();
+    }, _activityLimit);
+  }
+
+  function _activityHead() {
+    return _secTitle('Что нового', '');
+  }
+
+  function _activityRow(it) {
+    return _linkRow({
+      icon: ActivityLog.icon(it.kind),
+      title: `<b>${_esc(it.name)}</b> ${_esc(it.text)}`,
+      sub: _esc(ActivityLog.ago(it.at)),
+    });
+  }
+
+  function _activitySection() {
+    if (!_activityItems.length) return '<div class="tc-sec-hint">Пока тихо — здесь появится, кто что добавил</div>';
+    const rows = _activityItems.map(_activityRow).join('');
+    const more = _activityLimit === 10
+      ? `<button type="button" class="tc-text-btn" data-action="activity-more">Показать ещё</button>` : '';
+    return `<section class="tc-card tc-card--list">${rows}</section>${more}`;
   }
 
   function _travelSection(trip) {
@@ -1956,15 +2350,26 @@ const TripCoverIndex = (() => {
             <div class="g-empty__sub">Загрузи JSON-файл от AI в настройках поездки — появятся дни, рейсы и погода по маршруту</div>
           </div>`;
       }
-      panel.innerHTML = bodyHtml
+      const welcomeHtml = _welcomeCard(trip);
+      // «Мои дела» — под приветствием, если оно есть, иначе первой картой.
+      const todoHtml = window.APP?.user?.uid ? _todoCard(trip) : '';
+      _activityLimit = 10;
+      _todoCollapsed = _loadTodoCollapsed();
+      panel.innerHTML = ((welcomeHtml || todoHtml) ? `<div class="tc-stack">${welcomeHtml}${todoHtml}</div>` : '')
+        + bodyHtml
         + `<div class="tc-stack">`
         + `<div id="g-travel-section" class="tc-group">${_travelSection(trip)}</div>`
         + `<div id="g-passports-section" class="tc-group">${_passportsSection(trip)}</div>`
+        + `<div id="g-lodging-section" class="tc-group">${_lodgingCard(trip)}</div>`
+        + `<div id="g-activity-block" class="tc-group"><div id="g-activity-head">${_activityHead()}</div><div id="g-activity-section">${_activitySection()}</div></div>`
         + `<div id="g-notes-block" class="tc-group"><div id="g-notes-head">${_notesHead(tripId)}</div>${_notesComposer()}<div id="g-notes-section">${_notesSection(tripId)}</div></div>`
         + `</div><div class="g-info-bottom-pad"></div>`;
       _loadPassports(trip);
-      if (trip.type === 'fishing' && trip.status !== 'done') _patchGearSub(trip);
+      if (trip.type === 'fishing' && trip.status !== 'done') { _patchGearSub(trip); _patchGearReady(trip); }
       _listenNotes(tripId);
+      _listenActivity(tripId);
+      _bindTodoSwipe();
+      _loadTodoAsync(trip);
     } else if (tabId === 'rivers') {
       if (typeof RiversIndex !== 'undefined') RiversIndex.init(panel, window.APP?.currentTripData, tripId);
     } else if (tabId === 'menu') {

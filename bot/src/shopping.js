@@ -62,7 +62,15 @@ export async function addItems(tripId, catId, items) {
   return { categories, added };
 }
 
-/** Переключает bought по индексам категории/пункта, возвращает обновлённый список категорий. */
+/**
+ * Переключает bought по индексам категории/пункта, возвращает обновлённый список категорий.
+ * Пишет ОБА места: embedded categories[].items[].bought (для собственных немедленных
+ * чтений бота — например, повторного рендера списка) И отдельное плоское поле `bought`
+ * верхнего уровня документа, которое читает и с которым мержится веб-приложение
+ * (modules/shopping/firebase.js saveBought / modules/shopping/state.js setFromFirebase).
+ * Без второй записи веб-оверлей возвращает bought к своему (возможно устаревшему)
+ * значению из карты, и бот с сайтом расходятся в состоянии одного и того же пункта.
+ */
 export async function toggleBoughtByIndex(tripId, catIdx, itemIdx) {
   const categories = await getCategories(tripId);
   const cat = categories[catIdx];
@@ -71,6 +79,7 @@ export async function toggleBoughtByIndex(tripId, catIdx, itemIdx) {
   if (!item) return null;
   item.bought = !item.bought;
   await saveCategories(tripId, categories);
+  await ref(tripId).set({ bought: { [item.id]: item.bought } }, { merge: true });
   return categories;
 }
 

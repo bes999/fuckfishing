@@ -41,6 +41,12 @@ const RiversFirebase = (() => {
     if (_unsubPoints) { _unsubPoints(); _unsubPoints = null; }
   }
 
+  // ВАЖНО: .catch(console.warn) без re-throw делает промис успешным даже
+  // при отказе записи. Для migrateFromLocalStorage ниже это было реальной
+  // потерей данных: Promise.all([...]) считал миграцию удавшейся и стирал
+  // ЕДИНСТВЕННУЮ копию точек/заметок из localStorage, даже если запись в
+  // Firestore не прошла целиком. Реальный баг, найден внешним ревью
+  // 2026-09-27 — везде ниже логируем и пробрасываем ошибку дальше.
   function addPoint(tripId, point) {
     const data = Object.assign({}, point);
     delete data._id;
@@ -48,7 +54,7 @@ const RiversFirebase = (() => {
     data.createdBy = window.APP?.user?.uid || null;
     return _ref(tripId).collection('river_points').add(data)
       .then(ref => ref.id)
-      .catch(e => console.warn('addPoint:', e));
+      .catch(e => { console.warn('addPoint:', e); throw e; });
   }
 
   function updatePoint(tripId, pointId, point) {
@@ -56,13 +62,13 @@ const RiversFirebase = (() => {
     delete data._id;
     return _ref(tripId).collection('river_points').doc(pointId)
       .set(data, { merge: true })
-      .catch(e => console.warn('updatePoint:', e));
+      .catch(e => { console.warn('updatePoint:', e); throw e; });
   }
 
   function deletePoint(tripId, pointId) {
     return _ref(tripId).collection('river_points').doc(pointId)
       .delete()
-      .catch(e => console.warn('deletePoint:', e));
+      .catch(e => { console.warn('deletePoint:', e); throw e; });
   }
 
   // ── Заметки ──────────────────────────────────────────────────
@@ -83,13 +89,13 @@ const RiversFirebase = (() => {
   function saveNote(tripId, riverId, text) {
     return _ref(tripId).collection('river_notes').doc(riverId)
       .set({ text, updatedAt: new Date().toISOString() })
-      .catch(e => console.warn('saveNote:', e));
+      .catch(e => { console.warn('saveNote:', e); throw e; });
   }
 
   function deleteNote(tripId, riverId) {
     return _ref(tripId).collection('river_notes').doc(riverId)
       .delete()
-      .catch(e => console.warn('deleteNote:', e));
+      .catch(e => { console.warn('deleteNote:', e); throw e; });
   }
 
   // ── Миграция из localStorage — один раз при первом входе в реки

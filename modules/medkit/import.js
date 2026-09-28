@@ -204,6 +204,24 @@ function importFromMember(fromMemberId, toMemberId) {
   rMedkit();
 }
 
+// Найти позицию по названию в справочнике MEDKIT_BASE (без учёта регистра).
+// Само по себе наличие в справочнике НЕ значит, что она есть в КОНКРЕТНОЙ
+// аптечке — категория может быть ещё не подключена (personalOptional).
+// Раньше проверка дубликатов при импорте сравнивала со ВСЕМ справочником
+// без учёта enabledGroups — импорт "Парацетамол" в пустую личную аптечку
+// сообщал "уже есть" и ничего не делал, хотя категория "Простуда" ни разу
+// не была подключена. Реальный баг, найден внешним ревью 2026-09-27.
+function _findBaseItem(lowerName) {
+  for (var g = 0; g < MEDKIT_BASE.length; g++) {
+    for (var i = 0; i < MEDKIT_BASE[g].items.length; i++) {
+      if (MEDKIT_BASE[g].items[i].name.toLowerCase() === lowerName) {
+        return { group: MEDKIT_BASE[g], item: MEDKIT_BASE[g].items[i] };
+      }
+    }
+  }
+  return null;
+}
+
 // --- Сценарий 3: из текста ---
 function importFromText(text, mode, memberId, groupId) {
   if (!text || !text.trim()) return { added: 0, skipped: 0, items: [] };
@@ -214,13 +232,6 @@ function importFromText(text, mode, memberId, groupId) {
 
   var state = getMedkitState(mode, memberId);
   var existingNames = [];
-
-  // собираем уже существующие названия
-  for (var g = 0; g < MEDKIT_BASE.length; g++) {
-    for (var i = 0; i < MEDKIT_BASE[g].items.length; i++) {
-      existingNames.push(MEDKIT_BASE[g].items[i].name.toLowerCase());
-    }
-  }
   for (var c = 0; c < state.customItems.length; c++) {
     existingNames.push(state.customItems[c].name.toLowerCase());
   }
@@ -229,23 +240,42 @@ function importFromText(text, mode, memberId, groupId) {
 
   for (var l = 0; l < lines.length; l++) {
     var name = lines[l];
-    var isExisting = existingNames.indexOf(name.toLowerCase()) >= 0;
+    var lower = name.toLowerCase();
 
-    if (isExisting) {
+    if (existingNames.indexOf(lower) >= 0) {
       result.skipped++;
       result.items.push({ name: name, skip: true });
-    } else {
-      var id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      state.customItems.push({
-        id: id,
-        name: name,
-        groupId: groupId || 'custom',
-        custom: true
-      });
+      continue;
+    }
+
+    var baseHit = _findBaseItem(lower);
+    if (baseHit) {
+      // В справочнике есть, но категория не подключена к этой аптечке —
+      // не дубликат, а позиция, которую нужно СДЕЛАТЬ видимой: включаем
+      // категорию (не плодим custom-дубликат уже известного справочного
+      // препарата).
+      if (isGroupEnabled(mode, memberId, baseHit.group.id)) {
+        result.skipped++;
+        result.items.push({ name: name, skip: true });
+        continue;
+      }
+      state.enabledGroups[baseHit.group.id] = true;
       result.added++;
       result.items.push({ name: name, skip: false });
-      existingNames.push(name.toLowerCase());
+      existingNames.push(lower);
+      continue;
     }
+
+    var id = 'custom_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+    state.customItems.push({
+      id: id,
+      name: name,
+      groupId: groupId || 'custom',
+      custom: true
+    });
+    result.added++;
+    result.items.push({ name: name, skip: false });
+    existingNames.push(lower);
   }
 
   if (result.added > 0) {
@@ -266,12 +296,6 @@ function previewImportFromText(text, mode, memberId) {
 
   var state = getMedkitState(mode, memberId);
   var existingNames = [];
-
-  for (var g = 0; g < MEDKIT_BASE.length; g++) {
-    for (var i = 0; i < MEDKIT_BASE[g].items.length; i++) {
-      existingNames.push(MEDKIT_BASE[g].items[i].name.toLowerCase());
-    }
-  }
   for (var c = 0; c < state.customItems.length; c++) {
     existingNames.push(state.customItems[c].name.toLowerCase());
   }
@@ -280,13 +304,22 @@ function previewImportFromText(text, mode, memberId) {
 
   for (var l = 0; l < lines.length; l++) {
     var name = lines[l];
-    var isExisting = existingNames.indexOf(name.toLowerCase()) >= 0;
+    var lower = name.toLowerCase();
+    var isExisting = existingNames.indexOf(lower) >= 0;
+    // Та же логика, что и в importFromText выше (это только предпросмотр,
+    // без мутации state) — справочная позиция из не подключённой категории
+    // считается ДОБАВЛЯЕМОЙ, а не дубликатом.
+    if (!isExisting) {
+      var baseHit = _findBaseItem(lower);
+      if (baseHit && isGroupEnabled(mode, memberId, baseHit.group.id)) isExisting = true;
+    }
     if (isExisting) {
       result.skipped++;
       result.items.push({ name: name, skip: true });
     } else {
       result.added++;
       result.items.push({ name: name, skip: false });
+      existingNames.push(lower);
     }
   }
 

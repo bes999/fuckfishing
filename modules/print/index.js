@@ -180,8 +180,7 @@ const PrintIndex = (() => {
       const snap = await db.collection('menu').doc(trip.id).get();
       const data = snap.exists ? snap.data() : {};
       if (data.days) {
-        MenuState.setFromFirebase(trip.id, data.days, data.slotItems || {}, data.mealDuty || {}, {});
-        days = MenuState.getDays(trip.id) || [];
+        days = MenuState.resolveDays(data.days, data.slotItems || {}, data.mealDuty || {}, data.attendance || {});
       }
     } catch (_) { /* печатаем то, что есть — без меню, а не роняем всю печать */ }
 

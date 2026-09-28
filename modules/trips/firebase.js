@@ -104,6 +104,52 @@ const TripsFirebase = (() => {
       .catch(e => { console.warn('updateTrip:', e); throw e; });
   }
 
+  // Вступление в поездку читает-меняет-пишет массивы participants/memberIds
+  // целиком — Firestore не мержит массивы поэлементно, {merge:true} на поле-
+  // массиве просто заменяет его целиком. Раньше это читало ЛОКАЛЬНЫЙ кэш
+  // (мог быть уже устаревшим) и писало новый массив без всякой защиты —
+  // если два человека вступают одновременно по одной ссылке-приглашению,
+  // вторая запись полностью стирает участника, добавленного первой (реальная
+  // гонка, найдена внешним ревью 2026-09-27). Транзакция читает СВЕЖУЮ
+  // серверную версию и пишет в одной атомарной операции — Firestore сам
+  // повторяет транзакцию при конфликте, потерянных записей не бывает.
+  function addParticipant(tripId, { uid, name } = {}) {
+    const ref = _col().doc(tripId);
+    return firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('trip not found');
+      const data = snap.data() || {};
+      const participants = Array.isArray(data.participants) ? data.participants : [];
+      const memberIds = Array.isArray(data.memberIds) ? data.memberIds : [];
+
+      if (uid && memberIds.includes(uid)) return;
+
+      // Совпадение по имени годится только для гостя БЕЗ uid (backfill —
+      // человека раньше вписали руками, теперь у него появился аккаунт).
+      // Если под этим именем уже сидит участник С уже другим uid — это
+      // просто тёзка, не тот же человек: раньше такой матч молча "съедал"
+      // нового участника — uid уходил в memberIds (доступ выдавался), а в
+      // participants никто не добавлялся — человек попадал в поездку
+      // невидимкой. Реальный баг, найден внешним ревью 2026-09-27.
+      const matchIdx = name
+        ? participants.findIndex(p => p.name.toLowerCase() === name.toLowerCase() && !p.uid)
+        : -1;
+      let newParticipants;
+      if (matchIdx >= 0) {
+        newParticipants = uid
+          ? participants.map((p, i) => i === matchIdx ? { ...p, uid } : p)
+          : participants;
+      } else if (name) {
+        newParticipants = [...participants, { name, uid: uid || null }];
+      } else {
+        newParticipants = participants;
+      }
+      const newMemberIds = uid ? [...new Set([...memberIds, uid])] : memberIds;
+
+      tx.update(ref, { participants: newParticipants, memberIds: newMemberIds });
+    }).catch(e => { console.warn('addParticipant:', e); throw e; });
+  }
+
   // Удаление поездки насовсем — сам документ trips/{id} плюс все его
   // подколлекции (Firestore их не удаляет каскадно) и данные, разбросанные
   // по другим верхнеуровневым коллекциям тем же id (см. остальные *firebase.js
@@ -131,6 +177,22 @@ const TripsFirebase = (() => {
     }
     batch.delete(tripRef.collection('modules').doc('medkit'));
 
+    // activity/medkit_personal тоже не попадали сюда раньше (реальная
+    // дыра — оставались висеть после удаления поездки, читаемы кем угодно
+    // из members, найдена внешним ревью 2026-09-27), но их нельзя мести
+    // тем же простым циклом, что и subcollections выше: их правила отдают
+    // delete не любому участнику, а только автору конкретного документа
+    // (или isOrganizer() — см. firestore.rules). Та же батч-атомарность,
+    // что и с gear_trip_snapshots/personal_purchases в комментарии выше —
+    // обычный (не админ) владелец поездки чужие записи этих двух коллекций
+    // удалить не может, поэтому берём только свои; все документы — только
+    // если удаляет app-wide организатор.
+    const isAdmin = typeof AuthActions !== 'undefined' && AuthActions.isOrganizer();
+    const activitySnap = await tripRef.collection('activity').get();
+    activitySnap.forEach(doc => { if (isAdmin || doc.data().uid === currentUid) batch.delete(doc.ref); });
+    const medkitPersonalSnap = await tripRef.collection('medkit_personal').get();
+    medkitPersonalSnap.forEach(doc => { if (isAdmin || doc.id === currentUid) batch.delete(doc.ref); });
+
     batch.delete(firebase.firestore().collection('menu').doc(id));
     batch.delete(firebase.firestore().collection('shopping').doc(id));
     batch.delete(firebase.firestore().collection('gear_trip_shared').doc(id));
@@ -143,5 +205,5 @@ const TripsFirebase = (() => {
     await batch.commit();
   }
 
-  return { listen, stopListening, ready, addTrip, updateTrip, deleteTrip };
+  return { listen, stopListening, ready, addTrip, updateTrip, addParticipant, deleteTrip };
 })();

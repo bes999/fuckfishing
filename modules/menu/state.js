@@ -35,14 +35,37 @@ const MenuState = (() => {
     }
     const freshDays = MenuData.generateDays(startDate, endDate);
     if (existing?.days?.length) {
-      const oldById = {};
-      existing.days.forEach(d => { oldById[d.id] = d; });
-      freshDays.forEach(d => { if (oldById[d.id]) d.meals = oldById[d.id].meals; });
-      // Пушим пересобранный список сразу, а не ждём следующего edit'а —
-      // иначе до тех пор локальная правка живёт только в localStorage и
-      // первый же снапшот из Firestore (с других вкладок/устройств) молча
-      // вернёт назад старые дни.
-      if (typeof MenuFirebase !== 'undefined') MenuFirebase.saveDays(tripId, freshDays);
+      // День N остаётся днём N (как MenuFirebase.syncDays) — поездку
+      // обычно переносят целиком, и блюда должны ехать вместе с днями.
+      // Это только для МГНОВЕННОГО локального рендера, пока не пришёл
+      // настоящий снапшот — сюда НЕ пушим (раньше пушило, см. ниже). Этот
+      // existing — локальный кэш конкретно этого устройства, а initDays
+      // зовётся при КАЖДОМ открытии Меню, любым устройством, не только тем,
+      // что реально поменяло даты. Если это устройство давно не открывало
+      // Меню, а даты сменились на ДРУГОМ устройстве, existing.startDate/
+      // endDate тут расходится с текущими не потому, что МЫ их меняли, а
+      // потому что наш кэш просто устарел — пересобирать по нему и
+      // ЗАПИСЫВАТЬ поверх сервера значит терять блюда, добавленные на
+      // сервере после последней синхронизации этого устройства (реальный
+      // баг, найден внешним ревью 2026-09-27). Настоящую атомарную миграцию
+      // дней при смене дат делает MenuFirebase.syncDays — по свежим
+      // серверным данным, в транзакции, вызывается из modules/trips/
+      // index.js _save() тем устройством, которое реально меняет даты;
+      // живой снапшот (см. MenuFirebase.subscribe) поправит рендер здесь,
+      // если наша локальная догадка была неверна.
+      freshDays.forEach((d, i) => {
+        const was = existing.days[i];
+        if (was) { d.meals = was.meals; if (was.attendance) d.attendance = was.attendance; }
+      });
+    } else if (typeof MenuFirebase !== 'undefined' && MenuFirebase.ensureDaysSeeded) {
+      // Самая первая генерация дней локально — id слотов случайные (см.
+      // MenuData._emptyMeals), у каждого устройства свои. Не запушить их
+      // сейчас означает: следующее устройство, открывшее это же меню,
+      // сгенерирует СВОИ id и не найдёт выбранные блюда в slotItems — увидит
+      // пустое меню навсегда (реальный баг, внешнее ревью 2026-09-27).
+      // ensureDaysSeeded сам проверяет, что в Firestore правда пусто, прежде
+      // чем писать — не гонка с уже заполненным days с другого устройства.
+      MenuFirebase.ensureDaysSeeded(tripId, freshDays);
     }
     _data[tripId] = { days: freshDays, startDate, endDate };
     _save();
@@ -70,11 +93,15 @@ const MenuState = (() => {
 
   // Сколько раз каждый участник уже готовил/убирал за эту поездку — основа
   // для "авто-назначить" (см. MenuRender._showDutyPicker): предлагаем того,
-  // кто реже всего был в этой роли, а не первого попавшегося.
-  function getDutyCounts(tripId) {
+  // кто реже всего был в этой роли, а не первого попавшегося. plannedMealIds
+  // (опционально) — учитывать только включённые в поездке приёмы пищи (см.
+  // trip.mealsPlanned / TripsData.plannedMeals), выключенные из счёта не
+  // должны влиять на "кто реже всех".
+  function getDutyCounts(tripId, plannedMealIds) {
     const cook = {}, cleanup = {};
     (_data[tripId]?.days || []).forEach(day => {
-      Object.values(day.meals || {}).forEach(meal => {
+      Object.entries(day.meals || {}).forEach(([mealId, meal]) => {
+        if (plannedMealIds && !plannedMealIds.includes(mealId)) return;
         if (meal.cook)    cook[meal.cook]       = (cook[meal.cook]       || 0) + 1;
         if (meal.cleanup) cleanup[meal.cleanup] = (cleanup[meal.cleanup] || 0) + 1;
       });
@@ -148,8 +175,13 @@ const MenuState = (() => {
   // item) накладывается поверх days ПОСЛЕ, так же как bought-мапа в
   // Закупке: узкие точечные записи всегда должны побеждать над тем, что
   // могло прийти в самом days (который мог отстать на один снапшот).
-  function setFromFirebase(tripId, days, slotItemsMap, mealDutyMap, attendanceMap) {
-    if (!_data[tripId]) _data[tripId] = {};
+  // Накладывает slotItemsMap/mealDutyMap/attendanceMap на days (мутирует и
+  // возвращает тот же массив) — сама по себе НЕ трогает общее состояние
+  // Меню (_data/localStorage), это делает только setFromFirebase ниже.
+  // Вынесено отдельно, чтобы разовая сборка (печать — см.
+  // modules/print/index.js) могла получить те же резолвнутые days без
+  // побочного эффекта на живой экран Меню.
+  function _resolveDays(days, slotItemsMap, mealDutyMap, attendanceMap) {
     if (slotItemsMap) {
       days.forEach(day => {
         Object.values(day.meals).forEach(meal => {
@@ -180,16 +212,37 @@ const MenuState = (() => {
         }
       });
     }
+    return days;
+  }
+
+  function setFromFirebase(tripId, days, slotItemsMap, mealDutyMap, attendanceMap) {
+    if (!_data[tripId]) _data[tripId] = {};
+    _resolveDays(days, slotItemsMap, mealDutyMap, attendanceMap);
     _data[tripId].days = days;
     _save();
   }
 
-  // Получить статус дня (пустой/частичный/заполненный)
-  function getDayStatus(tripId, dayId) {
+  // Разовая сборка (печать и т.п.) — те же days, что вернул бы
+  // setFromFirebase, но БЕЗ записи в общее состояние Меню/localStorage.
+  // Печать раньше звала сам setFromFirebase, из-за чего открытие печати
+  // молча перезатирало рабочее состояние живого экрана Меню пустой явкой
+  // (третий аргумент туда всегда приходил {}) — реальный баг, найден
+  // внешним ревью 2026-09-27.
+  function resolveDays(days, slotItemsMap, mealDutyMap, attendanceMap) {
+    return _resolveDays(days || [], slotItemsMap, mealDutyMap, attendanceMap);
+  }
+
+  // Получить статус дня (пустой/частичный/заполненный). plannedMealIds
+  // (опционально) — считать только по приёмам пищи, включённым в
+  // планирование этой поездки (trip.mealsPlanned) — выключенные приёмы не
+  // должны красить точку в полосе дней, даже если в них что-то выбрано
+  // раньше (данные не удаляются при выключении, см. TripsData.plannedMeals).
+  function getDayStatus(tripId, dayId, plannedMealIds) {
     const day = _data[tripId]?.days?.find(d => d.id === dayId);
     if (!day) return 'empty';
     let total = 0, filled = 0;
-    Object.values(day.meals).forEach(meal => {
+    Object.entries(day.meals).forEach(([mealId, meal]) => {
+      if (plannedMealIds && !plannedMealIds.includes(mealId)) return;
       meal.slots.forEach(slot => {
         total++;
         if (slot.item) filled++;
@@ -201,7 +254,7 @@ const MenuState = (() => {
   }
 
   return {
-    load, getDays, initDays, updateSlot, removeSlot, addSlot, setFromFirebase, getDayStatus,
+    load, getDays, initDays, updateSlot, removeSlot, addSlot, setFromFirebase, resolveDays, getDayStatus,
     setMealDuty, getDutyCounts, setSlotLeftover,
     getDayAttendance, setDayAttendance, getMealHeadcount,
   };

@@ -283,7 +283,8 @@ const GearRender = (() => {
 
   /* ══════════════ Список на поездку ══════════════ */
 
-  // o: {snap, checked, tripName, scope, shared, sharedChecked, mode, isMe, open}
+  // o: {snap, checked, tripName, scope, shared, sharedChecked, mode, isMe, open,
+  //     packMode ('there'|'back'), ready:{n,m,names}, readySelf}
   function tripView(o) {
     var isShared = o.scope === 'shared';
     var html = _head({
@@ -292,6 +293,7 @@ const GearRender = (() => {
       sub: o.tripName + ' · ' + (isShared ? 'общее' : (o.isMe ? 'мой список' : 'список')),
       right: o.isMe ? _headBtn('gear-trip-more', 'dots', isShared ? 'Ещё: новая категория, снять отметки' : 'Ещё: обновить из шаблона, снять отметки') : ''
     });
+    if (o.ready && o.ready.m) html += _readyLine(o.ready);
     if (o.isMe) {
       html += _seg([
         { label: 'Моё',    on: !isShared, action: 'gear-scope-switch', attr: 'data-scope="personal"' },
@@ -300,8 +302,30 @@ const GearRender = (() => {
     } else {
       html += '<div class="gear-ro-note">'+_ico('users')+'<span>Смотришь чужую снарягу — менять её может только владелец</span></div>';
     }
+    // «Туда / Обратно» — только для своего личного списка (не общего)
+    if (o.isMe && !isShared) {
+      var isBack = o.packMode === 'back';
+      html += _seg([
+        { label: 'Туда',    on: !isBack, action: 'gear-pack-mode', attr: 'data-mode="there"' },
+        { label: 'Обратно', on: isBack,  action: 'gear-pack-mode', attr: 'data-mode="back"' }
+      ]);
+      if (isBack) html += _hint('Отметки обратного пути отдельные — отметки «туда» не пропадут.');
+    }
     html += isShared ? _sharedView(o.shared, o.sharedChecked || [], o.open) : _personalView(o);
+    if (o.isMe && !isShared && o.packMode !== 'back') html += _readyBtn(o.readySelf);
     return '<div class="gear-page">'+html+'</div>';
+  }
+
+  // Строка «Готовы N из M: …» — видно всем, в т.ч. в чужой снаряге на просмотр
+  function _readyLine(ready) {
+    var names = ready.names || [];
+    var txt = 'Готовы <b>'+ready.n+'</b> из '+ready.m + (names.length ? ': '+names.map(_esc).join(', ') : '');
+    return '<div class="gear-ready-line">'+_ico('circle-check')+'<span>'+txt+'</span></div>';
+  }
+
+  function _readyBtn(self) {
+    return _sticky('<button type="button" class="gear-btn-main'+(self?' ready':'')+'" data-action="gear-ready-toggle">'
+      + (self ? _ico('check')+' Собран ✓ — снять' : 'Я собран') + '</button>');
   }
 
   function _personalView(o) {
@@ -318,9 +342,10 @@ const GearRender = (() => {
     var done = checked.length, total = items.length;
     var wDone = _sumW(items.filter(function(i) { return _isOn(checked, i.id); }));
     var pct = total ? Math.round(done / total * 100) : 0;
+    var backMode = o.packMode === 'back';
 
     var html = '<div class="gear-prog"><div class="gear-prog-top">'
-      + '<span class="gear-prog-lbl">Собрано <b>'+done+'</b> из '+total+(wDone ? ' · '+_wStr(wDone) : '')+'</span>'
+      + '<span class="gear-prog-lbl">'+(backMode ? 'Собрано обратно ' : 'Собрано ')+'<b>'+done+'</b> из '+total+(wDone ? ' · '+_wStr(wDone) : '')+'</span>'
       + (locs.length ? '<span class="gear-prog-side">'+locs.length+' '+_plural(locs.length, 'сумка', 'сумки', 'сумок')+' в поездке</span>' : '')
       + '</div>' + _bar(pct) + '</div>';
 
@@ -331,10 +356,10 @@ const GearRender = (() => {
       + '</div>';
 
     if (byBags) {
-      html += _byBags(items, locs, checked, o.isMe, o.open);
+      html += _byBags(items, locs, checked, o.isMe, o.open, backMode);
     } else {
       html += groups(snap.categories || [], items).map(function(g) {
-        return _tripCat(g, locs, checked, o.isMe, o.open);
+        return _tripCat(g, locs, checked, o.isMe, o.open, backMode);
       }).join('');
       if (o.isMe) {
         html += locs.length
@@ -345,12 +370,12 @@ const GearRender = (() => {
     return html;
   }
 
-  function _packRow(item, on, locs, isMe, withTag, swipeDel) {
+  function _packRow(item, on, locs, isMe, withTag, swipeDel, backMode) {
     var w = _wStr(item.weight);
     var sub = swipeDel ? (item.owner ? 'Берёт: '+_esc(item.owner) : '') : w;
     var main = _check(on) + '<span class="gear-pack-txt"><span class="gear-pack-name'+(on?' done':'')+'">'+_esc(item.name)+'</span>'
       + (sub ? '<span class="gear-pack-sub">'+sub+'</span>' : '') + '</span>';
-    var act = swipeDel ? 'gear-shared-item-check' : 'gear-item-check';
+    var act = swipeDel ? 'gear-shared-item-check' : (backMode ? 'gear-item-check-back' : 'gear-item-check');
     var row = isMe
       ? '<button type="button" class="gear-pack-main" role="checkbox" aria-checked="'+(on?'true':'false')+'" data-action="'+act+'" data-itemid="'+_esc(item.id)+'">'+main+'</button>'
       : '<div class="gear-pack-main">'+main+'</div>';
@@ -368,28 +393,28 @@ const GearRender = (() => {
     return '<div class="gear-pack-row'+(swipeDel?' gear-swipe':'')+'">' + row + tag + del + '</div>';
   }
 
-  function _tripCat(g, locs, checked, isMe, open) {
+  function _tripCat(g, locs, checked, isMe, open, backMode) {
     var cat = g.cat, key = 't:' + cat.id, isOpen = !!open[key];
     var onItems  = g.items.filter(function(i) { return _isOn(checked, i.id); });
     var offItems = g.items.filter(function(i) { return !_isOn(checked, i.id); });
     var full = g.items.length && onItems.length === g.items.length;
     var body = '';
     if (isOpen) {
-      body = offItems.map(function(i) { return _packRow(i, false, locs, isMe, true); }).join('');
+      body = offItems.map(function(i) { return _packRow(i, false, locs, isMe, true, false, backMode); }).join('');
       if (onItems.length) {
         var dKey = 'd:' + cat.id, dOpen = !!open[dKey];
         body += '<button type="button" class="gear-done-toggle" '+_toggleAttrs(dKey, dOpen)+'>'
           + '<span class="gear-done-ic">'+_ico('check')+'</span>Собрано · '+onItems.length + _chev(dOpen) + '</button>';
         if (dOpen) {
-          body += onItems.map(function(i) { return _packRow(i, true, locs, isMe, true); }).join('');
-          if (isMe) body += '<button type="button" class="gear-foot-link" data-action="gear-cat-clear-checked" data-catid="'+_esc(cat.id)+'">Снять отметки в категории</button>';
+          body += onItems.map(function(i) { return _packRow(i, true, locs, isMe, true, false, backMode); }).join('');
+          if (isMe) body += '<button type="button" class="gear-foot-link" data-action="'+(backMode ? 'gear-cat-clear-checked-back' : 'gear-cat-clear-checked')+'" data-catid="'+_esc(cat.id)+'">Снять отметки в категории</button>';
         }
       }
     }
     return '<section class="gear-card">' + _catHead(key, isOpen, cat.name, onItems.length+'/'+g.items.length, full ? 'ok' : '') + body + '</section>';
   }
 
-  function _byBags(items, locs, checked, isMe, open) {
+  function _byBags(items, locs, checked, isMe, open, backMode) {
     var byId = {};
     locs.forEach(function(l) { byId[l.id] = l; });
     function subtreeW(locId, seen) {
@@ -405,7 +430,7 @@ const GearRender = (() => {
     function card(key, defOpen, icon, name, meta, list) {
       var isOpen = open[key] != null ? !!open[key] : defOpen;
       var body = isOpen
-        ? (list.length ? _sortByChecked(list, checked).map(function(i) { return _packRow(i, _isOn(checked, i.id), locs, isMe, false); }).join('')
+        ? (list.length ? _sortByChecked(list, checked).map(function(i) { return _packRow(i, _isOn(checked, i.id), locs, isMe, false, false, backMode); }).join('')
           : _hint('Пусто — назначь вещам эту сумку в виде «По категориям»', 'gear-hint-in'))
         : '';
       return '<section class="gear-card"><button type="button" class="gear-bag-head'+(isOpen?' open':'')+'" '+_toggleAttrs(key, isOpen)+'>'

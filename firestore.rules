@@ -17,8 +17,19 @@ service cloud.firestore {
     // Разрешено пройти онбординг, только если email из Firebase Auth
     // токена уже есть в аллоулисте /invites — заполняется существующими
     // участниками через "Пригласить" (modules/members/render.js).
+    // email_verified обязателен — Firebase НЕ проверяет владение почтой при
+    // регистрации по паролю, token.email можно поставить любым, включая
+    // чужой приглашённый (email не секрет). Без этой проверки посторонний,
+    // узнавший приглашённый адрес, мог зарегистрироваться им и пройти
+    // онбординг, не имея доступа к самой почте. У Google-входа
+    // email_verified true всегда (OAuth уже подтверждает владение), у
+    // email/pass — только после перехода по ссылке из письма (см.
+    // modules/auth/index.js registerEmail). Реальная дыра, найдена внешним
+    // ревью 2026-09-27. Не влияет на уже онбордившихся — isMember() ниже
+    // на email_verified не смотрит вообще.
     function isInvited() {
       return isSignedIn() && request.auth.token.email != null &&
+        request.auth.token.email_verified == true &&
         exists(/databases/$(database)/documents/invites/$(request.auth.token.email.lower()));
     }
 
@@ -67,6 +78,20 @@ service cloud.firestore {
       allow delete: if isMember() && isOrganizer();
     }
 
+    // Код привязки Telegram — раньше жил прямо в members/{uid}, который
+    // читают ВСЕ участники (isMember()); пока код действует (15 минут), его
+    // можно было подсмотреть и привязать чужой профиль к своему Telegram.
+    // Реальная дыра, найдена внешним ревью 2026-09-27. Теперь код — id
+    // отдельного документа, и читать эту коллекцию нельзя НИКОМУ с клиента
+    // (клиент и не должен — код он и так знает, сам его сгенерировал), только
+    // создать свой и удалить свой же (отмена). Бот проверяет код прямым
+    // просмотром по id через Admin SDK, который и так в обход всех правил.
+    match /telegram_link_codes/{code} {
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow read, update: if false;
+    }
+
     match /invites/{email} {
       allow read:            if isMember();
       allow create, delete:  if isMember();
@@ -81,20 +106,31 @@ service cloud.firestore {
       // (см. modules/trips/index.js — там та же проверка на UI, но кнопку
       // спрятать не значит запретить: без этого правила любой участник
       // всё ещё мог бы удалить чужую поездку напрямую через API/консоль).
-      allow create, update: if isMember();
+      // update дополнительно запрещает МЕНЯТЬ ownerId на существующей
+      // записи — иначе delete выше обходится в два шага (сначала update
+      // ownerId на себя, потом delete "своей" поездки). Первое присвоение
+      // (миграция старых поездок без ownerId, см. TripsData.backfillOwnerId)
+      // остаётся разрешено — сравнение пропускает случай, когда поля ещё
+      // не было. Реальная дыра, найдена внешним ревью 2026-09-27.
+      allow create: if isMember();
+      allow update: if isMember() &&
+        (resource.data.get('ownerId', null) == null || request.resource.data.ownerId == resource.data.ownerId);
       allow delete: if isMember() && (resource.data.ownerId == request.auth.uid || isOrganizer());
 
       // Удалить чужую запись расхода/улова может только организатор ЭТОЙ
       // поездки — свою запись (createdBy == себя) может удалить любой.
-      // Редактирование/чтение остаются открытыми всем участникам, как и
-      // раньше — здесь закрывается только delete.
+      // update дополнительно запрещает менять createdBy — тот же обход в
+      // два шага, что и с trip.ownerId выше (подменить автора, потом
+      // удалить "свою" запись).
       match /expenses/{docId} {
-        allow read, create, update: if isMember();
+        allow read, create: if isMember();
+        allow update: if isMember() && request.resource.data.createdBy == resource.data.createdBy;
         allow delete: if isMember() &&
           (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId) || isOrganizer());
       }
       match /catches/{docId} {
-        allow read, create, update: if isMember();
+        allow read, create: if isMember();
+        allow update: if isMember() && request.resource.data.createdBy == resource.data.createdBy;
         allow delete: if isMember() &&
           (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId) || isOrganizer());
       }
@@ -112,10 +148,18 @@ service cloud.firestore {
       match /notes/{docId} {
         allow read: if isMember() &&
           (resource.data.get('private', false) != true || resource.data.createdBy == request.auth.uid);
+        // request.resource.data.createdBy == resource.data.createdBy — тот
+        // же обход в два шага, что уже закрыт у trip.ownerId/expenses/
+        // catches.createdBy: без этого условия любой участник мог сперва
+        // присвоить себе чужую публичную заметку (createdBy никак не был
+        // заперт), а затем удалить её или сделать личной, пройдя проверки
+        // "я автор" уже вторым шагом. Реальная дыра, найдена внешним ревью
+        // 2026-09-27.
         allow update: if isMember() &&
           (resource.data.get('private', false) != true || resource.data.createdBy == request.auth.uid) &&
-          (request.resource.data.get('private', false) == resource.data.get('private', false) || resource.data.createdBy == request.auth.uid);
-        allow create: if isMember();
+          (request.resource.data.get('private', false) == resource.data.get('private', false) || resource.data.createdBy == request.auth.uid) &&
+          request.resource.data.createdBy == resource.data.createdBy;
+        allow create: if isMember() && request.resource.data.createdBy == request.auth.uid;
         allow delete: if isMember() &&
           (resource.data.createdBy == request.auth.uid || isTripOrganizer(tripId) || isOrganizer());
       }
@@ -124,8 +168,30 @@ service cloud.firestore {
       // OR, а не берёт самый специфичный — этот wildcard тоже совпадает с
       // путями expenses/catches/notes, поэтому явно исключаем их отсюда,
       // иначе его allow write перекрывает более узкое правило на delete выше.
+      // Лента «Что нового»: читают участники, добавляет участник от своего
+      // имени, править нельзя, удалить — только админ.
+      // delete: свою запись — сам автор (уйти можно, если заметка, на
+      // которую она ссылается, стала приватной/удалена — см.
+      // NotesFirebase.removeByNote, — или при полном удалении поездки).
+      // Правки чужих действий по-прежнему не пишем — только организатор.
+      match /activity/{docId} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.uid == request.auth.uid;
+        allow update: if false;
+        allow delete: if isMember() && (resource.data.uid == request.auth.uid || isOrganizer());
+      }
+      // «Мои дела по поездке» — личный список, видит и пишет только владелец.
+      match /todo_personal/{uid} {
+        allow read, write: if isMember() && request.auth.uid == uid;
+      }
+      // Личная аптечка — документ на человека: читают все участники (на
+      // экстренный случай), пишет только сам владелец или админ.
+      match /medkit_personal/{uid} {
+        allow read: if isMember();
+        allow write: if isMember() && (request.auth.uid == uid || isOrganizer());
+      }
       match /{subcollection}/{docId} {
-        allow read, write: if isMember() && !(subcollection in ['expenses', 'catches', 'notes']);
+        allow read, write: if isMember() && !(subcollection in ['expenses', 'catches', 'notes', 'medkit_personal', 'activity', 'todo_personal']);
       }
     }
 
@@ -158,9 +224,15 @@ service cloud.firestore {
 
     // Рецепты, добавленные участниками через интерфейс (помимо встроенного
     // каталога, который зашит прямо в код и не хранится в Firestore) —
-    // удалить может только автор.
+    // удалить может только автор. createdBy запрещено менять при update —
+    // без этого любой участник мог присвоить себе чужой рецепт (createdBy
+    // ничем не был заперт), а затем удалить его, пройдя проверку автора уже
+    // вторым шагом — тот же обход, что уже закрыт у заметок/расходов/
+    // уловов. Реальная дыра, найдена внешним ревью 2026-09-27.
     match /recipes_custom/{id} {
-      allow read, create, update: if isMember();
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isMember() && request.resource.data.createdBy == resource.data.createdBy;
       allow delete: if isMember() && resource.data.createdBy == request.auth.uid;
     }
 

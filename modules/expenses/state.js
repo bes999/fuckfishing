@@ -11,6 +11,7 @@ const ExpensesState = (() => {
         settlements: [],
         categories:  ExpensesData.getDefaultCategories(),
         members:     [],
+        budget:      [],
       };
     }
     return _store[tripId];
@@ -114,6 +115,59 @@ const ExpensesState = (() => {
     return allMembers.slice();
   }
 
+  // ── «Бюджет до поездки» ──────────────────────────────────────
+  // Заранее известные траты (билеты, аренда катера/машины, трансфер) —
+  // прикидка, отдельная от расходов поездки. Одна строка = один документ
+  // trips/{tripId}/budget/{autoId}, подписка onSnapshot (см. firebase.js),
+  // здесь просто держим локальную копию для рендера.
+
+  function setBudget(tripId, arr) {
+    _ensure(tripId).budget = arr.slice().sort((a, b) =>
+      (b.createdAt || '').localeCompare(a.createdAt || ''));
+  }
+
+  function getBudget(tripId) {
+    return _ensure(tripId).budget;
+  }
+
+  function addBudgetLine(tripId, entry) {
+    _ensure(tripId).budget.unshift(entry);
+  }
+
+  function updateBudgetLine(tripId, id, patch) {
+    const s = _ensure(tripId);
+    const idx = s.budget.findIndex(b => b._id === id);
+    if (idx !== -1) s.budget[idx] = Object.assign({}, s.budget[idx], patch);
+  }
+
+  function removeBudgetLine(tripId, id) {
+    const s = _ensure(tripId);
+    s.budget = s.budget.filter(b => b._id !== id);
+  }
+
+  // Итог по бюджету + доли участников (делим каждую строку поровну между
+  // её participants, суммируем по имени — как computeSummary для расходов,
+  // но без "кто заплатил", это же только прикидка).
+  function computeBudgetSummary(tripId) {
+    const s = _ensure(tripId);
+    const lines = s.budget;
+    let total = 0;
+    const shares = {};
+
+    lines.forEach(l => {
+      const amount = parseFloat(l.amount) || 0;
+      total += amount;
+      const parts = l.participants && l.participants.length ? l.participants : [];
+      const share = parts.length ? amount / parts.length : 0;
+      parts.forEach(name => { shares[name] = (shares[name] || 0) + share; });
+    });
+
+    const rows = Object.keys(shares).sort((a, b) => a.localeCompare(b, 'ru'))
+      .map(name => ({ name, amount: shares[name] }));
+
+    return { total, count: lines.length, rows, shares };
+  }
+
   function computeSummary(tripId) {
     const s = _ensure(tripId);
     const expenses    = s.expenses;
@@ -200,10 +254,17 @@ const ExpensesState = (() => {
       ['Тип', 'Дата', 'Описание', 'Сумма', 'Категория', 'Кто заплатил', 'Участники'],
     ];
 
+    // Math.round (было раньше) округлял до целого рубля — два расхода по
+    // 100.49 ₽ (200.98 ₽ в расчётах) в CSV превращались в 100 + 100 = 200,
+    // выгрузка не совпадала с исходными данными. До копейки (сотые), как и
+    // остальные денежные суммы в приложении (см. погашение в render.js).
+    // Реальный баг, найден внешним ревью 2026-09-27.
+    const rub = n => Math.round((parseFloat(n) || 0) * 100) / 100;
+
     s.expenses.forEach(e => {
       rows.push([
         'Расход', e.date || '', e.desc || '',
-        Math.round(e.amount), catTitle(e.category),
+        rub(e.amount), catTitle(e.category),
         e.paidBy || '', (e.participants || []).join(', '),
       ]);
     });
@@ -211,7 +272,7 @@ const ExpensesState = (() => {
     s.settlements.forEach(e => {
       rows.push([
         'Погашение', e.date || '', e.note || '',
-        Math.round(e.amount), '', e.fromName || '', e.toName || '',
+        rub(e.amount), '', e.fromName || '', e.toName || '',
       ]);
     });
 
@@ -238,5 +299,6 @@ const ExpensesState = (() => {
     addCategory, removeCategory, setCategorySplitDefault, getCategorySplitDefault,
     computeSummary, exportCSV,
     setMembers, getMembers,
+    setBudget, getBudget, addBudgetLine, updateBudgetLine, removeBudgetLine, computeBudgetSummary,
   };
 })();

@@ -196,24 +196,17 @@ function applyMedkitPayload(data) {
 
   medkitState.common = data.common || createEmptyMedkitState();
 
-  var personalFromServer = data.personal || {};
-  var localRaw = null;
-  var localKey = (typeof _medkitLocalKey === 'function') ? _medkitLocalKey() : null;
-  try { if (localKey) localRaw = JSON.parse(localStorage.getItem(localKey) || 'null'); } catch(e) {}
-
-  medkitState.personal = personalFromServer;
-
-  if (localRaw && localRaw.personal) {
-    var keys = Object.keys(localRaw.personal);
-    for (var i = 0; i < keys.length; i++) {
-      var k = keys[i];
-      if (!medkitState.personal[k]) medkitState.personal[k] = createEmptyMedkitState();
-      if (localRaw.personal[k]) {
-        medkitState.personal[k].hiddenGroups = localRaw.personal[k].hiddenGroups || {};
-        medkitState.personal[k].hiddenItems = localRaw.personal[k].hiddenItems || {};
-        medkitState.personal[k].enabledGroups = localRaw.personal[k].enabledGroups || {};
-      }
-    }
+  // Личные аптечки: старое поле personal общего документа + отдельные
+  // документы medkit_personal (важнее). Раньше сюда ещё накатывались
+  // enabled/hidden-группы из localStorage поверх сервера — устаревшая
+  // копия телефона показывала «не подключено / 0/0» при живых данных в
+  // базе (та самая нераскрытая ошибка из бэклога) и потом записывалась
+  // обратно на сервер.
+  if (typeof _medkitLegacyPersonal !== 'undefined') {
+    _medkitLegacyPersonal = data.personal || {};
+    _rebuildMedkitPersonal();
+  } else {
+    medkitState.personal = data.personal || {};
   }
 }
 

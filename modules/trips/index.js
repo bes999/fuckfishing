@@ -16,6 +16,15 @@ const TripsIndex = (() => {
   let _editTripId = null;     // id редактируемой поездки
   let _travelOn   = false;    // переключатель «кто-то едет по своему расписанию» (шаг 2)
 
+  // «Взять за основу прошлую поездку» (шаг 0, только при СОЗДАНИИ новой —
+  // см. _showCopyFromSheet/_applyCopyFrom). _copyFromLabel — название
+  // поездки-источника, подставляется плейсхолдером в поле «Название» (само
+  // название не копируем — см. бриф); _copiedReadiness — пункты готовности
+  // источника со снятыми отметками, подставляются в _save() вместо
+  // TripsData.getDefaultReadiness() для новой экспедиции.
+  let _copyFromLabel   = '';
+  let _copiedReadiness = null;
+
   // Табы Гида для этой поездки — какие видны и в каком порядке. Дублирует
   // список из modules/tripcover/index.js (там он приватный, скрипт грузится
   // позже, а этот файл ничего не рендерит по загрузке — только по клику
@@ -67,6 +76,8 @@ const TripsIndex = (() => {
     _draftGuideTabOrder = [..._GUIDE_TAB_DEFAULT_ORDER];
     _draftGuideTabsChecked = new Set(_GUIDE_TAB_DEFAULT_ORDER);
     _dateTouched = !!prefillDate;
+    _copyFromLabel = '';
+    _copiedReadiness = null;
     // Создатель поездки — сразу в участниках, чтобы не вписывать себя
     // вручную каждый раз; можно убрать кликом по чипу, как любого другого.
     const myName = window.APP?.profile?.displayName || '';
@@ -249,10 +260,11 @@ const TripsIndex = (() => {
           <span class="cw-type-sub">1–2 дня, завести быстро</span>
         </button>
       </div>
+      ${!_editMode ? `<button type="button" class="cw-link" id="copyFromBtn">Взять за основу прошлую поездку</button>` : ''}
 
       ${_label('Название', 'можно пустым — придумаем по месту и датам')}
       <input class="cw-input" id="f-name" type="text"
-             placeholder="${t === 'expedition' ? 'Например, Сахалин 2027' : 'Например, Ока, 15 марта'}"
+             placeholder="${_copyFromLabel ? `Как «${_esc(_copyFromLabel)}»` : (t === 'expedition' ? 'Например, Сахалин 2027' : 'Например, Ока, 15 марта')}"
              value="${_esc(_draft.name)}">
 
       ${_label('Иконка', 'для списка поездок — цвет всё равно по типу')}
@@ -310,15 +322,17 @@ const TripsIndex = (() => {
 
     const placesHtml = _quizRivers.length ? `
       <section class="cw-card cw-card--list">
-        ${_quizRivers.map((r, i) => _placeRow(r.name, r.region, `data-quiz-river-idx="${i}"`)).join('')}
+        ${_quizRivers.map((r, i) => _placeRow(r.name, r.region, `data-quiz-river-idx="${i}"`, '', `data-quiz-river-edit="${i}"`)).join('')}
       </section>` : '';
 
     const quizHtml = `
       ${placesHtml}
+      <input class="cw-input" id="f-quiz-place" type="text" placeholder="Река или место — «Обь»" autocomplete="off">
       <div class="cw-add-row">
-        <input class="cw-input" id="f-quiz-place" type="text" placeholder="Река или место — «Обь, ХМАО»" autocomplete="off">
+        <input class="cw-input" id="f-quiz-region" type="text" placeholder="Регион — необязательно" autocomplete="off">
         <button type="button" class="cw-add-btn" id="quizRiverAdd" aria-label="Добавить место">${UIUtils.ico('plus')}</button>
       </div>
+      <span class="cw-hint cw-hint--err" id="f-quiz-place-err" hidden></span>
       <section class="cw-card cw-route">
         <span class="cw-route-t">Маршрут по дням — необязательно</span>
         <textarea class="cw-textarea cw-route-ta" id="f-quiz-route" rows="6"
@@ -343,9 +357,9 @@ const TripsIndex = (() => {
 
   // Строка места: удаляется свайпом влево (кнопка «Удалить» под строкой —
   // см. UIUtils.swipeToDelete и .cw-place-del в styles.css).
-  function _placeRow(name, region, delAttr, type) {
+  function _placeRow(name, region, delAttr, type, editAttr) {
     return `
-      <div class="cw-place-row">
+      <div class="cw-place-row" ${editAttr || ''}>
         <span class="cw-place-ico">${UIUtils.ico('map-pin')}</span>
         <span class="cw-place-body">
           <span class="cw-place-name">${_esc(name)}</span>
@@ -588,7 +602,7 @@ const TripsIndex = (() => {
       const names = UIUtils.splitNames(input?.value);
       if (!names.length) return false;
       names.forEach(name => {
-        if (!_draft.participants.some(p => p.name === name)) _draft.participants.push({ name, uid: null });
+        if (!_draft.participants.some(p => p.name === name)) _draft.participants.push({ name, uid: null, gid: _genGuestId() });
       });
       input.value = '';
       refreshList();
@@ -624,6 +638,77 @@ const TripsIndex = (() => {
       else _draft.participants.push({ name, uid });
       refreshList();
     });
+  }
+
+  // ── «Взять за основу прошлую поездку» (шаг 0, только при создании) ──────
+  // Лист со списком поездок (свежие сверху — по дате начала), тап по строке
+  // копирует часть черновика и закрывает лист. Не самостоятельная запись —
+  // просто предзаполнение _draft/_rivers/_quizRivers перед обычным сохранением.
+  function _showCopyFromSheet() {
+    const all = TripsData.getAll().slice().sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    if (!all.length) { alert('Поездок пока нет — не с чего скопировать.'); return; }
+    const rows = all.map(t => `
+      <button type="button" class="cw-copy-row" data-copy-trip="${_esc(t.id)}">
+        <span class="cw-place-ico">${UIUtils.ico(TripsData.tripIcon(t))}</span>
+        <span class="cw-place-body">
+          <span class="cw-place-name">${_esc(t.name)}</span>
+          <span class="cw-place-sub">${_esc(TripsRender.shortRange(t.startDate, t.endDate))}</span>
+        </span>
+      </button>`).join('');
+
+    const overlay = _openSheet('copy-trip-overlay', 'Взять за основу', '', `
+      <span class="cw-hint cw-hint--tight">Скопируем участников, места, вкладки Гида и список подготовки. Даты, меню и расходы — нет.</span>
+      <section class="cw-card cw-card--list">${rows}</section>`);
+
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay || e.target.closest('[data-action="sheet-close"]')) { overlay.remove(); return; }
+      const row = e.target.closest('[data-copy-trip]');
+      if (!row) return;
+      const t = TripsData.getById(row.dataset.copyTrip);
+      overlay.remove();
+      if (t) { _applyCopyFrom(t); _refreshCreate(); }
+    });
+  }
+
+  // Копирует в черновик: тип, иконку, участников (без travelSeparate),
+  // места (по типу поездки-источника — в _rivers или _quizRivers, с НОВЫМИ
+  // id), вкладки Гида (порядок+отметки), приватность/ограничение
+  // приглашений. НЕ копирует: даты, название (только плейсхолдер),
+  // комментарий, importData, улов/расходы/меню. Готовность — пункты
+  // источника со снятыми отметками, в _copiedReadiness (см. _save).
+  function _applyCopyFrom(t) {
+    _draft.type = t.type;
+    _draft.icon = t.icon || '';
+    _draft.participants = (t.participants || []).map(p => {
+      const { travelSeparate, ...rest } = p;
+      return { ...rest };
+    });
+    _draft.private = !!t.private;
+    _draft.inviteRestricted = !!t.inviteRestricted;
+    _travelOn = false;
+
+    if (t.type === 'expedition') {
+      _quizRivers = (t.rivers || []).map(r => ({ id: _genRiverId(), name: r.name, region: r.region || r.type || '' }));
+      _rivers = [];
+      _expMode = 'quiz';
+    } else {
+      _rivers = (t.rivers || []).map(r => ({
+        id: _genRiverId(), name: r.name, region: r.region || '',
+        lat: r.lat != null ? r.lat : null, lon: r.lon != null ? r.lon : null, type: r.type || '',
+      }));
+      _quizRivers = [];
+    }
+
+    const savedTabs = (t.guideTabs || []).filter(id => _GUIDE_TAB_DEFS[id]);
+    const hiddenTabs = _GUIDE_TAB_DEFAULT_ORDER.filter(id => !savedTabs.includes(id));
+    _draftGuideTabOrder = savedTabs.length ? [...savedTabs, ...hiddenTabs] : [..._GUIDE_TAB_DEFAULT_ORDER];
+    _draftGuideTabsChecked = new Set(savedTabs.length ? savedTabs : _GUIDE_TAB_DEFAULT_ORDER);
+
+    _copiedReadiness = Array.isArray(t.readiness) && t.readiness.length
+      ? t.readiness.map(it => ({ id: it.id, label: it.label, done: false }))
+      : TripsData.getDefaultReadiness();
+
+    _copyFromLabel = t.name || '';
   }
 
   // Подтверждение удаления поездки (макет V2TripDelete). Сама логика —
@@ -713,10 +798,14 @@ const TripsIndex = (() => {
         // Обновляем плейсхолдер имени
         const nameInput = document.getElementById('f-name');
         if (nameInput && !nameInput.value) {
-          nameInput.placeholder = _draft.type === 'expedition' ? 'Например, Сахалин 2027' : 'Например, Ока, 15 марта';
+          nameInput.placeholder = _copyFromLabel ? `Как «${_copyFromLabel}»`
+            : (_draft.type === 'expedition' ? 'Например, Сахалин 2027' : 'Например, Ока, 15 марта');
         }
       });
     });
+
+    // «Взять за основу прошлую поездку»
+    document.getElementById('copyFromBtn')?.addEventListener('click', _showCopyFromSheet);
 
     // Иконка
     overlay.querySelectorAll('[data-icon]').forEach(btn => {
@@ -803,14 +892,35 @@ const TripsIndex = (() => {
 
     // Вручную: добавить место («Обь, ХМАО» — до запятой название, после — регион)
     const placeInp = document.getElementById('f-quiz-place');
+    const regionInp = document.getElementById('f-quiz-region');
+    const placeErr = document.getElementById('f-quiz-place-err');
     const addPlace = () => {
-      if (!_addQuizPlace(placeInp?.value)) { placeInp?.focus(); return; }
+      const r = _addQuizPlace(placeInp?.value, regionInp?.value);
+      if (r === 'dup') {
+        if (placeErr) { placeErr.textContent = 'Такое место уже есть в поездке'; placeErr.hidden = false; }
+        placeInp?.focus(); return;
+      }
+      if (!r) { placeInp?.focus(); return; }
+      if (placeInp) placeInp.value = '';
+      if (regionInp) regionInp.value = '';
       _refreshCreate();
       document.getElementById('f-quiz-place')?.focus();
     };
     document.getElementById('quizRiverAdd')?.addEventListener('click', addPlace);
-    placeInp?.addEventListener('keydown', e => {
+    [placeInp, regionInp].forEach(inp => inp?.addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); addPlace(); }
+    }));
+    [placeInp, regionInp].forEach(inp => inp?.addEventListener('input', () => { if (placeErr) placeErr.hidden = true; }));
+    // Тап по месту — правка названия и региона
+    overlay.querySelectorAll('[data-quiz-river-edit]').forEach(row => {
+      row.addEventListener('click', e => {
+        if (e.target.closest('[data-quiz-river-idx]')) return;
+        const i = parseInt(row.dataset.quizRiverEdit, 10);
+        const pl = _quizRivers[i];
+        if (!pl) return;
+        UIUtils.placeSheet({ title: 'Изменить место', name: pl.name, region: pl.region, list: _quizRivers, exceptId: pl.id })
+          .then(res => { if (!res) return; _quizRivers[i] = { ...pl, name: res.name, region: res.region }; _refreshCreate(); });
+      });
     });
 
     overlay.querySelectorAll('[data-quiz-river-idx]').forEach(btn => {
@@ -910,13 +1020,21 @@ const TripsIndex = (() => {
 
   // Место из поля «Вручную»: «Обь, ХМАО» → {name: 'Обь', region: 'ХМАО'}.
   // Возвращает true, если что-то добавилось.
-  function _addQuizPlace(raw) {
-    const text = String(raw || '').trim();
-    if (!text) return false;
-    const comma = text.indexOf(',');
-    const name = (comma >= 0 ? text.slice(0, comma) : text).trim();
-    const region = comma >= 0 ? text.slice(comma + 1).trim() : '';
+  // Название и регион — отдельными полями (раньше одно поле, регион
+  // отделялся запятой: «Обь Хмао» без запятой целиком уходило в название).
+  // Запятая в названии по-прежнему понимается, если регион не вписан.
+  // Возвращает true | false (пусто) | 'dup' (такое место уже есть).
+  function _addQuizPlace(rawName, rawRegion) {
+    let name = String(rawName || '').trim();
+    let region = String(rawRegion || '').trim();
     if (!name) return false;
+    if (!region && name.includes(',')) {
+      const comma = name.indexOf(',');
+      region = name.slice(comma + 1).trim();
+      name = name.slice(0, comma).trim();
+      if (!name) return false;
+    }
+    if (UIUtils.findDuplicatePlace(_quizRivers, name, region)) return 'dup';
     _quizRivers.push({ id: _genRiverId(), name, region });
     return true;
   }
@@ -962,6 +1080,12 @@ const TripsIndex = (() => {
 
   function _genRiverId() {
     return 'river_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+  }
+
+  // Стабильный id гостя (участника без аккаунта/uid) — не совпадение имени
+  // или позиции в массиве, см. комментарий у gid-сопоставления в _save().
+  function _genGuestId() {
+    return 'guest_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
   }
 
   // id обязателен — Реки открывают карточку по data-rv-open="r.id"
@@ -1138,7 +1262,7 @@ const TripsIndex = (() => {
         _draft.rivers  = _rivers;
       } else if (_expMode === 'quiz') {
         // Вписанное в поле места, но не добавленное «+» — не теряем
-        _addQuizPlace(document.getElementById('f-quiz-place')?.value);
+        _addQuizPlace(document.getElementById('f-quiz-place')?.value, document.getElementById('f-quiz-region')?.value);
         _quizRouteText = document.getElementById('f-quiz-route')?.value || '';
         // Только если квиз реально что-то собрал — не даём пустому
         // просмотру вкладки затереть уже существующий импорт (файл или
@@ -1200,6 +1324,17 @@ const TripsIndex = (() => {
     const rivers = isExp
       ? (_importedData?.rivers?.map(r => ({ id: r.id || _genRiverId(), name: r.name, region: r.type || '' })) || existing?.rivers || [])
       : _rivers;
+    // Тот же сгенерированный id — обратно в _importedData.rivers, иначе он
+    // расходится с rivers выше: место без id в исходном JSON получает id
+    // только в trip.rivers, а trip.importData.rivers (куда _importedData
+    // уходит без изменений чуть ниже) остаётся без него. Карточки мест
+    // (tripcover/catches/atlas) читают именно importData.rivers первым
+    // делом (`trip.importData?.rivers || trip.rivers`) — то есть показывают
+    // версию БЕЗ id, и клик (data-rv-open="r.id") не находит совпадения.
+    // Реальный баг, найден внешним ревью 2026-09-27.
+    if (isExp && _importedData?.rivers?.length) {
+      _importedData.rivers = _importedData.rivers.map((r, i) => (r.id ? r : { ...r, id: rivers[i]?.id }));
+    }
 
     const ownerUid = _editMode ? (existing?.ownerId || null) : (window.APP?.user?.uid || null);
 
@@ -1207,6 +1342,11 @@ const TripsIndex = (() => {
     // списка) или null (гость без аккаунта) — memberIds считается прямо
     // отсюда, без сопоставления по имени.
     const participants = _draft.participants || [];
+    // Гостям (без uid) из поездок, сохранённых до появления gid, — ставим
+    // его сейчас, задним числом (не пытаясь угадать, кто есть кто на этом
+    // самом сохранении — см. gid-сопоставление ниже). Дальше их можно будет
+    // надёжно отличить от «удалили одного гостя, добавили другого».
+    participants.forEach(p => { if (!p.uid && !p.gid) p.gid = _genGuestId(); });
     const fromParticipants = participants.filter(p => p.uid).map(p => p.uid);
     const memberIds = ownerUid ? [...new Set([...fromParticipants, ownerUid])] : fromParticipants;
 
@@ -1238,7 +1378,7 @@ const TripsIndex = (() => {
       // участников. Свежий all-false только когда экспедиция создаётся
       // впервые; существующий — сохраняется как есть.
       readiness: isExp
-        ? (existing?.readiness || TripsData.getDefaultReadiness())
+        ? (existing?.readiness || _copiedReadiness || TripsData.getDefaultReadiness())
         : null,
       // Данные маршрута от AI (только для экспедиций)
       importData: isExp && _importedData ? _importedData : null,
@@ -1268,7 +1408,82 @@ const TripsIndex = (() => {
       // Рыбалка → экспедиция: чек-листу готовности нужен стартовый набор.
       // Обратно — ничего не стираем, readiness просто не показывается.
       if (isExp && !existing?.readiness) update.readiness = TripsData.getDefaultReadiness();
+      // Даты сменились — всё, что считалось под старые даты, сбрасываем
+      // здесь же, одним местом, а не лечим каждый экран по отдельности:
+      // погода (Главная/обложка/Гид перезапросят её под новые даты) и дни
+      // меню (пересобираются на сервере с сохранением блюд по датам).
+      const datesChanged = existing && (existing.startDate !== trip.startDate || (existing.endDate || existing.startDate) !== trip.endDate);
+      // Поездка стала короче, а на выпадающих днях уже стоят блюда —
+      // предупреждаем до сохранения, а не теряем молча.
+      if (datesChanged && typeof MenuFirebase !== 'undefined' && MenuFirebase.countTail) {
+        const tail = await MenuFirebase.countTail(_editTripId, trip.startDate, trip.endDate).catch(() => []);
+        if (tail.length) {
+          const list = tail.slice(0, 5).join(', ') + (tail.length > 5 ? ` и ещё ${tail.length - 5}` : '');
+          const ok = await UIUtils.confirmSheet(`Меню переедет по дням: день 1 останется днём 1. Но поездка стала короче — из меню уйдут блюда последних дней: ${list}.`,
+            { title: 'Сократить поездку?', okLabel: 'Сохранить всё равно', cancelLabel: 'Вернуться' });
+          if (!ok) return;
+        }
+      }
+      if (datesChanged) {
+        update.weather = null; update.weatherDaily = null; update.weatherHourly = null;
+      }
       await TripsData.updateTrip(_editTripId, update);
+      if (datesChanged && typeof MenuFirebase !== 'undefined' && MenuFirebase.syncDays) {
+        MenuFirebase.syncDays(_editTripId, trip.startDate, trip.endDate).catch(e => console.error('menu syncDays:', e));
+      }
+      // Переименовали место — улов ссылается на него по названию
+      // (catch.river), переносим, иначе он «пропадает» из карточки места.
+      const oldRivers = existing?.rivers || [];
+      (trip.rivers || []).forEach(r => {
+        const was = oldRivers.find(o => o.id && o.id === r.id);
+        if (was && was.name !== r.name) {
+          firebase.firestore().collection('trips').doc(_editTripId).collection('catches')
+            .where('river', '==', was.name).get()
+            .then(snap => snap.forEach(d => d.ref.update({ river: r.name })))
+            .catch(e => console.error('rename river catches:', e));
+        }
+      });
+      // Переименовали участника (_showRenameSheet — «как показывать в этой
+      // поездке») — расходы/платежи ссылаются на него по имени-строке, не по
+      // uid, иначе старое и новое имя распадаются на двух разных людей в
+      // финансовой истории. Реальный баг, найден внешним ревью 2026-09-27.
+      // Сопоставляем по uid (надёжно для зарегистрированных) или по gid (для
+      // гостей — см. его простановку выше). Совпадение ПОЗИЦИИ в массиве
+      // при той же длине — НЕ доказательство, что это тот же человек: убрать
+      // гостя Аню и добавить гостя Борю — длина не меняется, и по позиции
+      // это выглядело бы как переименование «Аня → Боря», перенося на Борю
+      // Анину финансовую историю. Реальный баг (в более раннем моём же
+      // фиксе), найден внешним ревью 2026-09-27. Без uid/gid — не гадаем,
+      // лучше ничего не перенести, чем перенести не то.
+      const oldParticipants = existing?.participants || [];
+      (trip.participants || []).forEach(p => {
+        const was = p.uid
+          ? oldParticipants.find(o => o.uid === p.uid)
+          : (p.gid ? oldParticipants.find(o => o.gid === p.gid) : null);
+        if (was && was.name && was.name !== p.name) {
+          if (typeof ExpensesFirebase !== 'undefined') {
+            ExpensesFirebase.renameParticipant(_editTripId, was.name, p.name)
+              .catch(e => console.error('rename participant finances:', e));
+          }
+          // Дежурства/явка в Меню — та же проблема, что и у Расходов выше
+          // (хранятся по имени, не по uid). См. комментарий у
+          // MenuFirebase.renameParticipant. Реальный баг, найден внешним
+          // ревью 2026-09-27.
+          if (typeof MenuFirebase !== 'undefined' && MenuFirebase.renameParticipant) {
+            MenuFirebase.renameParticipant(_editTripId, was.name, p.name)
+              .catch(e => console.error('rename participant menu:', e));
+          }
+        }
+      });
+      // Кого-то исключили (был в memberIds, в новом списке уже нет) —
+      // отзываем ссылку-приглашение поездки: без этого исключённый мог
+      // вернуться сам, просто сохранив у себя старую ссылку (id поездки в
+      // ней не менялся никогда, отозвать было нечем). Реальная дыра,
+      // найдена внешним ревью 2026-09-27.
+      const oldMemberIds = existing?.memberIds || [];
+      if (oldMemberIds.some(uid => uid && !memberIds.includes(uid))) {
+        TripsData.regenerateInviteToken(_editTripId).catch(e => console.error('regenerateInviteToken:', e));
+      }
     } else {
       trip.ownerId = ownerUid;
       await TripsData.addTrip(trip);
@@ -1305,6 +1520,8 @@ const TripsIndex = (() => {
     _importFileLoaded = false;
     _editMode   = false;
     _editTripId = null;
+    _copyFromLabel = '';
+    _copiedReadiness = null;
   }
 
   function _autoName() {

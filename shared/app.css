@@ -43,3 +43,8 @@
   -webkit-overflow-scrolling: touch;
   padding-bottom: calc(83px + env(safe-area-inset-bottom));
 }
+/* Жест браузера «потянуть вниз — обновить» перезагружал всё приложение и
+   выкидывал на Главную (особенно в карточке места, где своя внутренняя
+   прокрутка, а сама страница всегда стоит наверху). Данные и так живые
+   (Firestore onSnapshot), обновлять страницу вручную незачем. */
+html, body { overscroll-behavior-y: none; }

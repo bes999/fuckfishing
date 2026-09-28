@@ -42,16 +42,41 @@ const MembersFirebase = (() => {
     await db.collection('members').doc(uid).update(payload);
   }
 
+  // Код привязки Telegram больше не пишется в members/{uid} (тот читают ВСЕ
+  // участники — см. firestore.rules). Код — id отдельного документа, который
+  // клиент только создаёт/удаляет (отмена), но не читает обратно: код и так
+  // известен вызывающему коду, сам его сгенерировал (см. modules/members/
+  // index.js: tg-link). Бот проверяет привязку прямым просмотром по id.
+  async function createTelegramLinkCode(uid, code) {
+    await db.collection('telegram_link_codes').doc(code).set({
+      uid, createdAt: new Date().toISOString(),
+    });
+  }
+
+  async function cancelTelegramLinkCode(code) {
+    if (!code) return;
+    await db.collection('telegram_link_codes').doc(code).delete().catch(() => {});
+  }
+
   async function deleteProfile(uid) {
     await db.collection('members').doc(uid).delete();
   }
 
   // Разрешить регистрацию конкретному email — аллоулист, проверяется
   // Firestore rules при онбординге (см. firestore.rules, isInvited()).
+  // Правила запрещают update приглашений (см. firestore.rules invites) —
+  // .set() на УЖЕ существующий документ Firestore трактует как update, и
+  // повторное приглашение того же email (уже разрешённого) падало с
+  // permission-denied, хотя регистрация ему и так уже разрешена. Реальный
+  // баг, найден внешним ревью 2026-09-27. Если приглашение уже есть — это
+  // не ошибка, ничего менять и не нужно.
   async function addInvite(email) {
     const id = String(email || '').trim().toLowerCase();
     if (!id) return;
-    await db.collection('invites').doc(id).set({
+    const ref = db.collection('invites').doc(id);
+    const existing = await ref.get();
+    if (existing.exists) return;
+    await ref.set({
       invitedBy: window.APP?.user?.uid || null,
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     });
@@ -63,5 +88,5 @@ const MembersFirebase = (() => {
       .onSnapshot(s => cb(s.docs.map(d => d.data())), () => {});
   }
 
-  return { getProfile, getAllMembers, updateProfile, deleteProfile, addInvite, subscribeMembers };
+  return { getProfile, getAllMembers, updateProfile, deleteProfile, addInvite, subscribeMembers, createTelegramLinkCode, cancelTelegramLinkCode };
 })();

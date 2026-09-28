@@ -326,6 +326,19 @@ const MembersRender = (() => {
 
   const TG_LINK_CODE_TTL_MS = 15 * 60 * 1000;
 
+  // Код привязки больше не хранится в Firestore-профиле (см. modules/members/
+  // firebase.js — createTelegramLinkCode/cancelTelegramLinkCode и разбор
+  // причины в firestore.rules). Клиент и так знает код — сам его сгенерировал
+  // — поэтому для отображения достаточно памяти вкладки, без чтения назад.
+  // Сбрасывается при уходе со страницы профиля (setPendingTgCode(null) в
+  // showProfile) — код всё равно живёт максимум 15 минут на сервере.
+  let _pendingTgCode   = null;
+  let _pendingTgCodeAt = null;
+  function setPendingTgCode(code, at) {
+    _pendingTgCode   = code || null;
+    _pendingTgCodeAt = at   || null;
+  }
+
   /* ══════════════════════════════════════════════
      TELEGRAM-БОТ (привязка аккаунта) — строка в карточке «Аккаунт»
   ══════════════════════════════════════════════ */
@@ -340,13 +353,13 @@ const MembersRender = (() => {
       </div>`;
     }
 
-    // Код сгенерирован и ещё не протух
-    const codeFresh = p.telegramLinkCode && p.telegramLinkCodeAt
-      && (Date.now() - new Date(p.telegramLinkCodeAt).getTime() < TG_LINK_CODE_TTL_MS);
+    // Код сгенерирован в этой же вкладке и ещё не протух
+    const codeFresh = _pendingTgCode && _pendingTgCodeAt
+      && (Date.now() - new Date(_pendingTgCodeAt).getTime() < TG_LINK_CODE_TTL_MS);
     if (codeFresh) {
       return `
       <div class="p-tg-code-card">
-        <div class="p-tg-code">${_esc(p.telegramLinkCode)}</div>
+        <div class="p-tg-code">${_esc(_pendingTgCode)}</div>
         <div class="p-tg-code-hint">
           Отправь этот код боту
           <a class="p-tg-code-link" href="https://t.me/${TG_BOT_USERNAME}" target="_blank" rel="noopener">@${TG_BOT_USERNAME}</a>
@@ -489,9 +502,20 @@ const MembersRender = (() => {
   /* ══════════════════════════════════════════════
      INVITE
   ══════════════════════════════════════════════ */
-  function showInvite(tripId, tripName) {
+  async function showInvite(tripId, tripName) {
     const base = window.location.href.split('?')[0].split('#')[0];
-    const url = tripId ? `${base}?joinTrip=${encodeURIComponent(tripId)}` : base;
+    let url = tripId ? `${base}?joinTrip=${encodeURIComponent(tripId)}` : base;
+    // Токен — случайная часть ссылки, хранится на самой поездке (см.
+    // TripsData.ensureInviteToken/index.html _processJoinInvite). Раньше
+    // ссылка несла только id поездки — не секрет и никогда не меняется,
+    // так что её мог собрать кто угодно сам, а отозвать было нечем.
+    // Реальная дыра, найдена внешним ревью 2026-09-27.
+    if (tripId && typeof TripsData !== 'undefined') {
+      try {
+        const token = await TripsData.ensureInviteToken(tripId);
+        if (token) url += `&t=${encodeURIComponent(token)}`;
+      } catch (_) {}
+    }
     const title = tripId ? `Пригласить в «${tripName || 'поездку'}»` : 'Пригласить участника';
     const desc = tripId
       ? 'Отправь ссылку — человек войдёт через Google или email и сразу попадёт в эту поездку.'
@@ -673,5 +697,5 @@ const MembersRender = (() => {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
   }
 
-  return { renderList, showProfile, switchTab, showInvite, showTripPicker, openMedkit, canInvite, initials, avatarInner };
+  return { renderList, showProfile, switchTab, showInvite, showTripPicker, openMedkit, canInvite, initials, avatarInner, setPendingTgCode };
 })();

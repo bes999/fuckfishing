@@ -494,6 +494,24 @@
   font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
 }
 
+/* ── Бюджет до поездки ── */
+.exp-budget-sub { font-size: 13px; color: var(--label3); }
+
+.exp-budget-share {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  min-height: 48px; padding: 0 16px;
+  border-bottom: 1px solid var(--sep2);
+  font-size: 15px;
+}
+.exp-budget-share:last-child { border-bottom: none; }
+.exp-budget-share__name { color: var(--label); }
+.exp-budget-share__amt  { font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.exp-budget-item__amt {
+  flex-shrink: 0; font-size: 16px; font-weight: 700;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
 /* Пикер «на кого делить по умолчанию»: две опции-радио */
 .exp-opt-group { border-radius: var(--radius-md); background: var(--bg3); overflow: hidden; }
 .exp-opt {
@@ -511,3 +529,5 @@
   border-radius: 50%; border: 1.5px solid var(--label4);
 }
 .exp-opt.on .exp-radio { border: 7px solid var(--accent); }
+
+.exp-fab[hidden] { display: none; }

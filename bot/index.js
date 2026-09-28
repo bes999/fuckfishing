@@ -372,7 +372,7 @@ async function renderShoppingList(ctx, tripId, { edit = false } = {}) {
       const mark = item.bought ? '✅' : '⬜';
       lines.push(`${mark} ${escapeHtml(item.name)}${item.qty ? ' — ' + escapeHtml(item.qty) : ''}`);
       const label = `${mark} ${item.name}${item.qty ? ' (' + item.qty + ')' : ''}`;
-      kb.text(label.slice(0, 60), `shop:t:${ci}:${ii}`).row();
+      kb.text(label.slice(0, 60), `shop:t:${tripId}:${ci}:${ii}`).row();
     });
   });
 
@@ -687,16 +687,21 @@ bot.callbackQuery('shop:noop', async (ctx) => {
   await ctx.answerCallbackQuery();
 });
 
-bot.callbackQuery(/^shop:t:(\d+):(\d+)$/, async (ctx) => {
+bot.callbackQuery(/^shop:t:([^:]+):(\d+):(\d+)$/, async (ctx) => {
   await ctx.answerCallbackQuery();
   const user = await requireUser(ctx);
   if (!user) return;
 
-  const trip = await Trips.getActiveTrip(ctx.chat.id);
-  if (!trip) return ctx.reply('Нет активной поездки.');
+  // tripId зашит прямо в callback_data (см. renderShoppingList), поэтому кнопка
+  // всегда бьёт по той поездке, для которой она была нарисована, а не по "текущей
+  // активной" — иначе старая кнопка от поездки A, оставшаяся видимой в чате после
+  // переключения на поездку B, переключала бы пункт в B по индексам от A.
+  const tripId = ctx.match[1];
+  const trip = await Trips.getTrip(tripId);
+  if (!trip) return ctx.reply('Поездка не найдена.');
 
-  const ci = Number(ctx.match[1]);
-  const ii = Number(ctx.match[2]);
+  const ci = Number(ctx.match[2]);
+  const ii = Number(ctx.match[3]);
   try {
     await Shopping.toggleBoughtByIndex(trip.id, ci, ii);
     await renderShoppingList(ctx, trip.id, { edit: true });

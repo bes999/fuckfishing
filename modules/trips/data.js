@@ -176,6 +176,17 @@ const TripsData = (() => {
     return (trip?.participants || []).map(p => p.name);
   }
 
+  // Какие приёмы пищи планируем в этой поездке — trip.mealsPlanned, массив
+  // id из MenuData.getMeals() ('breakfast'/'snack'/'lunch'/'dinner'). Поля
+  // нет — старое поведение, планируем все четыре (не мигрируем молча все
+  // существующие поездки записью, просто трактуем отсутствие как "все").
+  // [] — меню в поездке осознанно не планируется. Общий аксессор, чтобы
+  // Меню/Главная/импорт плана не дублировали дефолт по отдельности.
+  function plannedMeals(trip) {
+    if (trip && Array.isArray(trip.mealsPlanned)) return trip.mealsPlanned.slice();
+    return typeof MenuData !== 'undefined' ? MenuData.getMeals().map(m => m.id) : ['breakfast', 'snack', 'lunch', 'dinner'];
+  }
+
   // Как participantNames, но без тех, кто отмечен dutyExempt (дети,
   // пожилые, гости-однодневки — участвуют в поездке, но не должны
   // попадать ни в дропдаун назначения дежурства, ни в авто-подбор). Для
@@ -274,34 +285,15 @@ const TripsData = (() => {
   // --- Добавить человека в участники поездки (инвайт-ссылка, пикер из
   // профиля и т.д. — общая точка входа, чтобы не дублировать логику
   // "заменить строку-имя на uid или дописать новое имя" в разных местах) ---
+  // Реальная запись — транзакция на свежих серверных данных, см.
+  // TripsFirebase.addParticipant (защита от гонки при одновременном
+  // вступлении двух человек по одной ссылке). Здесь просто делегируем и
+  // ждём подписку (listen) на обновление локального кэша — тот же
+  // оптимистичный паттерн, что и у остального data.js, просто без ручной
+  // мутации локального объекта, раз источник правды теперь транзакция.
   function addParticipant(tripId, { uid, name } = {}) {
-    const trip = getById(tripId);
-    if (!trip) return Promise.reject(new Error('trip not found'));
-
-    const participants = trip.participants || [];
-    const memberIds = trip.memberIds || [];
-    if (uid && memberIds.includes(uid)) return Promise.resolve(trip);
-
-    const matchIdx = name ? participants.findIndex(p => p.name.toLowerCase() === name.toLowerCase()) : -1;
-    let newParticipants;
-    if (matchIdx >= 0) {
-      // Уже в списке под этим именем — если только что выдали uid (был
-      // гостем без аккаунта, теперь привязан к реальному), бэкфиллим его
-      // и сюда, а не только в memberIds ниже. Иначе следующий Save в
-      // редакторе поездки пересчитает memberIds из participants[].uid
-      // (см. modules/trips/index.js:_save) и тихо выкинет этого человека
-      // обратно в гости, хотя memberIds только что дали ему доступ.
-      newParticipants = (uid && !participants[matchIdx].uid)
-        ? participants.map((p, i) => i === matchIdx ? { ...p, uid } : p)
-        : participants;
-    } else if (name) {
-      newParticipants = [...participants, { name, uid: uid || null }];
-    } else {
-      newParticipants = participants;
-    }
-    const newMemberIds = uid ? [...new Set([...memberIds, uid])] : memberIds;
-
-    return TripsFirebase.updateTrip(tripId, { participants: newParticipants, memberIds: newMemberIds });
+    if (!getById(tripId)) return Promise.reject(new Error('trip not found'));
+    return TripsFirebase.addParticipant(tripId, { uid, name });
   }
 
   // --- Добавить сразу несколько гостей без аккаунта одним запросом (вставка
@@ -328,6 +320,30 @@ const TripsData = (() => {
     return TripsFirebase.updateTrip(tripId, { participants: [...participants, ...additions] });
   }
 
+  // --- Ссылка-приглашение: случайный токен на самой поездке, а не просто
+  // id (id не секрет и никогда не меняется — им мог воспользоваться кто
+  // угодно, зная/подобрав его, и отозвать было нечем). ensureInviteToken —
+  // ленивая генерация при первом запросе ссылки (см. MembersRender.showInvite
+  // / TripcoverIndex._showInviteSheet). regenerateInviteToken — явный отзыв:
+  // все прежде разосланные ссылки сразу перестают работать; вызывается
+  // автоматически при исключении участника (см. modules/trips/index.js
+  // _save), чтобы вышедший не мог вернуться по старой ссылке. Реальная
+  // дыра, найдена внешним ревью 2026-09-27.
+  function _genInviteToken() {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+  function ensureInviteToken(tripId) {
+    const trip = getById(tripId);
+    if (!trip) return Promise.reject(new Error('trip not found'));
+    if (trip.inviteToken) return Promise.resolve(trip.inviteToken);
+    const token = _genInviteToken();
+    return TripsFirebase.updateTrip(tripId, { inviteToken: token }).then(() => token);
+  }
+  function regenerateInviteToken(tripId) {
+    const token = _genInviteToken();
+    return TripsFirebase.updateTrip(tripId, { inviteToken: token }).then(() => token);
+  }
+
   // --- Status label ---
   function statusLabel(status) {
     return { upcoming: '' + UIUtils.ico('hourglass') + ' Скоро', active: '' + UIUtils.ico('player-play') + ' Идёт', done: '' + UIUtils.ico('check') + ' Завершена' }[status] || '';
@@ -340,8 +356,9 @@ const TripsData = (() => {
 
   return {
     migrateFromLocalStorage, backfillOwnerId,
-    getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames, dutyEligibleNames,
+    getAll, getById, getMine, getUpcoming, getByYear, getCalendarMarkers, getYearStats, participantNames, dutyEligibleNames, plannedMeals,
     addTrip, updateTrip, deleteTrip, canManage, tripIcon, TRIP_ICONS, updateReadiness, getDefaultReadiness, addParticipant, addGuestNames,
+    ensureInviteToken, regenerateInviteToken,
     statusLabel, statusClass,
   };
 })();

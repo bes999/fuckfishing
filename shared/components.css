@@ -95,3 +95,14 @@
   fill: none; stroke: currentColor; stroke-width: 1.8;
   stroke-linecap: round; stroke-linejoin: round;
 }
+
+/* Лист места поездки (UIUtils.placeSheet) — поверх .cs-overlay/.cs-card */
+.place-card { display: flex; flex-direction: column; gap: 10px; }
+.place-input {
+  height: 48px; padding: 0 14px; box-sizing: border-box; width: 100%;
+  border: 1px solid var(--sep); border-radius: var(--radius-md);
+  background: var(--bg3); color: var(--label);
+  font-family: var(--font-body); font-size: 16px;
+}
+.place-input:focus { outline: none; border-color: var(--accent); }
+.place-err { font-size: 13px; color: var(--red); }
