@@ -41,25 +41,35 @@ const MenuData = (() => {
     { id: 'pr_sardines',     name: 'Сардины консервы',    hint: null },
   ];
 
-  // Генерация дней из дат поездки
+  // Генерация дней из дат поездки.
+  // new Date('2026-10-31') (дата без времени) парсится как ПОЛНОЧЬ ПО UTC,
+  // а .getDate()/.getMonth()/.getDay()/.setDate() (было раньше) — ЛОКАЛЬНЫЕ
+  // методы: в часовых поясах западнее UTC (Нью-Йорк и т.п.) полночь UTC —
+  // это ещё ВЕЧЕР ПРЕДЫДУЩЕГО дня по местному времени, так что дата
+  // подписывалась днём раньше, а инкремент через local setDate() вокруг
+  // перехода на зимнее/летнее время мог пропустить или задвоить день.
+  // Реальный баг (тот же класс, что уже чинили в shared/weather.js
+  // _addDays), найден внешним ревью 2026-09-27. Считаем целиком в UTC —
+  // локальный часовой пояс тут вообще не должен участвовать.
   function generateDays(startDate, endDate) {
     const days = [];
-    const start = new Date(startDate);
-    const end   = new Date(endDate);
     const DAYS_RU = ['вс','пн','вт','ср','чт','пт','сб'];
     const MONTHS  = ['января','февраля','марта','апреля','мая','июня',
                      'июля','августа','сентября','октября','ноября','декабря'];
-    let cur = new Date(start);
+    const [sy, sm, sd] = startDate.split('-').map(Number);
+    const [ey, em, ed] = endDate.split('-').map(Number);
+    const end = new Date(Date.UTC(ey, em - 1, ed));
+    let cur = new Date(Date.UTC(sy, sm - 1, sd));
     let idx = 1;
     while (cur <= end) {
       days.push({
         id:    `day_${cur.toISOString().slice(0,10)}`,
         num:   idx,
         date:  cur.toISOString().slice(0,10),
-        label: `${cur.getDate()} ${MONTHS[cur.getMonth()]}, ${DAYS_RU[cur.getDay()]}`,
+        label: `${cur.getUTCDate()} ${MONTHS[cur.getUTCMonth()]}, ${DAYS_RU[cur.getUTCDay()]}`,
         meals: _emptyMeals()
       });
-      cur.setDate(cur.getDate() + 1);
+      cur.setUTCDate(cur.getUTCDate() + 1);
       idx++;
     }
     return days;

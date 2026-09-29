@@ -1188,17 +1188,27 @@ const MenuRender = (() => {
   // позиции, уже существующей в закупке — её количество вообще не
   // увеличивалось. Реальный баг, найден внешним ревью 2026-09-27. Теперь
   // одинаковые ингредиенты (в том числе уже существующие в закупке)
-  // суммируются через _combineQty. Чтобы повторное нажатие "В закупку" не
-  // удваивало количество — menu/{tripId}.shoppingPushed запоминает id
-  // уже отправленных слотов, и уже отправленные молча пропускаются.
-  // Свежие данные (и Закупки, и Меню) читаем в транзакции, а не из
-  // localStorage: Меню не подписано на Закупку, и раньше код писал
-  // полный categories из пустого/устаревшего кэша — стирал весь чужой
-  // список закупки (нашёл аудит 2026-09-27).
+  // суммируются через _combineQty.
+  //
+  // shoppingPushed[slotId] — не просто "отправлено когда-то" (было раньше,
+  // булево навсегда), а КАКОЕ ИМЕННО блюдо было отправлено из этого слота
+  // (id+source). Раньше замена блюда в слоте (позавтракали не яйцами, а
+  // рисом) не давала отправить рис — флаг слота уже стоял, независимо от
+  // блюда; удалённую руками из закупки позицию тоже нельзя было вернуть
+  // повторной отправкой того же блюда. Оба — реальные баги, найдены внешним
+  // ревью 2026-09-27. Теперь "уже отправлено, пропускаем" — только если И
+  // блюдо в слоте ТО ЖЕ САМОЕ, что в прошлый раз, И позиция всё ещё
+  // физически в закупке (не удалили). Другое блюдо или отсутствующая
+  // позиция — повод добавить заново. Свежие данные (и Закупки, и Меню)
+  // читаем в транзакции, а не из localStorage: Меню не подписано на
+  // Закупку, и раньше код писал полный categories из пустого/устаревшего
+  // кэша — стирал весь чужой список закупки (нашёл аудит 2026-09-27).
   // Возвращает { added, total } или null, если закупки нет/нечего добавлять.
   async function _pushIngredientsToShopping(slotItems) {
     if (typeof ShoppingState === 'undefined' || typeof ShoppingFirebase === 'undefined') return null;
     if (!slotItems || !slotItems.length) return null;
+
+    const dishKey = si => `${si.id || ''}_${si.source || ''}`;
 
     const allIngredients = [];
     slotItems.forEach(si => allIngredients.push(..._ingredientsForItem(si.id, si.source, si.name)));
@@ -1216,29 +1226,39 @@ const MenuRender = (() => {
         added = 0;
         const [menuSnap, shopSnap] = await Promise.all([tx.get(menuRef), tx.get(shopRef)]);
         const pushed = (menuSnap.exists && menuSnap.data().shoppingPushed) || {};
-        const fresh = slotItems.filter(si => !si.slotId || !pushed[si.slotId]);
-        if (!fresh.length) return;
-
-        const ingredients = [];
-        fresh.forEach(si => ingredients.push(..._ingredientsForItem(si.id, si.source, si.name)));
-
-        const byName = new Map();
-        ingredients.forEach(ing => {
-          const key = String(ing.name || '').trim().toLowerCase();
-          if (!key) return;
-          const existing = byName.get(key);
-          if (existing) existing.qty = _combineQty(existing.qty, ing.qty);
-          else byName.set(key, { name: ing.name, qty: ing.qty || '', category: ing.category, ingredientId: ing.ingredientId });
-        });
-
         const cats = (shopSnap.exists && shopSnap.data().categories) || [];
         const existingItemByName = new Map();
         cats.forEach(c => (c.items || []).forEach(i => existingItemByName.set(String(i.name).trim().toLowerCase(), i)));
+
+        const byName = new Map();
+        slotItems.forEach(si => {
+          const key = dishKey(si);
+          // Старые записи shoppingPushed — просто true (до этого фикса, без
+          // привязки к блюду). Трактуем как "было какое-то блюдо, но
+          // неизвестно какое" и по-прежнему считаем совпадением (безопаснее
+          // не задвоить, чем один раз не пропустить заведомо новое блюдо).
+          const prev = si.slotId ? pushed[si.slotId] : undefined;
+          const sameDish = prev === true || prev === key;
+          _ingredientsForItem(si.id, si.source, si.name).forEach(ing => {
+            const nameKey = String(ing.name || '').trim().toLowerCase();
+            if (!nameKey) return;
+            if (sameDish && existingItemByName.has(nameKey)) return; // то же блюдо, позиция всё ещё в закупке — не дублируем
+            const existing = byName.get(nameKey);
+            if (existing) existing.qty = _combineQty(existing.qty, ing.qty);
+            else byName.set(nameKey, { name: ing.name, qty: ing.qty || '', category: ing.category, ingredientId: ing.ingredientId });
+          });
+        });
 
         byName.forEach((ing, key) => {
           const already = existingItemByName.get(key);
           if (already) {
             already.qty = _combineQty(already.qty, ing.qty);
+            // Увеличили ТРЕБУЕМОЕ количество у уже отмеченной позиции —
+            // старая отметка "куплено" была про старое (меньшее) количество,
+            // а не про новый итог. Не переносим её молча на добавленное
+            // количество, которое ещё никто не покупал. Реальный баг,
+            // найден внешним ревью 2026-09-27.
+            if (already.bought) already.bought = false;
           } else {
             const title = RecipesData.resolveShoppingCategory(ing.name, ing.category, ing.ingredientId);
             const cat = ShoppingState.findOrCreateCategory(cats, title);
@@ -1251,11 +1271,14 @@ const MenuRender = (() => {
         });
 
         tx.set(shopRef, { categories: cats }, { merge: true });
-        if (fresh.some(si => si.slotId)) {
-          const newPushed = Object.assign({}, pushed);
-          fresh.forEach(si => { if (si.slotId) newPushed[si.slotId] = true; });
-          tx.set(menuRef, { shoppingPushed: newPushed }, { merge: true });
-        }
+        const newPushed = Object.assign({}, pushed);
+        let pushedChanged = false;
+        slotItems.forEach(si => {
+          if (!si.slotId) return;
+          const key = dishKey(si);
+          if (newPushed[si.slotId] !== key) { newPushed[si.slotId] = key; pushedChanged = true; }
+        });
+        if (pushedChanged) tx.set(menuRef, { shoppingPushed: newPushed }, { merge: true });
       });
     } catch (e) {
       console.error('menu → shopping:', e);

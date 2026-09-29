@@ -401,3 +401,12 @@
   margin-left: auto; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 14px;
   border-radius: 999px; background: var(--red); color: #fff; font-size: 14px; font-weight: 700; text-decoration: none;
 }
+
+/* Панель под поиском: «Требуют внимания» + «Список / По местам» не
+   влезали в ширину телефона — переключатель вылезал за правый край. Теперь
+   фильтр слева сжимается, переключатель всегда прижат к правому полю, а
+   если совсем тесно — уходит на новую строку. */
+.mk-toolbar { flex-wrap: wrap; justify-content: space-between; row-gap: 8px; }
+.mk-toolbar .mk-pills { min-width: 0; flex: 1 1 auto; }
+.mk-toolbar .mk-seg--sm { margin-left: auto; }
+.mk-toolbar .mk-pill { padding: 0 12px; font-size: 13px; }
