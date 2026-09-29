@@ -14,6 +14,15 @@ const TripsIndex = (() => {
   let _dateTouched = false;   // true, если пользователь сам менял поля дат (не просто дефолт "сегодня")
   let _editMode   = false;    // true = редактирование существующей поездки
   let _editTripId = null;     // id редактируемой поездки
+  // Счётчик сеансов мастера (создание/правка) — растёт на КАЖДОЕ открытие
+  // формы (showCreate/showEdit). FileReader.onload асинхронный: начали
+  // читать файл для поездки А → закрыли форму → открыли создание Б → чтение
+  // А закончилось ПОЗЖЕ — без этой проверки его результат (_importedData)
+  // записывался бы в уже другой, текущий черновик Б. Реальный баг, найден
+  // внешним ревью 2026-09-27. _readImportFile запоминает номер СВОЕГО
+  // сеанса при вызове и сверяет его в onload — если сеанс сменился, просто
+  // не применяет устаревший результат.
+  let _createSeq  = 0;
   let _travelOn   = false;    // переключатель «кто-то едет по своему расписанию» (шаг 2)
 
   // «Взять за основу прошлую поездку» (шаг 0, только при СОЗДАНИИ новой —
@@ -65,6 +74,7 @@ const TripsIndex = (() => {
   function showCreate(prefillDate) {
     // Слой мог быть снят навигацией (index.html) без _closeCreate — тогда
     // флаг правки остался бы висеть и «новая» поездка сохранилась бы поверх старой.
+    _createSeq++;
     _editMode   = false;
     _editTripId = null;
     _createStep = 0;
@@ -103,6 +113,7 @@ const TripsIndex = (() => {
     const trip = TripsData.getById(tripId);
     if (!trip) return;
 
+    _createSeq++;
     _editMode   = true;
     _editTripId = tripId;
     _importFileLoaded = false;
@@ -1059,15 +1070,32 @@ const TripsIndex = (() => {
 
   function _readImportFile(file) {
     if (!file) return;
+    // Сеанс мастера, для которого начали читать этот файл — форму могли
+    // закрыть и открыть заново (уже для другой поездки) до того, как
+    // асинхронное чтение вообще завершится; см. _createSeq выше.
+    const forSeq = _createSeq;
     const reader = new FileReader();
     reader.onload = (e) => {
       try {
         const data = JSON.parse(e.target.result);
 
-        // Базовая валидация
-        if (typeof data !== 'object' || Array.isArray(data)) {
+        // Базовая валидация — тип объекта, плюс структура полей, которые
+        // дальше читаются как МАССИВЫ (route/rivers/menu/flights): раньше
+        // проверялось только "это объект", и, например, route строкой
+        // ("День 1: аэропорт" вместо [{t,rows}]) сохранялся как есть —
+        // раздел «Инфо» падал с "map is not a function" при первом же
+        // открытии, и обычная перезагрузка это не чинила (данные уже в
+        // базе). Реальный баг, найден внешним ревью 2026-09-27.
+        if (typeof data !== 'object' || data === null || Array.isArray(data)) {
           throw new Error('Неверный формат');
         }
+        for (const key of ['route', 'rivers', 'menu', 'flights']) {
+          if (data[key] !== undefined && !Array.isArray(data[key])) {
+            throw new Error(`Поле "${key}" должно быть списком`);
+          }
+        }
+
+        if (_createSeq !== forSeq) return; // форму успели закрыть/переоткрыть для другой поездки — этот результат уже не про неё
 
         _importedData = data;
         _importFileLoaded = true;
@@ -1085,7 +1113,10 @@ const TripsIndex = (() => {
 
         _refreshCreate();
       } catch (err) {
-        alert('Ошибка чтения файла.\nПроверь что это валидный JSON от AI.');
+        if (_createSeq !== forSeq) return; // форму уже закрыли/переоткрыли — не трогаем чужой сеанс ошибкой этого файла
+        alert(err?.message === 'Неверный формат' || err?.message?.startsWith('Поле "')
+          ? `Не тот формат файла.\n${err.message}.`
+          : 'Ошибка чтения файла.\nПроверь что это валидный JSON от AI.');
         _importedData = null;
       }
     };
@@ -1579,6 +1610,10 @@ const TripsIndex = (() => {
   }
 
   function _closeCreate() {
+    // Тоже сбрасывает сеанс — чтение файла, начатое до закрытия, не должно
+    // применить свой результат, даже если после закрытия форму больше не
+    // открывали вообще (см. _createSeq выше).
+    _createSeq++;
     const overlay = document.getElementById('create-overlay');
     if (overlay) {
       overlay.classList.remove('visible');

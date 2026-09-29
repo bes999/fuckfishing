@@ -2723,7 +2723,16 @@ const TripCoverIndex = (() => {
     let h = '';
 
     // ── Маршрут по дням ─────────────────────────────────────────────────
-    if (d.route && d.route.length) {
+    // Array.isArray (не просто d.route truthy) — некорректный импорт мог
+    // сохранить route СТРОКОЙ вместо массива дней ("День 1: аэропорт"
+    // вместо [{t,rows}]); у строки тоже есть .length (проходил старый
+    // guard) и .slice() (строки его тоже умеют), а вот .map() на
+    // результате .slice() уже нет — весь раздел «Инфо» падал с "map is
+    // not a function". Реальный баг, найден внешним ревью 2026-09-27.
+    // Помогает и для уже сохранённых бракованных данных (см. валидацию
+    // при самом чтении файла — modules/trips/index.js _readImportFile),
+    // не только для новых импортов.
+    if (Array.isArray(d.route) && d.route.length) {
       // Даты у дней маршрута — не отдельное поле (это заголовок-текст типа
       // "День 1 — прилёт"), а последовательные дни от trip.startDate; на
       // этом допущении и матчим погоду по дате, ключ той же формы кладём в
@@ -2760,7 +2769,8 @@ const TripCoverIndex = (() => {
     }
 
     // ── Рейсы ────────────────────────────────────────────────────────────
-    if (d.flights && d.flights.length) {
+    // Array.isArray — та же защита, что у маршрута выше.
+    if (Array.isArray(d.flights) && d.flights.length) {
       h += _secTitle('Рейсы') + `<section class="tc-card tc-card--list">${d.flights.map(f => `
         <div class="tc-flight">
           <span class="tc-flight-code">${_esc(f.flight || '')}</span>
@@ -2792,7 +2802,8 @@ const TripCoverIndex = (() => {
     // План меню из AI-импорта — только чтение (данные: trip.importData.menu,
     // приходят с JSON-импортом маршрута). Живое планирование с рецептами —
     // во вкладке «Меню».
-    if (d.menu && d.menu.length) {
+    // Array.isArray — та же защита, что у маршрута выше.
+    if (Array.isArray(d.menu) && d.menu.length) {
       const mb = d.menu.map((day, idx) => {
         const dayId = 'gmenu_' + idx;
         return `
