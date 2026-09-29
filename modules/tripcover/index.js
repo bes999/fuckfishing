@@ -104,9 +104,9 @@ const TripCoverIndex = (() => {
       <div class="tc-inv-status" id="tc-inv-status"></div>
       <div class="tc-inv-guest">
         <div class="tc-field-title">Или гость без приложения</div>
-        <div class="tc-field-hint">Просто имя, без регистрации — попадёт в участников и счётчики</div>
+        <div class="tc-field-hint">Просто имя, без регистрации — попадёт в участников и счётчики. Несколько — через запятую.</div>
         <div class="tc-inline-add">
-          <input type="text" class="tc-input" id="tc-inv-guest" placeholder="Имя гостя или несколько через запятую" autocomplete="off">
+          <input type="text" class="tc-input" id="tc-inv-guest" placeholder="Имя гостя" autocomplete="off">
           <button type="button" class="tc-btn-add" data-action="tc-inv-guest-add">Добавить</button>
         </div>
       </div>`;
@@ -2765,12 +2765,17 @@ const TripCoverIndex = (() => {
     let ref = _weatherChartsSection(trip) + _windyAccordion(trip);
 
     if (d.suntide && d.suntide.length) {
+      // Приливы есть только у моря. На реках/озёрах (Обь, Иртыш) ИИ пишет
+      // «Без приливов (река)» — тогда блок только про солнце, без строки
+      // приливов и без слова «приливы» в заголовке.
+      const realTide = t => !!t && /прилив|отлив/i.test(t) && !/без\s+прилив/i.test(t);
+      const hasTides = d.suntide.some(s => realTide(s.tide));
       const sb = d.suntide.map(s => `
         <div class="tc-tide">
           <div><div class="tc-tide-date">${_esc(s.date)}</div><div class="tc-tide-sun">${_esc(s.sun)}</div></div>
-          <div class="tc-tide-info">${_esc(s.tide)}</div>
+          ${hasTides && realTide(s.tide) ? `<div class="tc-tide-info">${_esc(s.tide)}</div>` : ''}
         </div>`).join('');
-      ref += _acc('Солнце и приливы', sb, false,
+      ref += _acc(hasTides ? 'Солнце и приливы' : 'Восход и закат', sb, false,
         { icon: 'sunrise', tone: 'accent', sub: `на все ${d.suntide.length} ${_plural(d.suntide.length, 'день', 'дня', 'дней')}` });
     }
 

@@ -293,7 +293,9 @@ const GearRender = (() => {
       sub: o.tripName + ' · ' + (isShared ? 'общее' : (o.isMe ? 'мой список' : 'список')),
       right: o.isMe ? _headBtn('gear-trip-more', 'dots', isShared ? 'Ещё: новая категория, снять отметки' : 'Ещё: обновить из шаблона, снять отметки') : ''
     });
-    if (o.ready && o.ready.m) html += _readyLine(o.ready);
+    // «Готовы N из M» и «Я собран» — только пока поездка впереди или идёт
+    var tripDone = typeof TripsData !== 'undefined' && (TripsData.getById(o.tripId || o.trip && o.trip.id) || {}).status === 'done';
+    if (!tripDone && o.ready && o.ready.m) html += _readyLine(o.ready);
     if (o.isMe) {
       html += _seg([
         { label: 'Моё',    on: !isShared, action: 'gear-scope-switch', attr: 'data-scope="personal"' },
@@ -312,7 +314,7 @@ const GearRender = (() => {
       if (isBack) html += _hint('Отметки обратного пути отдельные — отметки «туда» не пропадут.');
     }
     html += isShared ? _sharedView(o.shared, o.sharedChecked || [], o.open) : _personalView(o);
-    if (o.isMe && !isShared && o.packMode !== 'back') html += _readyBtn(o.readySelf);
+    if (!tripDone && o.isMe && !isShared && o.packMode !== 'back') html += _readyBtn(o.readySelf);
     return '<div class="gear-page">'+html+'</div>';
   }
 

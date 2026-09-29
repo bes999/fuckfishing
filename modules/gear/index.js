@@ -135,6 +135,7 @@ const GearModule = (() => {
       var readyParticipants = ((tripForReady && tripForReady.participants) || []).filter(function(p) { return p && p.uid; });
       var readyNames = readyParticipants.filter(function(p) { return readyMap[p.uid]; }).map(function(p) { return p.name; });
       _container.innerHTML = GearRender.tripView({
+        tripId: _activeTrip,
         snap: GearData.getTripSnapshot(_uid, _activeTrip),
         checked: _packMode === 'back' ? GearData.getCheckedBack(_uid, _activeTrip) : GearData.getChecked(_uid, _activeTrip),
         tripName: _tripName(_activeTrip),
