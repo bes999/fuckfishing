@@ -96,7 +96,14 @@ export async function toggleBoughtByIndex(tripId, catIdx, itemIdx) {
   const item = cat.items[itemIdx];
   if (!item) return null;
   item.bought = !item.bought;
-  await saveCategories(tripId, categories);
+  // Раньше здесь ЕЩЁ И перезаписывался весь categories целиком
+  // (saveCategories) — собранный из копии, прочитанной в начале этой
+  // функции: бот прочитал список → кто-то на сайте добавил товар в этот
+  // же документ → бот отметил своё "куплено" и сохранил СТАРЫЙ categories
+  // поверх — новый товар стирался. Реальный баг, найден внешним ревью
+  // 2026-09-27. Отдельное плоское поле bought и так уже единственный
+  // источник правды для bought (см. getCategories выше) — этот второй,
+  // широкий write был просто не нужен.
   await ref(tripId).set({ bought: { [item.id]: item.bought } }, { merge: true });
   return categories;
 }

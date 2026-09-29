@@ -337,6 +337,15 @@ async function finishCatch(ctx, w, river, comment) {
       { reply_markup: MAIN_MENU }
     );
   } catch (e) {
+    Wizards.cancel(chatId);
+    if (e?.message === 'trip-not-found') {
+      await ctx.reply('⚠️ Эта поездка уже удалена — улов не сохранён.', { reply_markup: MAIN_MENU });
+      return;
+    }
+    if (e?.message === 'not-a-member') {
+      await ctx.reply('⚠️ Ты больше не участник этой поездки — улов не сохранён.', { reply_markup: MAIN_MENU });
+      return;
+    }
     console.error(e);
     await ctx.reply('⚠️ Ошибка, попробуйте ещё раз.');
   }
@@ -719,7 +728,20 @@ bot.callbackQuery('shop:add', async (ctx) => {
   const trip = await Trips.getActiveTrip(ctx.chat.id);
   if (!trip) return ctx.reply('Нет активной поездки.');
 
-  const categories = await Shopping.getCategories(trip.id);
+  let categories = await Shopping.getCategories(trip.id);
+  // categories: [] (документ существует, но категорий в нём нет — например,
+  // их все удалили на сайте) — раньше клавиатура собиралась из пустого
+  // массива и уходила без единой кнопки: диалог "В какую категорию
+  // добавить?" был уже начат (Wizards.start ниже), а ответить на него
+  // нечем — ни выбрать категорию, ни создать её отсюда было нельзя.
+  // getCategories выше подставляет дефолтные категории только когда
+  // ДОКУМЕНТА ещё нет целиком — здесь тот же сценарий, но для уже
+  // существующего документа с пустым categories. Реальный баг, найден
+  // внешним ревью 2026-09-27.
+  if (!categories.length) {
+    categories = Shopping.DEFAULT_CATEGORIES.map((c) => ({ ...c, items: [] }));
+    await Shopping.saveCategories(trip.id, categories);
+  }
   Wizards.start(ctx.chat.id, 'shopping_add', 'category', { tripId: trip.id });
 
   const kb = new InlineKeyboard();

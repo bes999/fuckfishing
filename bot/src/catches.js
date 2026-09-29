@@ -46,7 +46,17 @@ export function pickFishGroups(trip) {
   return DEFAULT_GROUPS;
 }
 
+// Раньше писало улов без всякой проверки — Firestore разрешает писать в
+// подколлекцию НЕСУЩЕСТВУЮЩЕГО документа (родитель для подколлекций не
+// обязан существовать), так что сценарий "начал вводить улов → организатор
+// удалил поездку → закончил ввод" тихо создавал запись под уже удалённой
+// поездкой, а бот отвечал "Записано". Реальный баг, найден внешним ревью
+// 2026-09-27. Транзакция проверяет существование поездки и что uid всё ещё
+// в её участниках атомарно с самой записью — не отдельным "get" до, между
+// которым и записью могло бы успеть измениться то же самое.
 export async function addCatch(tripId, { fish, count, kept, river, comment, member, uid }) {
+  const tripRef = db.collection('trips').doc(tripId);
+  const catchRef = tripRef.collection('catches').doc();
   const data = {
     fish,
     count,
@@ -58,6 +68,12 @@ export async function addCatch(tripId, { fish, count, kept, river, comment, memb
     createdAt: new Date().toISOString(),
     createdBy: uid,
   };
-  const ref = await db.collection('trips').doc(tripId).collection('catches').add(data);
-  return { id: ref.id, ...data };
+  await db.runTransaction(async (tx) => {
+    const tripSnap = await tx.get(tripRef);
+    if (!tripSnap.exists) throw new Error('trip-not-found');
+    const memberIds = tripSnap.data().memberIds || [];
+    if (uid && !memberIds.includes(uid)) throw new Error('not-a-member');
+    tx.set(catchRef, data);
+  });
+  return { id: catchRef.id, ...data };
 }

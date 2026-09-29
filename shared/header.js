@@ -171,7 +171,14 @@ const AppHeader = (() => {
     if (typeof CatchesState !== 'undefined') {
       trips.forEach(t => fish += CatchesState.speciesForTrip(t.id).total);
     }
-    return `${done} поездок · ${fish} рыб`;
+    // Склонение: «1 поездка · 21 рыба», «2 поездки · 44 рыбы», «10 поездок · 5 рыб»
+    const pl = (n, one, few, many) => {
+      const m10 = n % 10, m100 = n % 100;
+      if (m10 === 1 && m100 !== 11) return one;
+      if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+      return many;
+    };
+    return `${done} ${pl(done, 'поездка', 'поездки', 'поездок')} · ${fish} ${pl(fish, 'рыба', 'рыбы', 'рыб')}`;
   }
 
   /* ── Выезжающее меню ── */
