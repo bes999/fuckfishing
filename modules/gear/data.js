@@ -182,25 +182,53 @@ const GearData = (() => {
      привязанный к вещам шаблона — какие места едут в поездку решается
      явно при сборе списка, синк их не трогает. Безопасно жать сколько
      угодно раз. */
+  // Раньше читало ЛОКАЛЬНЫЙ кэш (мог отстать от другого устройства —
+  // назначили сумку или добавили вещь в список поездки на телефоне, а
+  // здесь этого ещё не видно) и перезаписывало categories/items им целиком
+  // — обновление из шаблона стирало то, что появилось на другом устройстве
+  // после последней синхронизации этого. Добавленные позиции к тому же
+  // были ТЕМИ ЖЕ объектами, что в личном шаблоне (template, не клон) —
+  // назначение сумки такой вещи прямо в списке поездки заодно меняло и
+  // сам шаблон в памяти, а следующее сохранение шаблона закрепляло эту
+  // случайную правку. Оба — реальные баги, найдены внешним ревью
+  // 2026-09-27. Транзакция читает свежие серверные categories/items,
+  // добавляет только реально отсутствующие (по id), клонируя их (тот же
+  // приём, что уже есть у saveTripSnapshot).
   async function syncTripFromTemplate(uid, tripId, template) {
-    const snap = _forUid(uid)[tripId];
-    if (!snap) return null;
+    const ref = db.collection('gear_trip_snapshots').doc(_docId(uid, tripId));
+    const result = await db.runTransaction(async tx => {
+      const doc = await tx.get(ref);
+      if (!doc.exists) return null;
+      const data = doc.data();
+      const categories = Array.isArray(data.categories) ? data.categories : [];
+      const items      = Array.isArray(data.items)      ? data.items      : [];
 
-    const existingCatIds = new Set(snap.categories.map(c => c.id));
-    const newCategories = (template.categories || []).filter(c => !existingCatIds.has(c.id));
+      const existingCatIds = new Set(categories.map(c => c.id));
+      const newCategories = (template.categories || []).filter(c => !existingCatIds.has(c.id));
+      const existingItemIds = new Set(items.map(i => i.id));
+      const newItems = (template.items || []).filter(i => !existingItemIds.has(i.id));
 
-    const existingItemIds = new Set(snap.items.map(i => i.id));
-    const newItems = (template.items || []).filter(i => !existingItemIds.has(i.id));
+      if (!newCategories.length && !newItems.length) {
+        return { categories, items, addedCategories: 0, addedItems: 0 };
+      }
 
-    snap.categories = snap.categories.concat(newCategories);
-    snap.items      = snap.items.concat(newItems);
+      const clonedCategories = JSON.parse(JSON.stringify(newCategories));
+      const clonedItems      = JSON.parse(JSON.stringify(newItems));
+      const mergedCategories = categories.concat(clonedCategories);
+      const mergedItems      = items.concat(clonedItems);
 
-    await db.collection('gear_trip_snapshots').doc(_docId(uid, tripId)).set({
-      categories: snap.categories, items: snap.items,
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+      tx.update(ref, {
+        categories: mergedCategories, items: mergedItems,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
 
-    return { categories: newCategories.length, items: newItems.length };
+      return { categories: mergedCategories, items: mergedItems, addedCategories: clonedCategories.length, addedItems: clonedItems.length };
+    }).catch(e => { console.warn('syncTripFromTemplate:', e); throw e; });
+
+    if (!result) return null;
+    const cache = _forUid(uid)[tripId];
+    if (cache) { cache.categories = result.categories; cache.items = result.items; }
+    return { categories: result.addedCategories, items: result.addedItems };
   }
 
   /* ── Узкое обновление предметов личного списка поездки ──

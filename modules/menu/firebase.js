@@ -28,6 +28,48 @@ const MenuFirebase = (() => {
     } catch (_) {}
   }
 
+  // Добавить/удалить один слот приёма пищи — транзакция читает СВЕЖИЕ days
+  // с сервера и правит только конкретный meal.slots, а не пушит весь
+  // локальный массив days поверх сервера (saveDays выше). Раньше добавление/
+  // удаление позиции (не выбор блюда в уже существующий слот — то узкая
+  // запись через saveSlotItem) шло именно через saveDays: два устройства,
+  // добавляющие РАЗНЫЕ позиции почти одновременно, стирали слот друг друга
+  // (у кого локальная копия days успела отстать — вторая запись). Реальный
+  // баг, найден внешним ревью 2026-09-27. id слота уже сгенерирован на
+  // клиенте (см. MenuState.addSlot) — коллизии практически нет, транзакция
+  // только решает, КУДА его дописать, по актуальным данным.
+  async function addSlotRemote(tripId, dayId, mealId, slot) {
+    const ref = db.collection(COLLECTION).doc(tripId);
+    try {
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const days = snap.data().days || [];
+        const day = days.find(d => d.id === dayId);
+        const meal = day?.meals?.[mealId];
+        if (!meal) return;
+        if (!meal.slots.some(s => s.id === slot.id)) meal.slots.push(slot);
+        tx.update(ref, { days });
+      });
+    } catch (e) { console.warn('addSlotRemote:', e); }
+  }
+
+  async function removeSlotRemote(tripId, dayId, mealId, slotId) {
+    const ref = db.collection(COLLECTION).doc(tripId);
+    try {
+      await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        if (!snap.exists) return;
+        const days = snap.data().days || [];
+        const day = days.find(d => d.id === dayId);
+        const meal = day?.meals?.[mealId];
+        if (!meal) return;
+        meal.slots = meal.slots.filter(s => s.id !== slotId);
+        tx.update(ref, { days });
+      });
+    } catch (e) { console.warn('removeSlotRemote:', e); }
+  }
+
   // Первая генерация дней локально (см. MenuState.initDays) — раньше эта
   // ветка вообще не пушила days в Firestore (только saveDays на пересборку
   // после смены дат). Устройство, первым открывшее новую поездку, строило
@@ -284,5 +326,5 @@ const MenuFirebase = (() => {
     } catch (e) { console.warn('MenuFirebase.renameParticipant:', e); }
   }
 
-  return { subscribe, unsubscribe, saveDays, ensureDaysSeeded, saveSlotItem, saveMealDuty, saveDayAttendance, saveCookDone, importPlan, syncDays, countTail, renameParticipant };
+  return { subscribe, unsubscribe, saveDays, addSlotRemote, removeSlotRemote, ensureDaysSeeded, saveSlotItem, saveMealDuty, saveDayAttendance, saveCookDone, importPlan, syncDays, countTail, renameParticipant };
 })();

@@ -181,7 +181,14 @@ function _getMedkitMembers() {
 // Ряд участников-чипов с прогрессом; себя — первым.
 function rMedkitMemberSwitcher(currentMemberId) {
   var me = window.APP && window.APP.user && window.APP.user.uid;
-  var members = _getMedkitMembers().filter(function(m) { return m.isActive !== false; })
+  // Только участники выбранной поездки (и я сам) — раньше показывались все
+  // люди приложения, в т.ч. те, кто в эту поездку не ехал.
+  var trip = (typeof TripsData !== 'undefined' && medkitTripId) ? TripsData.getById(medkitTripId) : null;
+  var inTrip = trip ? (trip.memberIds || (trip.participants || []).map(function(p) { return p.uid; })).filter(Boolean) : null;
+  var members = _getMedkitMembers().filter(function(m) {
+      if (m.isActive === false) return false;
+      return !inTrip || m.uid === me || inTrip.indexOf(m.uid) >= 0;
+    })
     .slice().sort(function(a, b) { return (b.uid === me) - (a.uid === me); });
   if (!members.length) return '';
   var h = '<div class="mk-people">';
@@ -671,8 +678,9 @@ function rMedkitReference() {
   var h = '<a href="tel:112" class="mk-sos">' + UIUtils.ico('phone') + '<span><b>Позвонить 112</b><small>единый номер экстренных служб</small></span></a>';
   h += '<div class="mk-phones">';
   h += '<a href="tel:103"><b>103</b><small>Скорая</small></a>';
-  h += '<a href="tel:101"><b>101</b><small>МЧС</small></a>';
+  // Порядок и подписи — как в «Безопасности» (103 · 102 · 101).
   h += '<a href="tel:102"><b>102</b><small>Полиция</small></a>';
+  h += '<a href="tel:101"><b>101</b><small>Пожарные</small></a>';
   h += '</div>';
   h += '<label class="mk-search">' + UIUtils.ico('search') + '<input class="si-i" placeholder="Кровотечение, укус, ожог…" aria-label="Поиск ситуации" value="' + escHtml(emergencySearch) + '" oninput="filterEmergency(this.value)"></label>';
   h += '<div class="mk-pills" id="mkEmPills">' + _mkEmPills() + '</div>';

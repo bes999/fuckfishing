@@ -24,6 +24,17 @@ const GearModule = (() => {
   /* ── Инициализация ──
      openTrip — необязательный id поездки, на список которой сразу открыться
      (кнопка снаряги на обложке поездки, если список уже есть). */
+  // Открыли список человека А, затем свой (Б) — если загрузка А почему-то
+  // завершается ПОСЛЕ того, как _uid уже стоит на Б (три await подряд ниже
+  // дают этому достаточно шансов), её результат раньше всё равно
+  // записывался в общие _template/_tripList/_activeTrip поверх уже
+  // открытого Б: экран показывал бы вещи А под именем Б, а следующее
+  // сохранение шаблона записало бы их в профиль Б. Кэш в GearData уже
+  // разделён по uid (см. GearData._forUid), но сам экран ещё читал/писал
+  // общие переменные без проверки, что именно ЭТОТ запуск init() всё ещё
+  // актуален. Реальный баг, найден внешним ревью 2026-09-27. uid — locally
+  // captured параметр (не _uid), сравниваем его с ТЕКУЩИМ _uid после
+  // каждого await.
   async function init(uid, isMe, container, openTrip) {
     _uid        = uid;
     _isMe       = isMe;
@@ -35,17 +46,20 @@ const GearModule = (() => {
     _pickStep   = 'items';
     _open       = {};
     await GearData.ensureLoaded(uid);
+    if (_uid !== uid) return;
     _tripList   = GearData.getTripList(uid);
     _activeTrip = (openTrip && GearData.hasTripSnapshot(uid, openTrip)) ? openTrip : 'template';
     try {
       _template = await GearData.load(uid);
     } catch (err) {
+      if (_uid !== uid) return;
       console.error('GearModule.init: не удалось загрузить снаряжение', err);
       if (_container) {
         _container.innerHTML = '<div class="gear-hint gear-hint-c">Не удалось загрузить снаряжение. Проверь соединение и открой вкладку заново.</div>';
       }
       return;
     }
+    if (_uid !== uid) return;
     _render();
     // «Готовы N из M» нужна сразу при открытии списка поездки, не только
     // при переключении на вкладку «Общее» — подгружаем общий документ.
@@ -56,6 +70,7 @@ const GearModule = (() => {
         console.error('GearData.loadShared:', err);
         _sharedData = { tripId: _activeTrip, categories: [], items: [], checked: [], ready: {} };
       }
+      if (_uid !== uid) return;
       _render();
     }
   }

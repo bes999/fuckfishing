@@ -2668,7 +2668,7 @@ const TripCoverIndex = (() => {
   }
 
   function _rub(val) {
-    return Math.round(val || 0).toLocaleString('ru-RU') + ' ₽';
+    return Math.round(val || 0).toLocaleString('ru-RU') + '\u00A0₽'; // неразрывный: «₽» не уезжает на новую строку
   }
 
 

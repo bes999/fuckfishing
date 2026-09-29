@@ -1387,6 +1387,36 @@ const TripsIndex = (() => {
     };
 
     if (_editMode && _editTripId) {
+      // Состав/имена участников сравниваем с тем, что было загружено ПРИ
+      // ОТКРЫТИИ формы (existing.participants) — чтобы отличить "я тут явно
+      // кого-то добавил/убрал/переименовал в этом сеансе" от "пока форма
+      // была открыта, кто-то ещё вступил по ссылке". Раньше participants/
+      // memberIds писались как есть в драфте ПРИ ЛЮБОМ сохранении формы
+      // (даже правке одного только названия) — если за время редактирования
+      // кто-то вступил по ссылке, обычное сохранение стирало его из
+      // participants, а заодно ложно срабатывало определение "кого-то
+      // исключили" ниже и отзывало ссылку-приглашение. Реальный баг,
+      // найден внешним ревью 2026-09-27. participants/memberIds в общий
+      // update НЕ попадают вовсе — правки состава применяются отдельно,
+      // транзакцией по свежим серверным данным (см.
+      // TripsFirebase.applyParticipantsDiff ниже), а если состав и имена
+      // вообще не менялись в этом сеансе — сервер не трогается.
+      const oldParticipants = existing?.participants || [];
+      const pToAdd = [], pToRemove = [], pRenames = [];
+      const matchedOld = new Set();
+      (trip.participants || []).forEach(p => {
+        const was = p.uid
+          ? oldParticipants.find(o => o.uid === p.uid)
+          : (p.gid ? oldParticipants.find(o => o.gid === p.gid) : null);
+        if (was) {
+          matchedOld.add(was);
+          if (was.name && was.name !== p.name) pRenames.push({ uid: p.uid || null, gid: p.gid || null, newName: p.name });
+        } else {
+          pToAdd.push(p);
+        }
+      });
+      oldParticipants.forEach(o => { if (!matchedOld.has(o)) pToRemove.push({ uid: o.uid || null, gid: o.gid || null }); });
+
       // В режиме редактирования сохраняем существующие данные рейтинга, улова и т.д.
       const update = {
         // Тип можно сменить в мастере — раньше он молча не сохранялся.
@@ -1396,14 +1426,12 @@ const TripsIndex = (() => {
         startDate:   trip.startDate,
         endDate:     trip.endDate,
         rivers:      trip.rivers,
-        participants: trip.participants,
         comment:     trip.comment,
         private:     trip.private,
         inviteRestricted: trip.inviteRestricted,
         status:      trip.status,
         importData:  trip.importData !== undefined ? trip.importData : (existing?.importData || null),
         guideTabs:   trip.guideTabs,
-        memberIds,
       };
       // Рыбалка → экспедиция: чек-листу готовности нужен стартовый набор.
       // Обратно — ничего не стираем, readiness просто не показывается.
@@ -1447,58 +1475,57 @@ const TripsIndex = (() => {
       // поездке») — расходы/платежи ссылаются на него по имени-строке, не по
       // uid, иначе старое и новое имя распадаются на двух разных людей в
       // финансовой истории. Реальный баг, найден внешним ревью 2026-09-27.
-      // Сопоставляем по uid (надёжно для зарегистрированных) или по gid (для
-      // гостей — см. его простановку выше). Совпадение ПОЗИЦИИ в массиве
-      // при той же длине — НЕ доказательство, что это тот же человек: убрать
-      // гостя Аню и добавить гостя Борю — длина не меняется, и по позиции
-      // это выглядело бы как переименование «Аня → Боря», перенося на Борю
-      // Анину финансовую историю. Реальный баг (в более раннем моём же
-      // фиксе), найден внешним ревью 2026-09-27. Без uid/gid — не гадаем,
-      // лучше ничего не перенести, чем перенести не то.
-      const oldParticipants = existing?.participants || [];
-      (trip.participants || []).forEach(p => {
-        const was = p.uid
-          ? oldParticipants.find(o => o.uid === p.uid)
-          : (p.gid ? oldParticipants.find(o => o.gid === p.gid) : null);
-        if (was && was.name && was.name !== p.name) {
-          if (typeof ExpensesFirebase !== 'undefined') {
-            ExpensesFirebase.renameParticipant(_editTripId, was.name, p.name)
-              .catch(e => console.error('rename participant finances:', e));
-          }
-          // Дежурства/явка в Меню — та же проблема, что и у Расходов выше
-          // (хранятся по имени, не по uid). См. комментарий у
-          // MenuFirebase.renameParticipant. Реальный баг, найден внешним
-          // ревью 2026-09-27.
-          if (typeof MenuFirebase !== 'undefined' && MenuFirebase.renameParticipant) {
-            MenuFirebase.renameParticipant(_editTripId, was.name, p.name)
-              .catch(e => console.error('rename participant menu:', e));
-          }
-          // Расписание дороги (trip.travel.<имя>.legs, см. tripcover/
-          // index.js _saveTravelLegs) — тоже лежит по имени, не по uid/gid.
-          // Без переноса оно "прячется" под старым именем — экран ищет по
-          // новому и показывает "не указано", хотя рейсы уже заполнены.
-          // Реальный баг, найден внешним ревью 2026-09-27. FieldValue.delete()
-          // работает и внутри set(...,{merge:true}) (которым пишет
-          // TripsData.updateTrip) — старый ключ реально удаляется, а не
-          // просто перестаёт учитываться.
-          if (existing?.travel && existing.travel[was.name]) {
-            TripsData.updateTrip(_editTripId, {
-              travel: {
-                [was.name]: firebase.firestore.FieldValue.delete(),
-                [p.name]: existing.travel[was.name],
-              },
-            }).catch(e => console.error('rename participant travel:', e));
-          }
+      // pRenames уже посчитан выше (сравнение с тем, что было при открытии
+      // формы, по uid/gid).
+      pRenames.forEach(({ uid, gid, newName }) => {
+        const was = uid
+          ? oldParticipants.find(o => o.uid === uid)
+          : oldParticipants.find(o => o.gid === gid);
+        if (!was) return;
+        if (typeof ExpensesFirebase !== 'undefined') {
+          ExpensesFirebase.renameParticipant(_editTripId, was.name, newName)
+            .catch(e => console.error('rename participant finances:', e));
+        }
+        // Дежурства/явка в Меню — та же проблема, что и у Расходов выше
+        // (хранятся по имени, не по uid). См. комментарий у
+        // MenuFirebase.renameParticipant. Реальный баг, найден внешним
+        // ревью 2026-09-27.
+        if (typeof MenuFirebase !== 'undefined' && MenuFirebase.renameParticipant) {
+          MenuFirebase.renameParticipant(_editTripId, was.name, newName)
+            .catch(e => console.error('rename participant menu:', e));
+        }
+        // Расписание дороги (trip.travel.<имя>.legs, см. tripcover/
+        // index.js _saveTravelLegs) — тоже лежит по имени, не по uid/gid.
+        // Без переноса оно "прячется" под старым именем — экран ищет по
+        // новому и показывает "не указано", хотя рейсы уже заполнены.
+        // Реальный баг, найден внешним ревью 2026-09-27. FieldValue.delete()
+        // работает и внутри set(...,{merge:true}) (которым пишет
+        // TripsData.updateTrip) — старый ключ реально удаляется, а не
+        // просто перестаёт учитываться.
+        if (existing?.travel && existing.travel[was.name]) {
+          TripsData.updateTrip(_editTripId, {
+            travel: {
+              [was.name]: firebase.firestore.FieldValue.delete(),
+              [newName]: existing.travel[was.name],
+            },
+          }).catch(e => console.error('rename participant travel:', e));
         }
       });
-      // Кого-то исключили (был в memberIds, в новом списке уже нет) —
-      // отзываем ссылку-приглашение поездки: без этого исключённый мог
-      // вернуться сам, просто сохранив у себя старую ссылку (id поездки в
-      // ней не менялся никогда, отозвать было нечем). Реальная дыра,
-      // найдена внешним ревью 2026-09-27.
-      const oldMemberIds = existing?.memberIds || [];
-      if (oldMemberIds.some(uid => uid && !memberIds.includes(uid))) {
-        TripsData.regenerateInviteToken(_editTripId).catch(e => console.error('regenerateInviteToken:', e));
+      // Применяем добавления/удаления/переименования состава к СВЕЖИМ
+      // серверным participants/memberIds одной транзакцией — не тем, что
+      // было в драфте формы (см. комментарий у pToAdd/pToRemove выше).
+      // Кого-то исключили — отзываем ссылку-приглашение: без этого
+      // исключённый мог вернуться сам по старой ссылке (id поездки в ней не
+      // менялся никогда, отозвать было нечем). Реальная дыра, найдена
+      // внешним ревью 2026-09-27.
+      if (pToAdd.length || pToRemove.length || pRenames.length) {
+        TripsFirebase.applyParticipantsDiff(_editTripId, { toAdd: pToAdd, toRemove: pToRemove, renames: pRenames, ownerUid })
+          .then(() => {
+            if (pToRemove.length) {
+              TripsData.regenerateInviteToken(_editTripId).catch(e => console.error('regenerateInviteToken:', e));
+            }
+          })
+          .catch(e => console.error('applyParticipantsDiff:', e));
       }
     } else {
       trip.ownerId = ownerUid;
@@ -1511,6 +1538,15 @@ const TripsIndex = (() => {
       MenuFirebase.importPlan(savedId, trip.startDate, trip.endDate, _importedData.menu)
         .catch(e => console.error('menu importPlan:', e));
     }
+    // _closeCreate() ниже сбрасывает _editMode/_editTripId — если читать
+    // _editMode ПОСЛЕ неё (было раньше), проверка "не спрашиваем при
+    // редактировании" всегда видела false, даже когда мы только что
+    // РЕДАКТИРОВАЛИ поездку. У отредактированной поездки с одним
+    // участником это открывало ОБЩЕЕ приглашение в приложение (trip.id у
+    // объекта trip в режиме правки не проставлен — MembersRender.showInvite
+    // получала undefined) вместо ссылки в саму поездку. Реальный баг,
+    // найден внешним ревью 2026-09-27.
+    const wasEditMode = _editMode;
     _closeCreate();
     render();
     if (typeof HomeIndex !== 'undefined') HomeIndex.refresh();
@@ -1521,7 +1557,7 @@ const TripsIndex = (() => {
     // реально приглашённого человека. Не спрашиваем при редактировании
     // (там это уже не "новая" поездка) и не лезем, если реальных
     // участников (с uid) и так уже минимум двое.
-    if (!_editMode && memberIds.length < 2 && typeof MembersRender !== 'undefined') {
+    if (!wasEditMode && memberIds.length < 2 && typeof MembersRender !== 'undefined') {
       MembersRender.showInvite(trip.id, trip.name);
     }
   }

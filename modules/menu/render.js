@@ -611,7 +611,7 @@ const MenuRender = (() => {
         // Выбор в пустую позицию — новая запись в ленте; замену уже
         // выбранного блюда ("Заменить блюдо") в ленту не пишем.
         const wasEmpty = !_findMeal(dayId, mealId)?.slots.find(s => s.id === slotId)?.item;
-        // Точечная запись только этого слота, а не всего _syncFirebase() —
+        // Точечная запись только этого слота, а не всего дня целиком —
         // см. MenuFirebase.saveSlotItem про гонку при одновременном выборе.
         MenuState.updateSlot(_tripId, dayId, mealId, slotId, item);
         MenuFirebase.saveSlotItem(_tripId, slotId, item);
@@ -682,9 +682,14 @@ const MenuRender = (() => {
         // (см. saveSlotItem), а сам слот в серверном days так и не
         // появится. Следующий же снапшот из Firestore (в т.ч. эхо этой
         // самой узкой записи) перетрёт локальный days старым — выбор
-        // тихо исчезнет. Поэтому создание слота — полноценный saveDays,
-        // а не только точечная правка.
-        _syncFirebase();
+        // тихо исчезнет. Поэтому создание слота пушится отдельно, не
+        // только точечной правкой slotItems. Но НЕ пушем весь days из
+        // локальной копии (было раньше) — она могла отстать от другого
+        // устройства, добавившего СВОЮ позицию почти одновременно, и
+        // стереть её. addSlotRemote — транзакция по свежим серверным
+        // days, дописывает только этот слот. Реальный баг, найден внешним
+        // ревью 2026-09-27.
+        MenuFirebase.addSlotRemote(_tripId, dayId, mealId, slot);
         _rerender();
         _showPicker(dayId, mealId, slot.id, type);
       } else {
@@ -787,7 +792,9 @@ const MenuRender = (() => {
     const hasEmptyTwin = meal.slots.some(s => s.id !== slotId && s.type === slot.type && !s.item);
     if (!isBase || hasEmptyTwin) {
       MenuState.removeSlot(_tripId, dayId, mealId, slotId);
-      _syncFirebase();
+      // removeSlotRemote — та же причина, что у addSlotRemote выше: не
+      // пушим весь локальный days поверх сервера, только этот слот.
+      MenuFirebase.removeSlotRemote(_tripId, dayId, mealId, slotId);
     } else {
       MenuState.updateSlot(_tripId, dayId, mealId, slotId, null);
       MenuFirebase.saveSlotItem(_tripId, slotId, null);
@@ -1286,11 +1293,6 @@ const MenuRender = (() => {
       return null;
     }
     return { added, total: allIngredients.length };
-  }
-
-  function _syncFirebase() {
-    const days = MenuState.getDays(_tripId);
-    if (days) MenuFirebase.saveDays(_tripId, days);
   }
 
   function setDays(days) {

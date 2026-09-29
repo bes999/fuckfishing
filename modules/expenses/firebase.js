@@ -109,12 +109,25 @@ const ExpensesFirebase = (() => {
   // форма погашения закрывалась и считала долг погашенным локально, даже
   // если запись в Firestore не удалась. Реальный баг, найден внешним ревью
   // 2026-09-27.
+  //
+  // entry._id — стабильный id, сгенерированный ОДИН РАЗ при открытии формы
+  // погашения (см. modules/expenses/render.js _showSettleForm), а не
+  // случайный от .add() (было раньше). Пишем именно по нему: повторный
+  // вызов с тем же id (двойной клик — защита на кнопке через withBusyButton
+  // не единственная линия обороны) просто перезапишет ТОТ ЖЕ документ, а не
+  // создаст второй платёж. Реальный баг (двойной клик по «Деньги дошли»
+  // создавал два погашения), найден внешним ревью 2026-09-27. Сумма ≤ 0 не
+  // пишется вовсе — проверяется и в форме, но дублируем здесь на случай
+  // прямого вызова в обход UI.
   function addSettlement(tripId, entry) {
+    if (!(parseFloat(entry?.amount) > 0)) return Promise.reject(new Error('settlement amount must be positive'));
     const data = Object.assign({}, entry);
+    const id = data._id;
     delete data._id;
     data.createdAt = data.createdAt || new Date().toISOString();
-    return _ref(tripId).collection('settlements').add(data)
-      .then(ref => ref.id)
+    const ref = id ? _ref(tripId).collection('settlements').doc(id) : _ref(tripId).collection('settlements').doc();
+    return ref.set(data)
+      .then(() => ref.id)
       .catch(e => { console.warn('addSettlement:', e); throw e; });
   }
 
@@ -136,9 +149,15 @@ const ExpensesFirebase = (() => {
       .catch(e => { console.warn('addBudgetLine:', e); throw e; });
   }
 
+  // .set(patch,{merge:true}) (было раньше) молча СОЗДАЁТ документ, если
+  // его уже нет — тот же баг, что уже чинили у updateExpense (см. там):
+  // если строку бюджета удалили, пока у кого-то была открыта её форма
+  // редактирования, "Сохранить" воскрешал бы её заново, неполной (без
+  // createdBy/createdAt). Реальный баг, найден внешним ревью 2026-09-27.
+  // .update() падает с not-found вместо этого.
   function updateBudgetLine(tripId, id, patch) {
     return _ref(tripId).collection('budget').doc(id)
-      .set(patch, { merge: true })
+      .update(patch)
       .catch(e => { console.warn('updateBudgetLine:', e); throw e; });
   }
 
@@ -212,6 +231,7 @@ const ExpensesFirebase = (() => {
     const col = _ref(tripId);
     const expCol = col.collection('expenses');
     const settleCol = col.collection('settlements');
+    const budgetCol = col.collection('budget');
 
     const paidByFix = expCol.where('paidBy', '==', oldName).get()
       .then(snap => Promise.all(snap.docs.map(d => d.ref.update({ paidBy: newName }))));
@@ -228,7 +248,40 @@ const ExpensesFirebase = (() => {
     const toFix = settleCol.where('toName', '==', oldName).get()
       .then(snap => Promise.all(snap.docs.map(d => d.ref.update({ toName: newName }))));
 
-    return Promise.all([paidByFix, participantsFix, fromFix, toFix])
+    // «Бюджет до поездки» — та же схема участников (participants[]), что и
+    // у расходов, но раньше в перенос не входила: суммы бюджета оставались
+    // разбиты на старое имя. Реальный баг, найден внешним ревью 2026-09-27.
+    const budgetFix = budgetCol.where('participants', 'array-contains', oldName).get()
+      .then(snap => Promise.all(snap.docs.map(d => {
+        const arr = (d.data().participants || []).map(n => n === oldName ? newName : n);
+        return d.ref.update({ participants: arr });
+      })));
+
+    // «Делить только на этого человека» (категория.splitDefault) хранится
+    // прямо на поездке (expenseCategories[].splitDefault), не в отдельной
+    // коллекции — старое имя там тоже оставалось висеть: getCategorySplitDefault
+    // отфильтровывает имена, которых нет среди текущих участников, и
+    // настройка молча съезжала на "все", как только переименованный
+    // переставал совпадать по старому имени. Реальный баг, найден внешним
+    // ревью 2026-09-27. Транзакция — та же коллекция, что правит
+    // saveCategories, читаем свежую версию, а не мимо неё.
+    const categoriesFix = firebase.firestore().runTransaction(async tx => {
+      const tripRef = firebase.firestore().collection('trips').doc(tripId);
+      const snap = await tx.get(tripRef);
+      if (!snap.exists) return;
+      const cats = Array.isArray(snap.data().expenseCategories) ? snap.data().expenseCategories : [];
+      let changed = false;
+      const newCats = cats.map(c => {
+        if (Array.isArray(c.splitDefault) && c.splitDefault.includes(oldName)) {
+          changed = true;
+          return { ...c, splitDefault: c.splitDefault.map(n => n === oldName ? newName : n) };
+        }
+        return c;
+      });
+      if (changed) tx.update(tripRef, { expenseCategories: newCats });
+    });
+
+    return Promise.all([paidByFix, participantsFix, fromFix, toFix, budgetFix, categoriesFix])
       .catch(e => console.warn('renameParticipant:', e));
   }
 

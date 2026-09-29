@@ -202,7 +202,7 @@ const MembersRender = (() => {
         <div class="mb-hero-txt">
           <span class="mb-hero-name">${_esc(p.displayName)}</span>
           <span class="mb-hero-sub">${[nick, p.role === 'organizer' ? 'админ' : 'участник'].filter(Boolean).join(' · ')}</span>
-          ${p.phone ? `<a class="mb-hero-phone" href="tel:${_esc(p.phone.replace(/[^\d+]/g, ''))}">${_esc(p.phone)}</a>` : ''}
+          ${p.phone ? `<a class="mb-hero-phone" href="tel:${_esc(p.phone.replace(/[^\d+]/g, ''))}">${_esc(_fmtPhone(p.phone))}</a>` : ''}
           ${tgLine || otherMsgrs ? `<span class="mb-hero-msgr">${tgLine}${otherMsgrs}</span>` : ''}
           ${p.email ? `<span class="mb-hero-mail">${_esc(p.email)}</span>` : ''}
         </div>
@@ -274,7 +274,7 @@ const MembersRender = (() => {
           <div class="mb-emerg"${isMe ? ` data-action="emerg-edit" data-idx="${i}"` : ''}>
             <div class="mb-emerg-info">
               <span class="mb-emerg-name">${_esc(c.name)}</span>
-              <span class="mb-emerg-phone">${_esc(c.phone)}</span>
+              <span class="mb-emerg-phone">${_esc(_fmtPhone(c.phone))}</span>
               ${_msgrBadges(c) || '<span class="mb-muted">мессенджеры не указаны</span>'}
             </div>
             <a class="mb-call" href="tel:${_esc(String(c.phone || '').replace(/[^\d+]/g, ''))}" aria-label="Позвонить">${UIUtils.ico('phone')}</a>
@@ -692,6 +692,17 @@ const MembersRender = (() => {
     return date <= warnBy.toISOString().slice(0, 10) ? 'warn' : '';
   }
   function _ageWord(n) { return _plural(n, 'год', 'года', 'лет'); }
+
+  // Российский номер — одним видом везде: «+7 999 989-58-88». Хранится как
+  // ввели (контакты — часто слитно «8999…»), форматируем только при показе.
+  function _fmtPhone(raw) {
+    const d = String(raw || '').replace(/\D/g, '');
+    if (d.length === 11 && (d[0] === '7' || d[0] === '8')) {
+      return `+7 ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9, 11)}`;
+    }
+    if (d.length === 10 && d[0] === '9') return `+7 ${d.slice(0, 3)} ${d.slice(3, 6)}-${d.slice(6, 8)}-${d.slice(8, 10)}`;
+    return String(raw || '');
+  }
 
   function _esc(s) {
     return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');

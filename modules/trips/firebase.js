@@ -131,12 +131,28 @@ const TripsFirebase = (() => {
   // гонка, найдена внешним ревью 2026-09-27). Транзакция читает СВЕЖУЮ
   // серверную версию и пишет в одной атомарной операции — Firestore сам
   // повторяет транзакцию при конфликте, потерянных записей не бывает.
-  function addParticipant(tripId, { uid, name } = {}) {
+  // requireToken — только для вступления по ссылке-приглашению (не для
+  // "добавить уже зарегистрированного из профиля" — там organiser явно
+  // выбирает человека сам, токен ни при чём). Лист подтверждения
+  // (index.html _processJoinInvite) мог провисеть открытым сколько угодно
+  // между проверкой токена/ограничения и самим нажатием "Присоединиться" —
+  // за это время организатор успевал отозвать ссылку или включить
+  // "Добавлять людей могу только я", а транзакция ничего из этого не
+  // перепроверяла и всё равно добавляла участника. Реальная дыра (TOCTOU),
+  // найдена внешним ревью 2026-09-27. Проверяем по СВЕЖИМ данным здесь же,
+  // в момент самой записи, а не по тому, что было на экране при открытии.
+  function addParticipant(tripId, { uid, name, requireToken } = {}) {
     const ref = _col().doc(tripId);
     return firebase.firestore().runTransaction(async tx => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new Error('trip not found');
       const data = snap.data() || {};
+
+      if (requireToken !== undefined) {
+        if (!requireToken || data.inviteToken !== requireToken) throw new Error('invite-token-invalid');
+        if (data.inviteRestricted) throw new Error('invite-restricted');
+      }
+
       const participants = Array.isArray(data.participants) ? data.participants : [];
       const memberIds = Array.isArray(data.memberIds) ? data.memberIds : [];
 
@@ -166,6 +182,53 @@ const TripsFirebase = (() => {
 
       tx.update(ref, { participants: newParticipants, memberIds: newMemberIds });
     }).catch(e => { console.warn('addParticipant:', e); throw e; });
+  }
+
+  // Применяет РАЗНИЦУ в составе участников (добавили/убрали/переименовали
+  // в форме редактирования поездки) к СВЕЖИМ серверным participants, а не
+  // перезаписывает весь массив локальным драфтом формы. Раньше форма
+  // редактирования писала participants/memberIds ЦЕЛИКОМ тем, что было в
+  // драфте при открытии формы — если, пока форма была открыта, кто-то
+  // вступил по ссылке-приглашению, обычное сохранение (даже правка одного
+  // только названия) стирало нового участника из participants и заодно
+  // ложно срабатывало определение "кого-то исключили" (отзывало ссылку-
+  // приглашение). Реальный баг, найден внешним ревью 2026-09-27.
+  // toAdd/toRemove/renames — {uid?, gid?, name?, newName?}[], вычисленные
+  // на клиенте сравнением драфта с тем, что было загружено ПРИ ОТКРЫТИИ
+  // формы (см. modules/trips/index.js _save) — сама диффовка (кто реально
+  // добавлен/убран/переименован ПОЛЬЗОВАТЕЛЕМ в этом сеансе) происходит
+  // там; здесь только применение этой разницы к актуальным данным.
+  function applyParticipantsDiff(tripId, { toAdd, toRemove, renames, ownerUid } = {}) {
+    if (!(toAdd?.length || toRemove?.length || renames?.length)) return Promise.resolve(null);
+    const ref = _col().doc(tripId);
+    return firebase.firestore().runTransaction(async tx => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new Error('trip not found');
+      const data = snap.data() || {};
+      let participants = Array.isArray(data.participants) ? data.participants.slice() : [];
+
+      (renames || []).forEach(({ uid, gid, newName }) => {
+        const idx = participants.findIndex(p => (uid && p.uid === uid) || (!uid && gid && p.gid === gid));
+        if (idx >= 0) participants[idx] = { ...participants[idx], name: newName };
+      });
+
+      (toRemove || []).forEach(({ uid, gid }) => {
+        participants = participants.filter(p => !((uid && p.uid === uid) || (!uid && gid && p.gid === gid)));
+      });
+
+      (toAdd || []).forEach(p => {
+        const already = participants.some(o => (p.uid && o.uid === p.uid) || (!p.uid && p.gid && o.gid === p.gid));
+        if (!already) participants.push(p);
+      });
+
+      const memberIds = [...new Set([
+        ...participants.filter(p => p.uid).map(p => p.uid),
+        ...(ownerUid ? [ownerUid] : []),
+      ])];
+
+      tx.update(ref, { participants, memberIds });
+      return { participants, memberIds };
+    }).catch(e => { console.warn('applyParticipantsDiff:', e); throw e; });
   }
 
   // Гости без аккаунта (вставка нескольких имён через запятую) — та же
@@ -279,5 +342,5 @@ const TripsFirebase = (() => {
     await batch.commit();
   }
 
-  return { listen, stopListening, ready, addTrip, updateTrip, addParticipant, addGuestNames, ensureInviteToken, deleteTrip };
+  return { listen, stopListening, ready, addTrip, updateTrip, addParticipant, applyParticipantsDiff, addGuestNames, ensureInviteToken, deleteTrip };
 })();

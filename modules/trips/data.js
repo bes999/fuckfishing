@@ -210,9 +210,9 @@ const TripsData = (() => {
   // ждём подписку (listen) на обновление локального кэша — тот же
   // оптимистичный паттерн, что и у остального data.js, просто без ручной
   // мутации локального объекта, раз источник правды теперь транзакция.
-  function addParticipant(tripId, { uid, name } = {}) {
+  function addParticipant(tripId, { uid, name, requireToken } = {}) {
     if (!getById(tripId)) return Promise.reject(new Error('trip not found'));
-    return TripsFirebase.addParticipant(tripId, { uid, name });
+    return TripsFirebase.addParticipant(tripId, { uid, name, requireToken });
   }
 
   // --- Добавить сразу несколько гостей без аккаунта одним запросом (вставка

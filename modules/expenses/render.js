@@ -521,7 +521,14 @@ const ExpensesRender = (() => {
           try {
             await ExpensesFirebase.updateBudgetLine(_tripId, lineId, entry);
           } catch (err) {
-            alert('Не удалось сохранить строку. Проверь соединение и попробуй ещё раз.');
+            // Откатываем оптимистичную правку — иначе список за этой формой
+            // на следующем рендере показал бы будто сохранение прошло. Тот
+            // же паттерн, что уже стоит у формы расхода/погашения.
+            ExpensesState.updateBudgetLine(_tripId, lineId, editing);
+            alert(err?.code === 'not-found'
+              ? 'Эту строку бюджета уже удалили — сохранить правку некуда.'
+              : 'Не удалось сохранить строку. Проверь соединение и попробуй ещё раз.');
+            refresh();
             return;
           }
         } else {
@@ -530,7 +537,9 @@ const ExpensesRender = (() => {
             await ExpensesFirebase.addBudgetLine(_tripId, entry);
             ActivityLog.add(_tripId, 'expense', `добавил в бюджет: ${title} — ${_rub(amt)}`);
           } catch (err) {
+            ExpensesState.removeBudgetLine(_tripId, entry._id);
             alert('Не удалось сохранить строку. Проверь соединение и попробуй ещё раз.');
+            refresh();
             return;
           }
         }
@@ -819,6 +828,11 @@ const ExpensesRender = (() => {
 
   function _showSettleForm(fromName, toName, amount) {
     document.getElementById('exp-settle-overlay')?.remove();
+    // Один id на всё время жизни этой формы (не на каждый клик) — см.
+    // ExpensesFirebase.addSettlement: пишет по нему напрямую, так что
+    // повторная попытка (двойной клик) перезаписывает тот же документ,
+    // а не создаёт второй платёж.
+    const settleId = 'settle_' + Date.now() + '_' + Math.random().toString(36).slice(2);
 
     const overlay = document.createElement('div');
     overlay.id        = 'exp-settle-overlay';
@@ -860,35 +874,51 @@ const ExpensesRender = (() => {
     overlay.querySelector('#exp-sett-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
 
-    overlay.querySelector('#exp-sett-save').addEventListener('click', async () => {
-      const amt  = parseFloat(overlay.querySelector('#exp-sett-amt').value) || 0;
-      const date = overlay.querySelector('#exp-sett-date').value;
-      const note = overlay.querySelector('#exp-sett-note').value.trim();
-      if (!amt) { overlay.querySelector('#exp-sett-amt').focus(); return; }
+    const settleSaveBtn = overlay.querySelector('#exp-sett-save');
+    settleSaveBtn.addEventListener('click', () => {
+      // withBusyButton отключает кнопку на время запроса — раньше кнопка
+      // оставалась активной, пока первая запись ещё сохранялась, и двойной
+      // клик/тап успевал уйти второй попыткой раньше, чем пришёл ответ на
+      // первую: долг Б→А на 100 ₽ после двух нажатий превращался в долг
+      // А→Б на 100 ₽ (два зачтённых платежа вместо одного). Реальный баг,
+      // найден внешним ревью 2026-09-27. settleId — стабильный id этой
+      // формы (см. выше), вторая линия защиты: даже если кнопка всё же
+      // не спасла, ExpensesFirebase.addSettlement пишет по одному и тому
+      // же id, а не создаёт новый документ на каждый вызов.
+      UIUtils.withBusyButton(settleSaveBtn, async () => {
+        const amt  = parseFloat(overlay.querySelector('#exp-sett-amt').value) || 0;
+        const date = overlay.querySelector('#exp-sett-date').value;
+        const note = overlay.querySelector('#exp-sett-note').value.trim();
+        // amt <= 0 (было !amt) — !amt пропускал отрицательные суммы:
+        // "-100" отклонялось бы только нулём, а отрицательное погашение в
+        // расчёте не уменьшает долг, а увеличивает его. Реальный баг,
+        // найден внешним ревью 2026-09-27.
+        if (amt <= 0) { overlay.querySelector('#exp-sett-amt').focus(); return; }
 
-      const entry = ExpensesData.normalizeSettlement(
-        { fromName, toName, amount: amt, date, note },
-        'tmp_' + Date.now()
-      );
-      // Раньше запись в Firestore не ожидалась (и addSettlement глотал
-      // ошибку без re-throw) — форма закрывалась сразу по локальному
-      // (оптимистичному) состоянию, и локальный расчёт уже показывал долг
-      // погашенным, даже если перевод никуда не попал — на другом
-      // устройстве или после обновления страницы долг возвращался. Тот же
-      // баг, что уже чинили для формы расхода выше. Реальный баг, найден
-      // внешним ревью 2026-09-27.
-      ExpensesState.addSettlement(_tripId, entry);
-      try {
-        await ExpensesFirebase.addSettlement(_tripId, entry);
-      } catch (err) {
-        ExpensesState.removeSettlement(_tripId, entry._id);
-        alert('Не удалось сохранить погашение. Проверь соединение и попробуй ещё раз.');
+        const entry = ExpensesData.normalizeSettlement(
+          { fromName, toName, amount: amt, date, note },
+          settleId
+        );
+        // Раньше запись в Firestore не ожидалась (и addSettlement глотал
+        // ошибку без re-throw) — форма закрывалась сразу по локальному
+        // (оптимистичному) состоянию, и локальный расчёт уже показывал долг
+        // погашенным, даже если перевод никуда не попал — на другом
+        // устройстве или после обновления страницы долг возвращался. Тот же
+        // баг, что уже чинили для формы расхода выше. Реальный баг, найден
+        // внешним ревью 2026-09-27.
+        ExpensesState.addSettlement(_tripId, entry);
+        try {
+          await ExpensesFirebase.addSettlement(_tripId, entry);
+        } catch (err) {
+          ExpensesState.removeSettlement(_tripId, entry._id);
+          alert('Не удалось сохранить погашение. Проверь соединение и попробуй ещё раз.');
+          refresh();
+          return;
+        }
+
+        overlay.remove();
         refresh();
-        return;
-      }
-
-      overlay.remove();
-      refresh();
+      });
     });
   }
 
@@ -1229,7 +1259,7 @@ const ExpensesRender = (() => {
   }
 
   function _rub(val) {
-    return Math.round(val || 0).toLocaleString('ru-RU') + ' ₽';
+    return Math.round(val || 0).toLocaleString('ru-RU') + '\u00A0₽'; // неразрывный: «₽» не уезжает на новую строку
   }
 
   function _esc(s) {

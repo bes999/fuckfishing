@@ -178,7 +178,7 @@ const PurchasesRender = (() => {
   }
 
   function _fmtRub(n) {
-    return (Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
+    return (Number(n) || 0).toLocaleString('ru-RU') + '\u00A0₽';
   }
 
   return { init, destroy };

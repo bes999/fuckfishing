@@ -480,10 +480,9 @@
       const trip = TripsData.getById(tripId);
       if (!trip) { alert('Ссылка на поездку недействительна — возможно, поездку удалили.'); return; }
 
-      const uid  = window.APP?.user?.uid;
-      const name = window.APP?.profile?.displayName || '';
+      const uidAtOpen = window.APP?.user?.uid;
 
-      if (uid && (trip.memberIds || []).includes(uid)) {
+      if (uidAtOpen && (trip.memberIds || []).includes(uidAtOpen)) {
         TripCoverIndex.show(tripId);
         return;
       }
@@ -496,6 +495,14 @@
       // оба случая. И сама ссылка больше не обходит «Добавлять людей могу
       // только я» — раньше этот переключатель самовступление по ссылке
       // вообще не проверял. Реальная дыра, найдена внешним ревью 2026-09-27.
+      //
+      // Эти же две проверки — ниже ЕЩЁ РАЗ, по свежим данным внутри самой
+      // транзакции (см. TripsFirebase.addParticipant): лист подтверждения
+      // может провисеть открытым сколько угодно, и за это время организатор
+      // успеет отозвать ссылку или включить ограничение — проверка здесь,
+      // до открытия листа, только чтобы не показывать его совсем уж
+      // напрасно, а не единственная защита. Реальная дыра (TOCTOU), найдена
+      // внешним ревью 2026-09-27.
       if (!token || !trip.inviteToken || token !== trip.inviteToken) {
         alert('Ссылка на поездку недействительна — попроси новую.');
         return;
@@ -509,10 +516,27 @@
         title: 'Приглашение в поездку', okLabel: 'Присоединиться', danger: false
       }).then(ok => {
         if (!ok) return;
-        TripsData.addParticipant(tripId, { uid, name })
+        // Аккаунт мог смениться, пока лист был открыт — берём uid/имя
+        // ЗАНОВО, а не из замыкания на момент открытия. Если аккаунт
+        // реально сменился — не добавляем никого молча (ни прежнего, ни
+        // нового без осознанного подтверждения именно им), просто отменяем
+        // это конкретное подтверждение.
+        const uidNow = window.APP?.user?.uid;
+        if (uidNow !== uidAtOpen) return;
+        const nameNow = window.APP?.profile?.displayName || '';
+        TripsData.addParticipant(tripId, { uid: uidNow, name: nameNow, requireToken: token })
           .then(() => {
             if (typeof ActivityLog !== 'undefined') ActivityLog.add(tripId, 'member', 'присоединился к поездке');
             TripCoverIndex.show(tripId);
+          })
+          .catch(e => {
+            if (e?.message === 'invite-token-invalid') {
+              alert('Ссылка на поездку уже недействительна — попроси новую.');
+            } else if (e?.message === 'invite-restricted') {
+              alert('В этой поездке добавлять участников может только организатор — попроси его добавить тебя.');
+            } else {
+              alert('Не удалось присоединиться. Проверь соединение и попробуй ещё раз.');
+            }
           });
       });
     }

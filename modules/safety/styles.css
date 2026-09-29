@@ -313,3 +313,21 @@
 
 /* Сетка v2: плашка-предупреждение — как у заметок-плашек в макете (16). */
 .sf-warn-banner { padding: 16px; }
+
+/* ── v2 (макет V2Safety) ── заголовки разделов — как в Гиде («Паспорта»,
+   «Заметки группы»): 20px жирным, обычным регистром, а не мелкими капсом. */
+.sf-sec-label {
+  text-transform: none; letter-spacing: normal;
+  font-size: 20px; font-weight: 700; color: var(--label);
+  padding: 8px 4px 0; margin: 10px 0 10px;
+}
+/* Плашка про медведей: без полосы слева (её нет в макете), тона темы,
+   текст — обычный вторичный, заголовок акцентом. Жёсткие #FFF3CD/#533F03
+   в светлой теме смотрелись чужеродно. */
+.sf-warn-banner, [data-theme="dark"] .sf-warn-banner {
+  border-left: none; border-radius: 20px; background: var(--accent-bg);
+  padding: 16px; margin-bottom: 14px;
+}
+.sf-warn-title, [data-theme="dark"] .sf-warn-title { color: var(--label); font-size: 16px; }
+.sf-warn-text, [data-theme="dark"] .sf-warn-text { color: var(--label2); font-size: 14px; line-height: 1.45; }
+.sf-warn-icon { color: var(--accent); }
