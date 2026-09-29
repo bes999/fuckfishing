@@ -203,11 +203,18 @@ const ExpensesRender = (() => {
 
   // Строка целиком — кнопка «открыть/редактировать». Удаление — внутри
   // листа (корзина на строке удаляла в одно касание, без подтверждения).
+  // _esc() на _id ниже (и у settlement/budget дальше в файле) — это id
+  // документа Firestore, не пользовательский текст, но ничего не мешает
+  // создать документ с произвольным id напрямую через API, в обход
+  // приложения (.add() с авто-id — это только клиентское соглашение, не
+  // ограничение правил); без экранирования такой id ломает HTML-атрибут и
+  // добавляет чужой обработчик события на страницу. Реальная дыра, найдена
+  // внешним ревью 2026-09-27 (там же — заметки, тот же класс).
   function _expenseRow(e, catMap, members) {
     const cat = catMap[e.category] || { title: e.category, icon: 'ti-dots' };
     const split = _splitText(e, members);
     return `
-      <button type="button" class="exp-entry" data-action="edit-expense" data-id="${e._id}">
+      <button type="button" class="exp-entry" data-action="edit-expense" data-id="${_esc(e._id)}">
         <span class="exp-entry__ico"><i class="ti ${_catIco(cat.icon)}" aria-hidden="true"></i></span>
         <span class="exp-entry__info">
           <span class="exp-entry__top">
@@ -309,7 +316,7 @@ const ExpensesRender = (() => {
               <span class="exp-hist__who"><b>${_esc(s.fromName)}</b> перевёл <b>${_esc(s.toName)}</b> · ${_rub(s.amount)}</span>
               <span class="exp-hist__meta">${_esc(_fmtDay(s.date))}${s.note ? ' · ' + _esc(s.note) : ''}</span>
             </div>
-            <button type="button" class="exp-hist__undo" data-action="del-settlement" data-id="${s._id}">Отменить</button>
+            <button type="button" class="exp-hist__undo" data-action="del-settlement" data-id="${_esc(s._id)}">Отменить</button>
           </div>`).join('')}</div>`;
 
     return `
@@ -411,7 +418,7 @@ const ExpensesRender = (() => {
     const sub = all ? 'на всех' : `на ${n} чел.`;
     return `
       <div class="exp-cat-item exp-budget-item">
-        <button type="button" class="exp-cat-item__main" data-action="edit-budget" data-id="${l._id}">
+        <button type="button" class="exp-cat-item__main" data-action="edit-budget" data-id="${_esc(l._id)}">
           <span class="exp-cat-item__ico">${UIUtils.ico('cash')}</span>
           <span class="exp-cat-item__body">
             <span class="exp-cat-item__title">${_esc(l.title)}</span>
@@ -419,7 +426,7 @@ const ExpensesRender = (() => {
           </span>
           <span class="exp-budget-item__amt">${_rub(l.amount)}</span>
         </button>
-        <button type="button" class="exp-cat-item__del" data-action="del-budget" data-id="${l._id}" aria-label="Удалить строку бюджета">Удалить</button>
+        <button type="button" class="exp-cat-item__del" data-action="del-budget" data-id="${_esc(l._id)}" aria-label="Удалить строку бюджета">Удалить</button>
       </div>`;
   }
 
@@ -1230,10 +1237,10 @@ const ExpensesRender = (() => {
   }
 
   // Иконка категории — класс Tabler из данных (может лежать в Firestore).
-  // ti-parking в урезанном шрифте нет — показываем машину, данные не трогаем.
+  // ti-parking в урезанном шрифте нет — показываем метку (машина уже у «Транспорта»), данные не трогаем.
   function _catIco(icon) {
     if (!icon) return 'ti-tag';
-    return icon === 'ti-parking' ? 'ti-car' : icon;
+    return icon === 'ti-parking' ? 'ti-map-pin' : icon;
   }
 
   function _catMap() {

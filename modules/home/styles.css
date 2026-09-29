@@ -475,3 +475,7 @@
 }
 .home-catch-chip { padding: 6px 12px; border-radius: var(--radius-sm); background: var(--bg3); font-size: 14px; color: var(--label3); }
 .home-catch-chip b { color: var(--label); }
+
+/* Быстрые действия во время поездки — на поле страницы, как карточка
+   поездки над ними (раньше шли от края до края экрана и обрезались). */
+.home-quick { margin: 14px var(--page-x) 0; }

@@ -500,7 +500,7 @@ const GearRender = (() => {
   }
 
   function _wizHead(tripName, sub) {
-    return _head({ backAction: 'gear-pick-mode-cancel', backIcon: 'x', backLabel: 'Отмена', title: 'Список на ' + tripName, sub: sub });
+    return _head({ backAction: 'gear-pick-mode-cancel', backIcon: 'x', backLabel: 'Отмена', title: 'Список на поездку', sub: tripName + ' · ' + sub }); // название не склоняется («на Волчиха») — вынесено в подзаголовок
   }
 
   function pickView(tpl, selected, tripName, open) {

@@ -1782,7 +1782,8 @@ const TripCoverIndex = (() => {
       <section class="tc-card tc-welcome" id="g-welcome-card">
         <h2 class="tc-welcome-title">Ты в поездке «${_esc(trip.name)}»</h2>
         <div class="tc-welcome-rows">
-          ${_linkRow({ action: 'welcome-travel', icon: 'plane', title: 'Мои даты приезда и отъезда' })}
+          ${(trip.participants || []).some(p => p.uid === window.APP?.user?.uid && p.travelSeparate)
+              ? _linkRow({ action: 'welcome-travel', icon: 'plane', title: 'Мои даты приезда и отъезда' }) : ''}
           ${_linkRow({ action: 'welcome-medical', icon: 'first-aid-kit', title: 'Аллергии и медданные' })}
           ${_linkRow({ action: 'welcome-gear', icon: 'backpack', title: 'Что я везу' })}
         </div>
@@ -2259,16 +2260,18 @@ const TripCoverIndex = (() => {
   function _showNoteActions(tripId, noteId) {
     const note = (typeof NotesState !== 'undefined' ? NotesState.getNotes(tripId) : []).find(n => n._id === noteId);
     if (!note) return;
-    const act = (action, label, sub, cls) => `
-      <button type="button" class="tc-act ${cls || ''}" data-note-act="${action}">
-        <span>${label}</span>${sub ? `<span class="tc-act-sub">${sub}</span>` : ''}
+    // Строки с иконкой в плитке — как в листе блюда в Меню.
+    const act = (action, icon, label, sub, cls) => `
+      <button type="button" class="tc-act tc-act--ico ${cls || ''}" data-note-act="${action}">
+        <span class="tc-act-tile">${UIUtils.ico(icon)}</span>
+        <span class="tc-act-text"><span>${label}</span>${sub ? `<span class="tc-act-sub">${sub}</span>` : ''}</span>
       </button>`;
     const body = `<div class="tc-acts">
-      ${act('note-pin', note.pinned ? 'Открепить' : 'Закрепить наверху')}
-      ${act('note-task-toggle', note.isTask ? 'Убрать из задач' : 'Сделать задачей', note.isTask ? '' : 'появится кружок «сделано»')}
-      ${act('note-safety-set', note.safety ? 'Снять пометку «Безопасность»' : 'Пометить «Безопасность»')}
-      ${_isNoteAuthor(note) ? act('note-private-toggle', note.private ? 'Сделать видной всем' : 'Видна только мне') : ''}
-      ${_canDeleteNote(tripId, note) ? act('note-del', 'Удалить', '', 'tc-act--danger') : ''}
+      ${act('note-pin', 'pin', note.pinned ? 'Открепить' : 'Закрепить наверху')}
+      ${act('note-task-toggle', 'circle-check', note.isTask ? 'Убрать из задач' : 'Сделать задачей', note.isTask ? '' : 'появится кружок «сделано»')}
+      ${act('note-safety-set', 'shield', note.safety ? 'Снять пометку «Безопасность»' : 'Пометить «Безопасность»')}
+      ${_isNoteAuthor(note) ? act('note-private-toggle', 'lock', note.private ? 'Сделать видной всем' : 'Видна только мне') : ''}
+      ${_canDeleteNote(tripId, note) ? act('note-del', 'trash', 'Удалить', '', 'tc-act--danger') : ''}
     </div>`;
     const overlay = _openSheet('tc-note-actions', 'Заметка', [note.authorName, _noteDate(note.createdAt, true)].filter(Boolean).join(' · '), body);
     overlay.addEventListener('click', async e => {
@@ -2305,11 +2308,18 @@ const TripCoverIndex = (() => {
   function _notesSection(tripId) {
     const notes = typeof NotesState !== 'undefined' ? NotesState.getNotes(tripId) : [];
     if (!notes.length) return '<div class="tc-sec-hint">Заметок пока нет — напиши первую, её увидят все участники</div>';
+    // _esc() на n._id — это id документа Firestore, не только n.text: их
+    // обычно генерирует .add() на клиенте, но правила это никак не
+    // навязывают, и заметку с произвольным id можно создать напрямую через
+    // API, минуя приложение. Без экранирования такой id ломает атрибут и
+    // добавляет свой HTML/обработчик события на страницу ДРУГИХ участников
+    // — воспроизвели вживую. Реальная дыра, найдена внешним ревью
+    // 2026-09-27.
     const rows = notes.map(n => `
       <div class="tc-note ${n.pinned ? 'pinned' : ''}">
         ${n.isTask ? `
           <button type="button" class="tc-note-check" role="checkbox" aria-checked="${n.done}" aria-label="Сделано"
-                  data-action="note-done-toggle" data-id="${n._id}">
+                  data-action="note-done-toggle" data-id="${_esc(n._id)}">
             <span class="tc-check ${n.done ? 'done' : ''}">${n.done ? UIUtils.ico('check') : ''}</span>
           </button>` : ''}
         <div class="tc-note-body">
@@ -2321,7 +2331,7 @@ const TripCoverIndex = (() => {
           </div>
           <div class="tc-note-text ${n.isTask && n.done ? 'crossed' : ''}" data-action="tc-note-expand">${_esc(n.text)}</div>
         </div>
-        <button type="button" class="tc-note-more" data-action="tc-note-more" data-id="${n._id}" aria-label="Действия с заметкой">${UIUtils.ico('dots')}</button>
+        <button type="button" class="tc-note-more" data-action="tc-note-more" data-id="${_esc(n._id)}" aria-label="Действия с заметкой">${UIUtils.ico('dots')}</button>
       </div>`).join('');
     return `<section class="tc-card tc-card--list">${rows}</section>`;
   }

@@ -122,3 +122,14 @@ html .mk-dashed--center, html .exp-cat-new {
 }
 html .tc-add-dashed:active, html .rv-add-place-btn:active, html .gear-dashed:active,
 html .mk-dashed--center:active, html .exp-cat-new:active { background: var(--bg3); }
+
+/* Заголовок выезжающего листа — один стиль во всём приложении (как в
+   «Поимке», «Дежурстве», «Жилье»): заголовочный шрифт 20/700. Раньше в
+   Рецептах, Снаряге, Закупке и профиле были свои 15–17px обычным шрифтом. */
+html .rec-add-title, html .sh-sheet__title, html .mb-sheet-title {
+  font-family: var(--font-display); font-size: 20px; font-weight: 700; line-height: 1.25; color: var(--label);
+}
+
+/* Листы Снаряги — шапка «Отмена · заголовок по центру · Сохранить»: там
+   заголовок обычного размера и в одну строку (крупный переносился). */
+html .gear-sheet-title { font-family: var(--font-body); font-size: 17px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; text-align: center; }

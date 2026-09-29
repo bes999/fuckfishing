@@ -522,13 +522,29 @@ const TripsIndex = (() => {
       </section>` : ''}`;
   }
 
+  // Менять "Добавлять людей могу только я" может только владелец/организатор
+  // поездки — firestore.rules это теперь требует (иначе любой участник мог
+  // сначала снять ограничение отдельной записью, а вторым шагом спокойно
+  // присоединить себя в обход него — реальная дыра, найдена внешним ревью
+  // 2026-09-27). Не показываем интерактивный переключатель тем, чьё
+  // сохранение эта проверка всё равно отклонит — иначе их правка ЛЮБОГО
+  // другого поля формы падала бы целиком с непонятной ошибкой прав, стоило
+  // им один раз тронуть этот тумблер.
   function _accessField() {
+    const editingTrip = _editMode && _editTripId ? TripsData.getById(_editTripId) : null;
+    const canManageAccess = !editingTrip || TripsData.canManage(editingTrip);
     return `
       ${_label('Доступ')}
       <section class="cw-card cw-card--list">
         ${_switch('f-private', 'Приватная — не показывать в профиле другим', _draft.private)}
-        ${_switch('f-invite-restricted', 'Добавлять людей могу только я', _draft.inviteRestricted)}
-      </section>`;
+        ${canManageAccess
+          ? _switch('f-invite-restricted', 'Добавлять людей могу только я', _draft.inviteRestricted)
+          : `<div class="cw-switch-row" role="switch" aria-checked="${_draft.inviteRestricted ? 'true' : 'false'}" aria-disabled="true" style="opacity:.55">
+               <span class="cw-switch-text">Добавлять людей могу только я</span>
+               <span class="cw-switch"><span></span></span>
+             </div>`}
+      </section>
+      ${!canManageAccess ? `<span class="cw-hint">Менять может только организатор поездки</span>` : ''}`;
   }
 
   // Общий лист снизу (участники, переименование, удаление) — поверх мастера.

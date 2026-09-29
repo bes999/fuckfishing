@@ -136,6 +136,7 @@ const AppHeader = (() => {
       resultsEl.innerHTML = matches.length
         ? matches.map(t => `
             <div class="tqp-row" data-trip-id="${t.id}">
+              <span class="ah-search-ico ${t.type === 'expedition' ? 'exp' : 'fish'}">${UIUtils.ico(TripsData.tripIcon ? TripsData.tripIcon(t) : 'map-pin')}</span>
               <div class="tqp-name">${_esc(t.name)}</div>
               <div class="badge ${TripsData.statusClass(t.status)}">${TripsData.statusLabel(t.status)}</div>
             </div>`).join('')
@@ -143,7 +144,11 @@ const AppHeader = (() => {
     };
     renderResults('');
     input.addEventListener('input', () => renderResults(input.value));
-    setTimeout(() => input.focus(), 50);
+    // Фокус сразу, в том же нажатии на лупу: iOS открывает клавиатуру только
+    // из обработчика жеста — из setTimeout курсор не вставал, печать шла
+    // «в никуда». Таймер — запасной вариант для остальных браузеров.
+    input.focus({ preventScroll: true });
+    setTimeout(() => { if (document.activeElement !== input) input.focus(); }, 60);
 
     overlay.addEventListener('click', e => {
       if (e.target === overlay) { overlay.remove(); return; }

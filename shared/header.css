@@ -129,10 +129,11 @@
 .ah-search-input {
   display: block;
   background: var(--bg3);
-  border: 0.5px solid var(--sep);
-  border-radius: var(--radius-sm);
-  padding: 8px 12px;
-  font-size: 14px;
+  border: 1px solid var(--sep);
+  border-radius: var(--radius-md);
+  height: 48px;
+  padding: 0 14px;
+  font-size: 16px;
   font-family: inherit;
   color: var(--label);
   outline: none;
@@ -141,8 +142,17 @@
   -webkit-appearance: none;
   margin-bottom: 8px;
 }
+.ah-search-input:focus { border-color: var(--accent); }
+
 .ah-search-input::placeholder { color: var(--label3); }
 .ah-search-empty {
   font-size: 13px; color: var(--label3);
   padding: 14px 4px; text-align: center;
 }
+
+/* Иконка поездки в результатах поиска — как в «Планах»: цвет по типу */
+.ah-search-ico { width: 36px; height: 36px; flex-shrink: 0; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-right: 12px; }
+.ah-search-ico.exp  { background: var(--accent-bg); color: var(--accent); }
+.ah-search-ico.fish { background: var(--river-bg); color: var(--river); }
+#ah-search-results .tqp-row { justify-content: flex-start; }
+#ah-search-results .tqp-name { flex: 1; min-width: 0; }
