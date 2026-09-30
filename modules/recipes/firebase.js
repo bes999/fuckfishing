@@ -43,7 +43,7 @@ const RecipesFirebase = (() => {
       await db.collection(COLLECTION).doc(id).set(
         { ratings: { [uid]: rating } }, { merge: true }
       );
-    } catch (_) {}
+    } catch (e) { console.warn('RecipesFirebase.saveRating:', e); }
   }
 
   async function addComment(id, comment) {
@@ -54,7 +54,7 @@ const RecipesFirebase = (() => {
         const existing = doc.exists ? (doc.data().comments || []) : [];
         tx.set(ref, { comments: [...existing, comment] }, { merge: true });
       });
-    } catch (_) {}
+    } catch (e) { console.warn('RecipesFirebase.addComment:', e); }
   }
 
   // --- Свои рецепты — отдельная коллекция от рейтингов/комментариев ---

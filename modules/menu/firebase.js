@@ -25,7 +25,7 @@ const MenuFirebase = (() => {
   async function saveDays(tripId, days) {
     try {
       await db.collection(COLLECTION).doc(tripId).set({ days }, { merge: true });
-    } catch (_) {}
+    } catch (e) { console.warn('MenuFirebase.saveDays:', e); }
   }
 
   // Добавить/удалить один слот приёма пищи — транзакция читает СВЕЖИЕ days
@@ -97,7 +97,7 @@ const MenuFirebase = (() => {
           tx.set(ref, { days }, { merge: true });
         }
       });
-    } catch (_) {}
+    } catch (e) { console.warn('MenuFirebase.ensureDaysSeeded:', e); }
   }
 
   // Отдельное узкое поле для конкретной позиции — та же гонка, что была в
@@ -116,7 +116,7 @@ const MenuFirebase = (() => {
   async function saveSlotItem(tripId, slotId, item) {
     try {
       await db.collection(COLLECTION).doc(tripId).update({ ['slotItems.' + slotId]: item });
-    } catch (_) {}
+    } catch (e) { console.warn('MenuFirebase.saveSlotItem:', e); }
   }
 
   // Дежурство на приём пищи — та же узкая map-запись, что slotItems выше,
@@ -126,7 +126,7 @@ const MenuFirebase = (() => {
     try {
       const key = dayId + '_' + mealId;
       await db.collection(COLLECTION).doc(tripId).set({ mealDuty: { [key]: duty } }, { merge: true });
-    } catch (_) {}
+    } catch (e) { console.warn('MenuFirebase.saveMealDuty:', e); }
   }
 
   // Явка на день — узкая запись всей attendance-карты дня целиком (не по
@@ -137,7 +137,7 @@ const MenuFirebase = (() => {
   async function saveDayAttendance(tripId, dayId, dayAttendance) {
     try {
       await db.collection(COLLECTION).doc(tripId).set({ attendance: { [dayId]: dayAttendance } }, { merge: true });
-    } catch (_) {}
+    } catch (e) { console.warn('MenuFirebase.saveDayAttendance:', e); }
   }
 
   // "Готово" в Cook Mode — узкая запись в очередь для бота (см.
@@ -155,7 +155,7 @@ const MenuFirebase = (() => {
           [key]: { dayId, mealId, cook: cook || null, cleanup: cleanup || null, sent: false, at: firebase.firestore.FieldValue.serverTimestamp() }
         }
       }, { merge: true });
-    } catch (_) {}
+    } catch (e) { console.warn('MenuFirebase.saveCookDone:', e); }
   }
 
   // План меню из AI-импорта поездки (importData.menu: [{day:'День N',

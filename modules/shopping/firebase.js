@@ -116,7 +116,7 @@ const ShoppingFirebase = (() => {
   async function saveBought(tripId, itemId, value) {
     try {
       await db.collection(COLLECTION).doc(tripId).set({ bought: { [itemId]: value } }, { merge: true });
-    } catch (_) {}
+    } catch (e) { console.warn('ShoppingFirebase.saveBought:', e); }
   }
 
   // "Первый день" — отдельный от categories массив, свой же полный
@@ -128,7 +128,7 @@ const ShoppingFirebase = (() => {
   async function saveDayOne(tripId, dayOneItems) {
     try {
       await db.collection(COLLECTION).doc(tripId).set({ dayOneItems }, { merge: true });
-    } catch (_) {}
+    } catch (e) { console.warn('ShoppingFirebase.saveDayOne:', e); }
   }
 
   return { subscribe, unsubscribe, save, saveBought, saveDayOne };
