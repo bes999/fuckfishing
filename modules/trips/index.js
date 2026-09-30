@@ -109,7 +109,12 @@ const TripsIndex = (() => {
     _renderCreate();
   }
 
-  function showEdit(tripId) {
+  // step — необязательно, открыть мастер сразу на конкретном шаге (0-based,
+  // как _createStep) вместо шага 0. Нужно подсказке «маршрут не добавлен» в
+  // Инфо (см. modules/tripcover/index.js:_mountGuideTab) — раньше она текстом
+  // отправляла на «карандаш на обложке → шаг 2», а кнопки не было вовсе,
+  // и человеку приходилось искать этот карандаш и сам жать «Далее» до шага 2.
+  function showEdit(tripId, step) {
     const trip = TripsData.getById(tripId);
     if (!trip) return;
 
@@ -117,7 +122,7 @@ const TripsIndex = (() => {
     _editMode   = true;
     _editTripId = tripId;
     _importFileLoaded = false;
-    _createStep = 0;
+    _createStep = (typeof step === 'number' && step >= 0 && step <= 2) ? step : 0;
     _importedData = trip.importData || null;
     _expMode = _importedData ? 'file' : 'quiz';
     // Без этого квиз при редактировании стартовал с пустого списка рек,

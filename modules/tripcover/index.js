@@ -1564,6 +1564,11 @@ const TripCoverIndex = (() => {
       if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
       const geoResetBtn = e.target.closest('[data-action="geo-weather-reset"]');
       if (geoResetBtn) { _resetWeatherLocation(trip.id); return; }
+      // Подсказка «маршрут не добавлен» (см. _mountGuideTab) — раньше текстом
+      // отправляла человека искать карандаш на обложке и жать «Далее» до
+      // шага 2 самому; теперь сама открывает мастер правки сразу на нём.
+      const addRouteBtn = e.target.closest('[data-action="add-route"]');
+      if (addRouteBtn) { if (typeof TripsIndex !== 'undefined') TripsIndex.showEdit(trip.id, 1); return; }
       const menuImpBtn = e.target.closest('[data-action="tc-menu-import"]');
       if (menuImpBtn) { _importMenuPlan(trip, menuImpBtn); return; }
 
@@ -2439,7 +2444,10 @@ const TripCoverIndex = (() => {
         bodyHtml = `
           <div class="tc-stack">
             <div id="cover-weather-block">${_weatherSection(trip)}</div>
-            <p class="tc-sec-hint g-route-hint">Маршрут по дням пока не добавлен — его можно вписать вручную или загрузить файлом от ИИ: карандаш на обложке поездки → шаг 2.</p>
+            <div class="tc-sec-hint g-route-hint">
+              Маршрут по дням пока не добавлен — его можно вписать вручную или загрузить файлом от ИИ.
+              <button type="button" class="tc-link" data-action="add-route">Добавить маршрут</button>
+            </div>
           </div>`;
         _maybeRefreshWeather(trip);
       }
