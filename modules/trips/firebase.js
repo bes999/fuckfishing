@@ -198,8 +198,27 @@ const TripsFirebase = (() => {
   // формы (см. modules/trips/index.js _save) — сама диффовка (кто реально
   // добавлен/убран/переименован ПОЛЬЗОВАТЕЛЕМ в этом сеансе) происходит
   // там; здесь только применение этой разницы к актуальным данным.
-  function applyParticipantsDiff(tripId, { toAdd, toRemove, renames, ownerUid } = {}) {
-    if (!(toAdd?.length || toRemove?.length || renames?.length)) return Promise.resolve(null);
+  // Гости старых поездок ещё без gid — matchName (имя, под которым их
+  // опознали в modules/trips/index.js _save, сравнивая с тем, что было
+  // загружено при открытии формы) даёт тот же фолбэк ЗДЕСЬ: gid из
+  // rename/fieldChange/remove — это только что сгенерированный на клиенте,
+  // которого в СВЕЖЕМ серверном participants (только что прочитанном этой
+  // же транзакцией) тоже ещё нет — сопоставление по нему одному не находит
+  // ничего. Без этого гость дублировался бы (новая запись с gid добавлена,
+  // старая безgid'ная не найдена и не убрана) — реальный баг, найден
+  // внешним ревью 2026-09-27. Совпадение по имени — строго среди записей,
+  // у которых тоже нет ни uid, ни gid (иначе легко перепутать с тёзкой).
+  function _findParticipantIdx(participants, { uid, gid, matchName, name }) {
+    let idx = participants.findIndex(p => (uid && p.uid === uid) || (!uid && gid && p.gid === gid));
+    const byName = matchName || name;
+    if (idx < 0 && !uid && byName) {
+      idx = participants.findIndex(p => !p.uid && !p.gid && p.name && p.name.toLowerCase() === byName.toLowerCase());
+    }
+    return idx;
+  }
+
+  function applyParticipantsDiff(tripId, { toAdd, toRemove, renames, fieldChanges, ownerUid } = {}) {
+    if (!(toAdd?.length || toRemove?.length || renames?.length || fieldChanges?.length)) return Promise.resolve(null);
     const ref = _col().doc(tripId);
     return firebase.firestore().runTransaction(async tx => {
       const snap = await tx.get(ref);
@@ -207,13 +226,25 @@ const TripsFirebase = (() => {
       const data = snap.data() || {};
       let participants = Array.isArray(data.participants) ? data.participants.slice() : [];
 
-      (renames || []).forEach(({ uid, gid, newName }) => {
-        const idx = participants.findIndex(p => (uid && p.uid === uid) || (!uid && gid && p.gid === gid));
-        if (idx >= 0) participants[idx] = { ...participants[idx], name: newName };
+      (renames || []).forEach(({ uid, gid, matchName, newName }) => {
+        const idx = _findParticipantIdx(participants, { uid, gid, matchName });
+        if (idx < 0) return;
+        const patched = { ...participants[idx], name: newName };
+        if (gid && !patched.gid) patched.gid = gid; // завершаем миграцию легаси-гостя тем же ходом
+        participants[idx] = patched;
       });
 
-      (toRemove || []).forEach(({ uid, gid }) => {
-        participants = participants.filter(p => !((uid && p.uid === uid) || (!uid && gid && p.gid === gid)));
+      (fieldChanges || []).forEach(({ uid, gid, matchName, patch }) => {
+        const idx = _findParticipantIdx(participants, { uid, gid, matchName });
+        if (idx < 0) return;
+        const patched = { ...participants[idx], ...patch };
+        if (gid && !patched.gid) patched.gid = gid;
+        participants[idx] = patched;
+      });
+
+      (toRemove || []).forEach(({ uid, gid, name }) => {
+        const idx = _findParticipantIdx(participants, { uid, gid, name });
+        if (idx >= 0) participants.splice(idx, 1);
       });
 
       (toAdd || []).forEach(p => {
@@ -226,7 +257,20 @@ const TripsFirebase = (() => {
         ...(ownerUid ? [ownerUid] : []),
       ])];
 
-      tx.update(ref, { participants, memberIds });
+      const updates = { participants, memberIds };
+      // Кого-то исключили — отзываем ссылку-приглашение В ТОЙ ЖЕ
+      // транзакции, не отдельным вызовом после неё. Раньше это была
+      // отдельная асинхронная цепочка (.then после применения диффа,
+      // см. modules/trips/index.js _save), которая читала _editTripId из
+      // МОДУЛЬНОЙ переменной уже к моменту своего выполнения — а
+      // _closeCreate() успевал сбросить её в null ДО того, как эта цепочка
+      // завершалась (applyParticipantsDiff не await'ился, форма закрывалась
+      // сразу). Отзыв улетал с null вместо настоящего id поездки и просто
+      // не срабатывал — исключённый мог вернуться по старой ссылке.
+      // Реальный баг, найден внешним ревью 2026-09-27.
+      if (toRemove && toRemove.length) updates.inviteToken = _genInviteToken();
+
+      tx.update(ref, updates);
       return { participants, memberIds };
     }).catch(e => { console.warn('applyParticipantsDiff:', e); throw e; });
   }

@@ -1449,20 +1449,59 @@ const TripsIndex = (() => {
       // TripsFirebase.applyParticipantsDiff ниже), а если состав и имена
       // вообще не менялись в этом сеансе — сервер не трогается.
       const oldParticipants = existing?.participants || [];
-      const pToAdd = [], pToRemove = [], pRenames = [];
+      // Гости старых поездок, у которых ещё нет gid (проставляется задним
+      // числом чуть выше, в этом же сохранении — см. участников.forEach с
+      // _genGuestId): в oldParticipants (снимок ДО этого сохранения) они
+      // ещё БЕЗ gid, так что найти их по СВЕЖЕМУ gid из драфта в принципе
+      // невозможно. Без фолбэка такой гость считался бы НОВЫМ (в pToAdd —
+      // задваивался), а старая (безgid'ная) запись — "исключённой" (в
+      // pToRemove, но без uid/gid убрать её нечем — так и оставалась висеть
+      // мёртвым грузом). Реальный баг, найден внешним ревью 2026-09-27.
+      // Фолбэк — по имени, СТРОГО среди старых гостей, у которых тоже нет
+      // ни uid, ни gid (это и есть признак "ещё не мигрировал"), и каждая
+      // такая старая запись используется для сопоставления не больше раза.
+      const legacyGuests = oldParticipants.filter(o => !o.uid && !o.gid);
+      const usedLegacyMatches = new Set();
+      const pToAdd = [], pToRemove = [], pRenames = [], pFieldChanges = [];
       const matchedOld = new Set();
       (trip.participants || []).forEach(p => {
-        const was = p.uid
+        let was = p.uid
           ? oldParticipants.find(o => o.uid === p.uid)
           : (p.gid ? oldParticipants.find(o => o.gid === p.gid) : null);
+        if (!was && !p.uid) {
+          was = legacyGuests.find(o => !usedLegacyMatches.has(o) && o.name.toLowerCase() === p.name.toLowerCase());
+          if (was) usedLegacyMatches.add(was);
+        }
         if (was) {
           matchedOld.add(was);
-          if (was.name && was.name !== p.name) pRenames.push({ uid: p.uid || null, gid: p.gid || null, newName: p.name });
+          // matchName — имя, по которому этого участника опознали ЗДЕСЬ
+          // (в oldParticipants). Для гостя, сопоставленного через легаси-
+          // фолбэк выше, gid в этой записи — только что сгенерированный,
+          // которого на СЕРВЕРЕ (внутри транзакции applyParticipantsDiff)
+          // тоже ещё нет — сопоставление по нему там повторило бы ту же
+          // проблему. matchName даёт транзакции тот же фолбэк (по старому
+          // имени среди гостей без uid/gid), и заодно она же сохранит туда
+          // и сам gid, завершив миграцию этого гостя.
+          const identity = { uid: p.uid || null, gid: p.gid || null, matchName: was.name };
+          if (was.name && was.name !== p.name) pRenames.push({ ...identity, newName: p.name });
+          // "Едет по своему расписанию" / "не участвует в дежурстве" —
+          // тоже поля конкретного участника, не только имя. Раньше их
+          // изменение никак не обнаруживалось этим диффом (сравнивалось
+          // только имя) — раз participants/memberIds больше не пишутся
+          // общим update() целиком, отметка молча переставала сохраняться
+          // вообще. Реальный баг, найден внешним ревью 2026-09-27.
+          const fieldPatch = {};
+          if (!!was.travelSeparate !== !!p.travelSeparate) fieldPatch.travelSeparate = !!p.travelSeparate;
+          if (!!was.dutyExempt !== !!p.dutyExempt) fieldPatch.dutyExempt = !!p.dutyExempt;
+          if (Object.keys(fieldPatch).length) pFieldChanges.push({ ...identity, patch: fieldPatch });
         } else {
           pToAdd.push(p);
         }
       });
-      oldParticipants.forEach(o => { if (!matchedOld.has(o)) pToRemove.push({ uid: o.uid || null, gid: o.gid || null }); });
+      // name — тот же легаси-фолбэк, что и у pRenames/pFieldChanges выше:
+      // гостя без uid/gid, которого реально убрали из состава, иначе
+      // нечем опознать в транзакции (там тоже нет ни uid, ни gid).
+      oldParticipants.forEach(o => { if (!matchedOld.has(o)) pToRemove.push({ uid: o.uid || null, gid: o.gid || null, name: o.name }); });
 
       // В режиме редактирования сохраняем существующие данные рейтинга, улова и т.д.
       const update = {
@@ -1561,17 +1600,15 @@ const TripsIndex = (() => {
       // Применяем добавления/удаления/переименования состава к СВЕЖИМ
       // серверным participants/memberIds одной транзакцией — не тем, что
       // было в драфте формы (см. комментарий у pToAdd/pToRemove выше).
-      // Кого-то исключили — отзываем ссылку-приглашение: без этого
-      // исключённый мог вернуться сам по старой ссылке (id поездки в ней не
-      // менялся никогда, отозвать было нечем). Реальная дыра, найдена
-      // внешним ревью 2026-09-27.
-      if (pToAdd.length || pToRemove.length || pRenames.length) {
-        TripsFirebase.applyParticipantsDiff(_editTripId, { toAdd: pToAdd, toRemove: pToRemove, renames: pRenames, ownerUid })
-          .then(() => {
-            if (pToRemove.length) {
-              TripsData.regenerateInviteToken(_editTripId).catch(e => console.error('regenerateInviteToken:', e));
-            }
-          })
+      // Кого-то исключили — TripsFirebase.applyParticipantsDiff В ТОЙ ЖЕ
+      // транзакции отзывает и ссылку-приглашение (раньше это был отдельный
+      // .then() ПОСЛЕ, который к моменту выполнения читал _editTripId уже
+      // сброшенным в null — форма закрывалась раньше, чем эта асинхронная
+      // цепочка успевала дойти до отзыва, и он улетал с null и не
+      // срабатывал вообще — исключённый мог вернуться по старой ссылке).
+      // Реальная дыра, найдена внешним ревью 2026-09-27.
+      if (pToAdd.length || pToRemove.length || pRenames.length || pFieldChanges.length) {
+        TripsFirebase.applyParticipantsDiff(_editTripId, { toAdd: pToAdd, toRemove: pToRemove, renames: pRenames, fieldChanges: pFieldChanges, ownerUid })
           .catch(e => console.error('applyParticipantsDiff:', e));
       }
     } else {
