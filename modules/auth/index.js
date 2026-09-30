@@ -200,6 +200,25 @@ const AuthActions = (() => {
     // остался бы висеть поверх появившегося экрана входа.
     document.getElementById('ob-overlay')?.remove();
     await auth.signOut();
+
+    // localStorage (ff_shopping/ff_menu/ff_trips/...) и IndexedDB-кэш
+    // Firestore (db.enablePersistence, см. shared/config.js) не привязаны
+    // к аккаунту и раньше переживали signOut как есть — на общем
+    // устройстве/телефоне следующий вошедший видел чужие данные, пока сам
+    // не наберёт что-то новое поверх них. Реальная находка внешнего
+    // ревью 2026-09-30. db.terminate() рвёт все активные подписки, после
+    // него можно звать clearPersistence() (единственное, что ей после
+    // terminate можно) — перезагрузка страницы обязательна в любом
+    // случае, т.к. модульный `const db` после terminate() больше не годен.
+    try {
+      Object.keys(localStorage).filter(k => k.startsWith('ff_')).forEach(k => localStorage.removeItem(k));
+    } catch (_) {}
+    try {
+      await db.terminate();
+      await db.clearPersistence();
+    } catch (_) {}
+
+    location.reload();
   }
 
   /* ── Boot ── */
