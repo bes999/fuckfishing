@@ -271,16 +271,28 @@ const TripCoverIndex = (() => {
   // координат. Результат кэшируем в trip.weather в Firestore, чтобы не
   // дёргать API на каждый показ обложки; прогноз (в отличие от факта)
   // считаем протухшим через 6 часов и обновляем заново.
-  function _tripCoords(trip) {
-    // Точка, вручную поставленная кнопкой "Моё местоположение" — приоритет
-    // выше импортированных рек: это явное действие человека прямо на месте,
-    // надёжнее любой реки "по умолчанию" (тем более если их несколько).
-    if (trip.weatherCoords && trip.weatherCoords.lat != null) return trip.weatherCoords;
+  // source: 'manual' (кнопка "Моё местоположение") | 'river' | null (нет
+  // координат вообще). riverName — только при source:'river', для подписи
+  // "Прогноз для: <река>". Раньше это решалось молча (_tripCoords ниже,
+  // просто координаты без объяснения) — метка "Моё местоположение"
+  // залипает НАВСЕГДА, пока её не переставят заново, и без подписи в
+  // интерфейсе выглядело как баг: у поездки "Ханты" кто-то один раз нажал
+  // булавку (возможно, ещё в Екатеринбурге, до выезда), и погода
+  // подменилась на Екб без единого следа в интерфейсе, что именно
+  // произошло. Реальный баг, найден внешним ревью 2026-09-30.
+  function _tripCoordsInfo(trip) {
+    if (trip.weatherCoords && trip.weatherCoords.lat != null) {
+      return { coords: trip.weatherCoords, source: 'manual' };
+    }
     const impHit = (trip.importData?.rivers || []).find(r => r.lat != null && r.lon != null);
-    if (impHit) return { lat: impHit.lat, lon: impHit.lon };
+    if (impHit) return { coords: { lat: impHit.lat, lon: impHit.lon }, source: 'river', riverName: impHit.name };
     const plainHit = (trip.rivers || []).find(r => r.lat != null && r.lon != null);
-    if (plainHit) return { lat: plainHit.lat, lon: plainHit.lon };
-    return null;
+    if (plainHit) return { coords: { lat: plainHit.lat, lon: plainHit.lon }, source: 'river', riverName: plainHit.name };
+    return { coords: null, source: null };
+  }
+
+  function _tripCoords(trip) {
+    return _tripCoordsInfo(trip).coords;
   }
 
   function _maybeRefreshWeather(trip, force) {
@@ -355,9 +367,26 @@ const TripCoverIndex = (() => {
   // когда человек уже реально на месте и хочет погоду именно отсюда, а не
   // от той точки, что подтянулась при заведении поездки. Once поставлена —
   // становится приоритетным источником координат для этой поездки
-  // (см. _tripCoords) и остаётся, пока не переставят заново.
+  // (см. _tripCoordsInfo) и остаётся, пока не переставят заново или не
+  // сбросят кнопкой "Сбросить метку" (_resetWeatherLocation ниже).
+  //
+  // Раньше это срабатывало сразу по одному нажатию маленькой иконки-булавки,
+  // без единого вопроса и без следа в интерфейсе, что именно произошло —
+  // у поездки "Ханты" кто-то так один раз подменил погоду на Екатеринбург
+  // (видимо, ещё до выезда), и это выглядело как необъяснимый баг. Реальный
+  // баг, найден внешним ревью 2026-09-30. Теперь сначала подтверждение,
+  // объясняющее, что произойдёт и что это не разово, а до явного сброса.
   function _useMyLocation(tripId, btn) {
     if (!navigator.geolocation) { alert('Геолокация не поддерживается этим браузером'); return; }
+    UIUtils.confirmSheet(
+      'Погода поездки будет показываться по твоему текущему месту, а не по реке из маршрута — и останется так, пока не нажмёшь «Сбросить метку».',
+      { title: 'Погода по моей геопозиции', okLabel: 'Определить место', danger: false }
+    ).then(ok => {
+      if (ok) _reallyUseMyLocation(tripId, btn);
+    });
+  }
+
+  function _reallyUseMyLocation(tripId, btn) {
     const origHtml = btn ? btn.innerHTML : '';
     if (btn) { btn.textContent = 'Определяю…'; btn.disabled = true; }
     navigator.geolocation.getCurrentPosition(
@@ -381,6 +410,28 @@ const TripCoverIndex = (() => {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
+  }
+
+  // Отменяет метку "Моё местоположение" — возвращает погоду к реке из
+  // маршрута (или к "координаты не определены", если рек с координатами
+  // нет вовсе). Без этой кнопки залипшую метку было нечем снять, кроме как
+  // физически прийти в правильное место и нажать "Моё местоположение" ещё
+  // раз оттуда.
+  async function _resetWeatherLocation(tripId) {
+    const trip = TripsData.getById(tripId);
+    if (!trip) return;
+    const ok = await UIUtils.confirmSheet('Вернуть прогноз к месту поездки (реке из маршрута)?', { title: 'Сбросить метку', okLabel: 'Сбросить', danger: false });
+    if (!ok) return;
+    trip.weatherCoords = null;
+    trip.weather = null;
+    trip.weatherDaily = null;
+    trip.weatherHourly = null;
+    await TripsData.updateTrip(tripId, { weatherCoords: null, weather: null, weatherDaily: null, weatherHourly: null });
+    const block = document.getElementById('cover-weather-block');
+    if (block && _tripId === tripId) block.outerHTML = _weatherSection(trip);
+    const todayEl = document.getElementById('g-today-weather');
+    if (todayEl) todayEl.innerHTML = _todayWeatherBlock(trip);
+    _maybeRefreshWeather(trip, true);
   }
 
   // Проставляет мини-бейджи погоды в уже отрисованный Гид (если он открыт
@@ -511,8 +562,18 @@ const TripCoverIndex = (() => {
   // «По дням» на экран погоды (_showWeatherScreen) + 📍 «моё местоположение».
   function _weatherSection(t) {
     const w = t.weather;
+    const info = _tripCoordsInfo(t);
+    // Откуда взято место прогноза — раньше это нигде не показывалось,
+    // и залипшая метка "Моё местоположение" выглядела так же, как обычная
+    // погода по реке, никак не отличить. Реальный баг, найден внешним
+    // ревью 2026-09-30.
+    const locLabel = info.source === 'manual'
+      ? 'Прогноз по метке «Моё местоположение»'
+      : (info.source === 'river' && info.riverName ? `Прогноз для: ${info.riverName}` : '');
+    const resetBtn = info.source === 'manual'
+      ? ` · <button type="button" class="tc-link" data-action="geo-weather-reset">Сбросить</button>` : '';
     if (!w) {
-      if (_tripCoords(t)) return '<div id="cover-weather-block"></div>';
+      if (info.coords) return '<div id="cover-weather-block"></div>';
       return `
         <section class="tc-card" id="cover-weather-block">
           <div class="tc-card-head"><h2 class="tc-card-title">Погода</h2></div>
@@ -534,6 +595,7 @@ const TripCoverIndex = (() => {
             <button type="button" class="tc-icon-btn" data-action="geo-weather" aria-label="Обновить по моей геопозиции">${UIUtils.ico('map-pin')}</button>
           </div>
         </div>
+        ${locLabel ? `<div class="tc-hint">${_esc(locLabel)}${resetBtn}</div>` : ''}
         <div class="tc-wx-grid ${w.wind != null ? '' : 'tc-wx-grid--3'}">
           ${cell('temperature', 'tc-c-accent', `${w.tMin}…${w.tMax}°`, 'темп.')}
           ${cell('cloud-rain', 'tc-c-river', `${w.precip} мм`, 'осадки')}
@@ -1389,6 +1451,7 @@ const TripCoverIndex = (() => {
       const act = a.dataset.action;
       // Моё местоположение — ставит координаты вручную и перетягивает погоду
       if (act === 'geo-weather') { _useMyLocation(trip.id, a); return; }
+      if (act === 'geo-weather-reset') { _resetWeatherLocation(trip.id); return; }
       if (act === 'tc-invite') { _showInviteSheet(trip, () => show(_tripId, { silent: true })); return; }
       if (act === 'info-gear') { _onGearClick(trip, true); return; }
       if (act === 'tc-rate') { _setRating(trip, parseInt(a.dataset.val, 10)); return; }
@@ -1499,6 +1562,8 @@ const TripCoverIndex = (() => {
       if (backBtn) { show(trip.id); return; }
       const geoBtn = e.target.closest('[data-action="geo-weather"]');
       if (geoBtn) { _useMyLocation(trip.id, geoBtn); return; }
+      const geoResetBtn = e.target.closest('[data-action="geo-weather-reset"]');
+      if (geoResetBtn) { _resetWeatherLocation(trip.id); return; }
       const menuImpBtn = e.target.closest('[data-action="tc-menu-import"]');
       if (menuImpBtn) { _importMenuPlan(trip, menuImpBtn); return; }
 
