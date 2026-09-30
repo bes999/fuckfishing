@@ -323,10 +323,15 @@ var RiversRender = (function () {
     h += '  <div class="rv-catch-log-title">Записи поимок здесь</div>';
     catches.forEach(function (c, i) {
       var idx = (c._idx !== undefined ? c._idx : i);
+      // data-catch-del — id записи (устойчив к тому, что кто-то другой
+      // добавит/удалит улов между отрисовкой и свайпом), а не позиция в
+      // списке; позиция как ключ используется только когда записи вообще
+      // без _id (чистый localStorage-фолбэк, см. RiversIndex._delCatch).
+      var delKey = c._id || String(idx);
       h += '<div class="rv-catch-entry" data-catch-idx="' + idx + '">';
       h += '  <span class="rv-catch-entry-l">' + _esc(c.fish) + ' · ' + c.count + ' шт' + (c.member ? ' <span style="color:var(--label3);font-size:12px">· ' + _esc(c.member) + '</span>' : '') + '</span>';
       h += '  <span class="rv-catch-entry-r">' + (c.kept ? 'взяли' : 'отпустили') + '</span>';
-      h += '  <button type="button" class="rv-catch-del" data-catch-del="' + idx + '">Удалить</button>';
+      h += '  <button type="button" class="rv-catch-del" data-catch-del="' + _esc(delKey) + '">Удалить</button>';
       h += '</div>';
     });
     h += '</div>';

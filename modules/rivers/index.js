@@ -66,25 +66,40 @@ var RiversIndex = (function () {
     _saveCatches(all);
   }
 
-  function _delCatch(idx) {
-    // [PATCH] Удаляем через Firebase если доступен
+  // Раньше удаляло по позиции в отрисованном списке (data-catch-del=idx),
+  // а не по id записи. Между отрисовкой лога и свайпом кто-то другой мог
+  // добавить/удалить улов где угодно в поездке — позиция в общем массиве
+  // (CatchesState.getCatches — НЕ отфильтрован по реке) сдвигалась, и
+  // свайп стирал чужую запись, указанную тем же номером. Реальная находка
+  // внешнего ревью 2026-09-30. key теперь — это _id записи (стабильный
+  // Firestore doc id); по номеру ищем только в чисто локальном
+  // (без Firestore вообще) режиме, где конкурентных правок не бывает.
+  function _delCatch(key) {
     var tripId = window.APP && window.APP.currentTripId;
-    var allCatches = (tripId && typeof CatchesState !== 'undefined')
-      ? CatchesState.getCatches(tripId)
-      : _getCatches();
- 
-    var catchEntry = allCatches[idx];
+    var hasFirebase = !!(tripId && typeof CatchesFirebase !== 'undefined' && typeof CatchesState !== 'undefined');
+    var allCatches = hasFirebase ? CatchesState.getCatches(tripId) : _getCatches();
+
+    var catchEntry = null, localIdx = -1;
+    for (var i = 0; i < allCatches.length; i++) {
+      if (allCatches[i]._id === key) { catchEntry = allCatches[i]; localIdx = i; break; }
+    }
+    if (!catchEntry) {
+      var idxNum = parseInt(key, 10);
+      if (!isNaN(idxNum) && allCatches[idxNum] && !allCatches[idxNum]._id) { catchEntry = allCatches[idxNum]; localIdx = idxNum; }
+    }
     if (!catchEntry) return;
- 
-    if (tripId && typeof CatchesFirebase !== 'undefined' && catchEntry._id && !catchEntry._id.startsWith('tmp_')) {
+
+    if (hasFirebase && catchEntry._id && !catchEntry._id.startsWith('tmp_')) {
       CatchesFirebase.deleteCatch(tripId, catchEntry._id);
-      if (typeof CatchesState !== 'undefined') {
-        CatchesState.removeCatch(tripId, catchEntry._id);
-      }
+      CatchesState.removeCatch(tripId, catchEntry._id);
+    } else if (hasFirebase) {
+      // Ещё не долетела до Firestore (оптимистичная tmp_-запись) —
+      // настоящей записи на сервере нет, просто убираем из state.
+      CatchesState.removeCatch(tripId, catchEntry._id);
     } else {
-      // Fallback localStorage
+      // Fallback: чистый localStorage без Firestore вообще
       var all = _getCatches();
-      all.splice(idx, 1);
+      all.splice(localIdx, 1);
       _saveCatches(all);
     }
   }
@@ -300,8 +315,7 @@ var RiversIndex = (function () {
     _catchDelHandler = function (e) {
       var del = e.target.closest('[data-catch-del]');
       if (!del) return;
-      var idx = parseInt(del.getAttribute('data-catch-del'), 10);
-      _delCatch(idx);
+      _delCatch(del.getAttribute('data-catch-del'));
       _refreshCatchLog(r);
     };
     _el.addEventListener('click', _catchDelHandler);
@@ -350,7 +364,7 @@ var RiversIndex = (function () {
     if (_ptHandler) _el.removeEventListener('click', _ptHandler);
     _ptHandler = function (e) {
       var delBtn = e.target.closest('[data-pt-del]');
-      if (delBtn) { _deletePoint(r.id, delBtn.getAttribute('data-pt-del')); return; }
+      if (delBtn) { _confirmDeletePoint(r.id, delBtn.getAttribute('data-pt-del')); return; }
       var navEl = e.target.closest('[data-rv-nav]');
       if (navEl) return; // сама навигация уже обработана _navHandler
       var editRow = e.target.closest('[data-pt-edit]');
@@ -554,6 +568,21 @@ var RiversIndex = (function () {
     _showPtForm();
   }
 
+  // Удаление свайпом (см. UIUtils.swipeToDelete) раньше срабатывало одним
+  // тапом по открывшейся кнопке «Удалить» без подтверждения — палец легко
+  // соскальзывает с «Ред.»/навигатора на неё же. Точку без подтверждения
+  // терял человек, не другие участники (список точек — realtime-подписка,
+  // так что при отказе сервера строка просто вернётся сама, откатывать
+  // локально нечего). Реальная находка внешнего ревью 2026-09-30.
+  function _confirmDeletePoint(rid, id) {
+    var pts = _getPoints();
+    var pt = (pts[rid] || []).filter(function (p) { return p._id === id; })[0];
+    var msg = pt && pt.name ? 'Удалить точку «' + pt.name + '»?' : 'Удалить точку?';
+    UIUtils.confirmSheet(msg, { title: 'Удалить точку', okLabel: 'Удалить', danger: true }).then(function (ok) {
+      if (ok) _deletePoint(rid, id);
+    });
+  }
+
   function _deletePoint(rid, id) {
     RiversFirebase.deletePoint(_tripId, id).catch(function (e) { console.warn('river point delete:', e); });
   }
@@ -602,19 +631,38 @@ var RiversIndex = (function () {
     }
   }
 
+  // Раньше удаляло без вопроса и чистило экран ДО ответа сервера — если
+  // запись в Firestore не проходила (нет сети/прав), заметка пропадала из
+  // интерфейса у автора навсегда, хотя на сервере оставалась целой (и
+  // появлялась снова только если кто-то другой открывал место). Реальная
+  // находка внешнего ревью 2026-09-30: теперь спрашиваем подтверждение и
+  // откатываем экран назад, если удаление не прошло.
   function _deleteNote(rid) {
-    delete _notesCache[rid];
-    RiversFirebase.deleteNote(_tripId, rid).catch(function (e) { console.warn('river note delete:', e); });
+    var prev = _notesCache[rid];
+    UIUtils.confirmSheet('Удалить заметку?', { title: 'Удалить заметку', okLabel: 'Удалить', danger: true }).then(function (ok) {
+      if (!ok) return;
 
-    var saved = document.getElementById('rv-notes-saved');
-    var acts  = document.getElementById('rv-notes-acts');
-    var ta    = document.getElementById('rv-notes-ta');
-    var btn   = document.getElementById('rv-notes-save-btn');
+      delete _notesCache[rid];
+      var saved = document.getElementById('rv-notes-saved');
+      var acts  = document.getElementById('rv-notes-acts');
+      var ta    = document.getElementById('rv-notes-ta');
+      var btn   = document.getElementById('rv-notes-save-btn');
 
-    if (saved) { saved.textContent = ''; saved.className = 'rv-notes-saved'; }
-    if (acts)  acts.className  = 'rv-notes-acts';
-    if (ta)    { ta.value = ''; ta.className = 'rv-notes-ta'; }
-    if (btn)   btn.className   = 'rv-notes-save';
+      if (saved) { saved.textContent = ''; saved.className = 'rv-notes-saved'; }
+      if (acts)  acts.className  = 'rv-notes-acts';
+      if (ta)    { ta.value = ''; ta.className = 'rv-notes-ta'; }
+      if (btn)   btn.className   = 'rv-notes-save';
+
+      RiversFirebase.deleteNote(_tripId, rid).catch(function (e) {
+        console.warn('river note delete:', e);
+        _notesCache[rid] = prev;
+        if (saved) { saved.textContent = prev; saved.className = 'rv-notes-saved show'; }
+        if (acts)  acts.className = 'rv-notes-acts show';
+        if (ta)    { ta.value = prev; ta.className = 'rv-notes-ta hide'; }
+        if (btn)   btn.className  = 'rv-notes-save hide';
+        alert('Не получилось удалить заметку — попробуй ещё раз');
+      });
+    });
   }
 
   /* ──────────────────────────────────────────────────────
